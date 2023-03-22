@@ -3,3 +3,17 @@ uuid = "a7812802-0625-4b9e-961c-d332478797e5"
 authors = ["xtalax <alex.lemony@gmail.com>"]
 version = "0.1.0"
 
+[deps]
+DomainSets = "5b8099bc-c8ec-5219-889f-1d9e522a28bf"
+ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
+SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
+SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
+Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+
+[compat]
+julia = "1.6"
+DomainSets = "0.5, 0.6"
+ModelingToolkit = "8"
+SciMLBase = "1.91"
+SymbolicUtils = "1"
+Symbolics = "5"

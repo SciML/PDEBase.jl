@@ -29,9 +29,10 @@ should_transform(pdesys::PDESystem, disc::AbstractDiscretization) = false
 
 Transforms the PDESystem to make it compatible with the given discretization.
 """
-transform_pde_system!(v::VariableMap, boundarymap,
-                      pdesys::PDESystem, disc::AbstractDiscretization) = nothing
-
+function transform_pde_system!(v::VariableMap, boundarymap,
+                               pdesys::PDESystem, disc::AbstractDiscretization)
+    nothing
+end
 
 """
     construct_disc_state(disc::AbstractDiscretization)
@@ -44,10 +45,10 @@ construct_disc_state(::AbstractDiscretization) = []
 construct_disc_state(::AbstractEquationSystemDiscretization) = EquationState()
 
 """
-    construct_discrete_space(disc::AbstractDiscretization, v::VariableMap, pdesys::PDESystem)
+    construct_discrete_space(v::VariableMap, disc::AbstractDiscretization)
 
 """
-construct_discrete_space(v::VariableMap, disc::AbstractDiscretization)
+construct_discrete_space(v::VariableMap, disc::AbstractDiscretization) = nothing
 
 """
     construct_var_equation_mapping(pdeeqs, bmap, s::AbstractDiscreteSpace, disc::AbstractDiscretization)
@@ -56,8 +57,11 @@ Constructs the mapping from the variables in the PDESystem to which equations th
 given the equations, boundary conditions, and discretization. This is a good time to calculate any
 extra information needed for the boundary condition handling.
 """
-construct_var_equation_mapping(pdeeqs, bmap, s::AbstractDiscreteSpace, disc::AbstractDiscretization)
-
+function construct_var_equation_mapping(pdeeqs::Vector{Equation}, bmap,
+                                        s::AbstractDiscreteSpace,
+                                        disc::AbstractDiscretization)
+    nothing
+end
 
 """
     construct_differential_discretizer(pdesys::PDESystem, s::AbstractDiscreteSpace,
@@ -81,8 +85,13 @@ bcmap: boundarymap with any conditions on time removed.
 depvars: the dependent variables in the equation.
 indexmap: dict mapping each iv in this equation to its index in the eqvar.
 """
-discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equaation, vareqmap::AbstractVarEqMap,
-                     eqvar, bcmap, depvars, s::AbstractDiscreteSpace, derivweights::AbstractDifferentialDiscretizer, indexmap, discretization::AbstractDiscretization) = nothing
+function discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equation,
+                              vareqmap::AbstractVarEqMapping,
+                              eqvar, bcmap, depvars, s::AbstractDiscreteSpace,
+                              derivweights::AbstractDifferentialDiscretizer, indexmap,
+                              discretization::AbstractDiscretization)
+    nothing
+end
 
 """
     generate_ic_defaults(ics, s::AbstractDiscreteSpace disc::AbstractDiscretization)
@@ -110,7 +119,11 @@ You likely want this to return one of the symbolic system types from ModelingToo
 u0: the return value of generate_ic_defaults
 tspan: the time span of the problem, if relevant. (else nothing)
 """
-generate_system(disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace, u0, tspan, metadata::AbstractDiscretizationMetadata, discretization::AbstractDiscretization) = nothing
+function generate_system(disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace,
+                         u0, tspan, metadata::AbstractDiscretizationMetadata,
+                         discretization::AbstractDiscretization)
+    nothing
+end
 
 ############################################################################################
 # Default interface functions for `AbstractDiscretization`
