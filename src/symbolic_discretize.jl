@@ -38,7 +38,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     disc_state = construct_disc_state(discretization)
 
     # Create discretized space and variables, this is called `s` throughout
-    s = construct_discretespace(v, discretization)
+    s = construct_discrete_space(v, discretization)
     # Get the interior and variable to solve for each equation
     #TODO: do the interiormap before and independent of the discretization i.e. `s`
     vareqmap = construct_var_equation_mapping(pdeeqs, boundarymap, s, discretization)
@@ -72,7 +72,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
         eqvar = get_eqvar(vareqmap, pde)
 
         # * Assumes that all variables in the equation have same dimensionality except edgevals
-        args = ivs(eqvar, s)
+        args = ivs(eqvar, v)
         indexmap = Dict([args[i] => i for i in 1:length(args)])
             # Generate the equations for the interior points
         discretize_equation!(disc_state, pde, vareqmap, eqvar, bcmap,

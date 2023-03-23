@@ -1,6 +1,6 @@
 struct EquationState <: AbstractEquationSystemDiscretization
     eqs::Vector{Equation}
-    bcs::Vector{Equation}
+    bceqs::Vector{Equation}
 end
 
 function EquationState()
@@ -13,9 +13,7 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
     t = get_time(disc)
     name = metadata.pdesys.name
     pdesys = metadata.pdesys
-    bceqs = reduce(vcat, disc_state.bceqs)
-    alleqs = reduce(vcat, disc_state.eqs)
-    alleqs = vcat(alleqs, unique(bceqs))
+    alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
     defaults = Dict(pdesys.ps === nothing || pdesys.ps === SciMLBase.NullParameters() ? u0 :

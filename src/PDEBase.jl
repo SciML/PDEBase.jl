@@ -24,6 +24,7 @@ abstract type AbstractDifferentialDiscretizer end
 abstract type AbstractDiscretizationState end
 
 include("symbolic_utils.jl")
+include("utils.jl")
 include("variable_map.jl")
 include("interface_defaults.jl")
 include("discretization_state.jl")
@@ -43,7 +44,7 @@ export get_time
 export count_differentials, differential_order, has_derivatives, find_derivative,
        subs_alleqs!, get_depvars,
        get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
-       recursive_unwrap
+       recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface, haslowerupper, has_interfaces, isupper
 export PeriodicMap
 
 end # module PDEBase

@@ -57,7 +57,7 @@ Constructs the mapping from the variables in the PDESystem to which equations th
 given the equations, boundary conditions, and discretization. This is a good time to calculate any
 extra information needed for the boundary condition handling.
 """
-function construct_var_equation_mapping(pdeeqs::Vector{Equation}, bmap,
+function construct_var_equation_mapping(pdeeqs, bmap,
                                         s::AbstractDiscreteSpace,
                                         disc::AbstractDiscretization)
     nothing
@@ -134,3 +134,39 @@ end
 Get the time variable for the given discretization.
 """
 get_time(discretization::AbstractDiscretization) = nothing
+
+############################################################################################
+# Default interface functions for `AbstractDiscreteSpace`
+############################################################################################
+
+"""
+    get_discvars(s::AbstractDiscreteSpace)
+
+Get the discrete variable map, where relevant
+"""
+get_discvars(s::AbstractDiscreteSpace) = []
+
+############################################################################################
+# Default interface functions for `AbstractVarEqMapping`
+############################################################################################
+"""
+    get_eqvar(vareqmap::AbstractVarEqMapping)
+
+Get the variable that the given equation will be solved for.
+"""
+get_eqvar(vareqmap::AbstractVarEqMapping, eq) = nothing
+
+############################################################################################
+# Default interface functions for `AbstractDiscretizationMetadata`
+############################################################################################
+"""
+    add_metadata!(metadata::AbstractDiscretizationMetadata, value)
+"""
+function add_metadata!(metadata::AbstractDiscretizationMetadata, value)
+    metadata.metadata[] = value
+end
+
+"""
+    get_metadata(metadata::AbstractDiscretizationMetadata)
+"""
+get_metadata(metadata::AbstractDiscretizationMetadata) = metadata.metadata[]
