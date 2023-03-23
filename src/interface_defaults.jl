@@ -165,8 +165,3 @@ get_eqvar(vareqmap::AbstractVarEqMapping, eq) = nothing
 function add_metadata!(metadata::AbstractDiscretizationMetadata, value)
     metadata.metadata[] = value
 end
-
-"""
-    get_metadata(metadata::AbstractDiscretizationMetadata)
-"""
-get_metadata(metadata::AbstractDiscretizationMetadata) = metadata.metadata[]
