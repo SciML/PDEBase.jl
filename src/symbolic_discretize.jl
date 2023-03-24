@@ -22,7 +22,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     # Create a map of each variable to their boundary conditions including initial conditions
     boundarymap = parse_bcs(pdesys.bcs, v, bcorders)
     # Check that the boundary map is valid
-    check_boundarymap(boundarymap, discretization)
+    check_boundarymap(boundarymap, v, discretization)
 
     # Transform system so that it is compatible with the discretization
     if should_transform(pdesys, discretization)
