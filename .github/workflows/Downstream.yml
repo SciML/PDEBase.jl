@@ -17,24 +17,6 @@ jobs:
         julia-version: [1,1.6]
         os: [ubuntu-latest]
         package:
-                  - Components
-          - Sol_Interface
-          - MOL_Interface1
-          - MOL_Interface2
-          - Diffusion
-          - Diffusion_NU
-          - Nonlinear_Diffusion
-          - Nonlinear_Diffusion_NU
-          - 2D_Diffusion
-          - Convection
-          - Convection_WENO
-          - Higher_Order
-          - Stationary
-          - DAE
-          - Integrals
-          - Burgers
-          - Brusselator
-          - Mixed_Derivatives
           - {user: SciML, repo: MethodOfLines.jl, group: Components}
           - {user: SciML, repo: MethodOfLines.jl, group: Sol_Interface}
           - {user: SciML, repo: MethodOfLines.jl, group: MOL_Interface1}
