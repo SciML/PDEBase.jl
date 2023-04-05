@@ -41,7 +41,7 @@ export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
        HigherOrderInterfaceBoundary
 
 export get_time
-export count_differentials, differential_order, has_derivatives, find_derivative,
+export count_differentials, differential_order, has_derivatives, find_derivative, d_orders,
        subs_alleqs!, get_depvars, getvars,
        get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
        recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface, haslowerupper, has_interfaces, isupper
