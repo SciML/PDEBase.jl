@@ -45,6 +45,8 @@ export count_differentials, differential_order, has_derivatives, find_derivative
        subs_alleqs!, get_depvars, getvars,
        get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
        recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface, haslowerupper, has_interfaces, isupper
+export VariableMap
+export ivs, all_ivs, depvar, depvars, indvars, x2i
 export PeriodicMap
 
 end # module PDEBase
