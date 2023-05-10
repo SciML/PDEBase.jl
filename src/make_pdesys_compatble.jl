@@ -18,5 +18,5 @@ function make_pdesys_compatible(pdesys::PDESystem)
     bcs = apply_lhs_rhs(ch, bcs)
     dvs = map(safe_ch, dvs)
 
-    return PDESystem(eqs, bcs, pdesys.ivs, dvs, pdesys.domain, pdesys.ps)
+    return PDESystem(eqs, bcs, pdesys.ivs, dvs, pdesys.domain, pdesys.ps), replaced_vars
 end

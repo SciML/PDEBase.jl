@@ -8,9 +8,10 @@ struct VariableMap
     depvar_ops
     x2i
     i2x
+    replaced_vars
 end
 
-function VariableMap(pdesys, disc)
+function VariableMap(pdesys, disc, replaced_vars = Dict())
     time = safe_unwrap(get_time(disc))
     eqs = pdesys.eqs
     depvars = pdesys.dvs
@@ -39,7 +40,7 @@ function VariableMap(pdesys, disc)
     args = [operation(u) => arguments(u) for u in ū]
     x̄2dim = [x̄[i] => i for i in 1:nspace]
     dim2x̄ = [i => x̄[i] for i in 1:nspace]
-    return VariableMap(ū, x̄, ps, time, Dict(intervals), Dict(args), depvar_ops, Dict(x̄2dim), Dict(dim2x̄))
+    return VariableMap(ū, x̄, ps, time, Dict(intervals), Dict(args), depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars)
 end
 
 function update_varmap!(v, newdv)
