@@ -7,6 +7,7 @@ end
 function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::AbstractDiscretization)
     t = get_time(discretization)
     cardinalize_eqs!(pdesys)
+    pdesys = make_pdesys_compatible(pdesys)
 
     ############################
     # System Parsing and Transformation
