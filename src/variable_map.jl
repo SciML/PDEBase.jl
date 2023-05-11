@@ -11,7 +11,7 @@ struct VariableMap
     replaced_vars
 end
 
-function VariableMap(pdesys, disc, replaced_vars = Dict())
+function VariableMap(pdesys, disc; replaced_vars = Dict())
     time = safe_unwrap(get_time(disc))
     eqs = pdesys.eqs
     depvars = pdesys.dvs

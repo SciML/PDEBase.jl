@@ -39,19 +39,3 @@ end
 vcat!(a::AbstractArray, b::AbstractArray) = append!(a, b)
 vcat!(a::AbstractArray, b...) = append!(a, vcat(b...))
 vcat!(a::AbstractArray, b) = push!(a, b)
-
-function chain_flatten_array_variables(dvs)
-	rs = []
-	for dv in dvs
-		dv = safe_unwrap(dv)
-		if isequal(operation(dv), getindex)
-			name = operation(arguments(dv)[1])
-			args = arguments(arguments(dv)[1])
-			idxs = arguments(dv)[2:end]
-			fullname = Symbol(string(name) * "_" * string(idxs))
-			newop = (@variables $fullname(..))[1]
-			@rule getindex($(name)(~~a), idxs...) => newop(~a...)
-		end
-	end
-	return isempty(rs) ? identity : Prewalk(Chain(rs))
-end
