@@ -10,7 +10,7 @@ using ModelingToolkit: operation, istree, arguments, variable, get_metadata, get
 using Symbolics, SymbolicUtils
 using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename,
                  similarterm
-using SymbolicUtils: operation, arguments
+using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk
 using DomainSets
 
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
@@ -30,6 +30,7 @@ include("interface_defaults.jl")
 include("discretization_state.jl")
 include("parse_boundaries.jl")
 include("periodic_map.jl")
+include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,

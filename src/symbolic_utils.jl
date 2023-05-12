@@ -231,8 +231,17 @@ end
     return term
 end
 
-subsmatch(expr, rule) = isequal(substitute(expr, rule), expr) ? false : true
 subsmatch(eq::Equation, rule) = subsmatch(eq.lhs, rule) | subsmatch(eq.rhs, rule)
+
+function subsmatch(expr, rule)
+    if isequal(expr, rule.first)
+        return true
+    end
+    if istree(expr)
+        return any(ex -> subsmatch(ex, rule), arguments(expr))
+    end
+    return false
+end
 #substitute(eq::Equation, rules) = substitute(eq.lhs, rules) ~ substitute(eq.rhs, rules)
 
 """

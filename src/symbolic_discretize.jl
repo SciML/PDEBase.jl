@@ -7,12 +7,13 @@ end
 function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::AbstractDiscretization)
     t = get_time(discretization)
     cardinalize_eqs!(pdesys)
+    pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 
     ############################
     # System Parsing and Transformation
     ############################
     # Parse the variables in to the right form and store useful information about the system
-    v = VariableMap(pdesys, discretization)
+    v = VariableMap(pdesys, discretization, replaced_vars = replaced_vars)
     # Check for basic interface errors
     interface_errors(pdesys, v, discretization)
     # Extract tspan
