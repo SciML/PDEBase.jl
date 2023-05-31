@@ -43,6 +43,8 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     return VariableMap(ū, x̄, ps, time, Dict(intervals), Dict(args), depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars)
 end
 
+VariableMap(pdesys) = VariableMap(pdesys, nothing)
+
 function update_varmap!(v, newdv)
     push!(v.ū, newdv)
     merge!(v.args, Dict(operation(newdv) => arguments(newdv)))
