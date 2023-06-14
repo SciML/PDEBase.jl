@@ -1,13 +1,43 @@
 struct VariableMap
+    """
+    Calls of the dependent variable, not including boundary terms
+    """
     ū
+    """
+    Independent variables, excluding time
+    """
     x̄
+    """
+    Parameters
+    """
     ps
+    """
+    Time independent variable (nothing, if not applicable)
+    """
     time
+    """
+    Dictionary mapping independent variables to their domain
+    """
     intervals
+    """
+    Dictionary mapping dependent variables to their arguments (which are independent variables)
+    """
     args
+    """
+    ??? Dependent variables ???
+    """
     depvar_ops
+    """
+    Dictionary mapping independent variables to indices
+    """
     x2i
+    """
+    Dictionary mapping indices to independent variables
+    """
     i2x
+    """
+    ???
+    """
     replaced_vars
 end
 
@@ -73,4 +103,19 @@ x2i(v::VariableMap, u, x) = findfirst(isequal(x), remove(v.args[operation(u)], v
     map(ivs(u, v)) do x
         x => (I[x2i(v, u, x)] == 1 ? v.intervals[x][1] : v.intervals[x][2])
     end
+end
+
+import Base.==
+
+function ==(a::VariableMap, b::VariableMap)
+    all(simplify.(a.ū .== b.ū)) &&
+        all(simplify.(a.x̄ .== b.x̄)) &&
+        all(simplify.(a.ps .== b.ps)) &&
+        a.time == b.time &&
+        a.intervals == b.intervals &&
+        all([all(simplify.(a.args[k] .== b.args[k])) for k in keys(a.args) ∪ keys(b.args)]) &&
+        a.depvar_ops == b.depvar_ops &&
+        a.x2i == b.x2i &&
+        all([simplify(a.i2x[k] == b.i2x[k]) for k in keys(a.i2x) ∪ keys(b.i2x)]) &&
+        a.replaced_vars == b.replaced_vars
 end

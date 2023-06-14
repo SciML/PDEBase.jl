@@ -8,5 +8,10 @@ const is_TRAVIS = haskey(ENV, "TRAVIS")
 
 const is_CI = haskey(ENV, "CI")
 
-# Currently verified by Downstream tests
-@test true
+@time begin
+#    # Currently verified by Downstream tests
+#    @test true
+    if GROUP == "All" || GROUP == "VariableMap"
+        @time @safetestset "VariableMap" begin include("variable_map_tests.jl") end
+    end
+end
