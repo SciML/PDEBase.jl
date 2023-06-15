@@ -64,3 +64,35 @@ replaced_vars = Dict()
 v_generated = VariableMap(pde_system) 
 v_true = VariableMap(ū, x̄, ps, time, intervals, args, depvar_ops, x2i, i2x, replaced_vars)
 @test v_generated == v_true
+
+## Approximation of function 1D 2
+println("Approximation of function 1D 2")
+
+@parameters x
+@variables u(..)
+
+func(x) = @. abs(x - 0.5) - 0.5
+
+eq = [u(2x) - u(0) ~ func(2x)]
+bc = [u(0) ~ 2.5]
+
+x0 = 0
+x_end = 2
+domain = [x ∈ (x0, x_end)]
+
+@named pde_system = PDESystem(eq, bc, domain, [x], [u(x)])
+
+ū = [u(2x)]
+x̄ = [x]
+ps = []
+time = nothing
+intervals = Dict(x => (x0, x_end))
+depvar_ops = [operation(safe_unwrap(u(x)))]
+args = Dict(depvar_ops[1] => [x])
+x2i = Dict(x => 1)
+i2x = Dict(1 => x)
+replaced_vars = Dict()
+
+v_generated = VariableMap(pde_system) 
+v_true = VariableMap(ū, x̄, ps, time, intervals, args, depvar_ops, x2i, i2x, replaced_vars)
+@test v_generated == v_true
