@@ -44,6 +44,7 @@ end
 function VariableMap(pdesys, disc; replaced_vars = Dict())
     time = safe_unwrap(get_time(disc))
     eqs = pdesys.eqs
+    bcs = pdesys.bcs
     depvars = pdesys.dvs
     domain = pdesys.domain
     ps = pdesys.ps
@@ -56,7 +57,7 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     end
     depvar_ops = get_ops(depvars)
     # Get all dependent variables in the correct type
-    alldepvars = get_all_depvars(eqs, depvar_ops)
+    alldepvars = get_all_depvars([eqs; bcs], depvar_ops)
     # Filter out boundaries
     ū = filter(u -> !any(x -> x isa Number, arguments(u)), alldepvars)
     # Get all independent variables in the correct type
