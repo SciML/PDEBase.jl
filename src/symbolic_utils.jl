@@ -89,16 +89,14 @@ subs_alleqs!(eqs, rules) = map!(eq -> substitute(eq.lhs, rules) ~ substitute(eq.
 """
 find all the dependent variables given by depvar_ops in an expression
 """
-function get_depvars(eq, depvar_ops)
-    depvars = Set()
+function get_depvars(eq, depvar_ops, depvars = Set())
     eq = safe_unwrap(eq)
     if istree(eq)
         if any(u -> isequal(operation(eq), u), depvar_ops)
             push!(depvars, eq)
-        else
-            for o in map(x -> get_depvars(x, depvar_ops), arguments(eq))
-                union!(depvars, o)
-            end
+        end
+        for arg in arguments(eq)
+            get_depvars(arg, depvar_ops, depvars)
         end
     end
     return depvars
@@ -119,8 +117,22 @@ function get_indvars(eq, v)
     return ivs
 end
 
+function get_all_indvars(alldepvars, indvars = Set())
+    for depvarcall in alldepvars
+        args = arguments(depvarcall)
+        # Ignore any numerical arguments
+        union!(indvars, Set(filter(a -> !(a isa Number) && !istree(a), args)))
+        # Recursively handle any more complicated arguments, e.g., 2x or t-3
+        get_all_indvars(filter(istree, args), indvars)
+    end
+    return collect(indvars)
+end
+
 @inline function get_all_depvars(pdeeqs, depvar_ops)
-    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪ mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
+    return collect(
+        mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪ 
+        mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs)
+        )
 end
 
 @inline function get_all_depvars(pdesys::PDESystem, depvar_ops)

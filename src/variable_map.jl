@@ -20,7 +20,7 @@ struct VariableMap
     """
     intervals
     """
-    Dictionary mapping dependent variables to their arguments (which are independent variables)
+    Dictionary mapping dependent variables to the independent variables that appear in their arguments
     """
     args
     """
@@ -61,14 +61,19 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     # Filter out boundaries
     ū = filter(u -> !any(x -> x isa Number, arguments(u)), alldepvars)
     # Get all independent variables in the correct type
-    allivs = collect(filter(x -> !(x isa Number), reduce(union, map(arguments, alldepvars))))
+    allivs = get_all_indvars(alldepvars)
     x̄ = remove(allivs, time)
     intervals = Dict(map(allivs) do x
         xdomain = domain[findfirst(d -> isequal(x, d.variables), domain)]
         x => (DomainSets.infimum(xdomain.domain), DomainSets.supremum(xdomain.domain))
     end)
     nspace = length(x̄)
-    args = [operation(u) => arguments(u) for u in ū]
+    args = [
+            u => get_all_indvars(
+                    filter(_u -> isequal(operation(_u), u), alldepvars)
+                ) 
+            for u in depvar_ops
+        ] # [operation(u) => arguments(u) for u in ū]
     x̄2dim = [x̄[i] => i for i in 1:nspace]
     dim2x̄ = [i => x̄[i] for i in 1:nspace]
     return VariableMap(ū, x̄, ps, time, Dict(intervals), Dict(args), depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars)
@@ -76,7 +81,7 @@ end
 
 VariableMap(pdesys) = VariableMap(pdesys, nothing)
 
-function update_varmap!(v, newdv)
+function update_varmap!(v::VariableMap, newdv)
     push!(v.ū, newdv)
     merge!(v.args, Dict(operation(newdv) => arguments(newdv)))
     push!(v.depvar_ops, operation(safe_unwrap(newdv)))
@@ -109,14 +114,15 @@ end
 import Base.==
 
 function ==(a::VariableMap, b::VariableMap)
-    all(simplify.(a.ū .== b.ū)) &&
-        all(simplify.(a.x̄ .== b.x̄)) &&
-        all(simplify.(a.ps .== b.ps)) &&
-        a.time == b.time &&
-        a.intervals == b.intervals &&
-        all([all(simplify.(a.args[k] .== b.args[k])) for k in keys(a.args) ∪ keys(b.args)]) &&
-        a.depvar_ops == b.depvar_ops &&
-        a.x2i == b.x2i &&
-        all([simplify(a.i2x[k] == b.i2x[k]) for k in keys(a.i2x) ∪ keys(b.i2x)]) &&
-        a.replaced_vars == b.replaced_vars
+    isequal(Set(a.ū), Set(b.ū)) &&
+    isequal(Set(a.x̄), Set(b.x̄)) &&
+    isequal(Set(a.ps), Set(b.ps)) &&
+    isequal(a.time, b.time) &&
+    isequal(a.intervals, b.intervals) &&
+    isequal(keys(a.args), keys(b.args)) &&
+    all([isequal(Set(a.args[k]), Set(b.args[k])) for k in keys(a.args)]) &&
+    isequal(a.depvar_ops, b.depvar_ops) &&
+    isequal(a.x2i, b.x2i) &&
+    isequal(a.i2x, b.i2x) &&
+    isequal(a.replaced_vars, b.replaced_vars)
 end

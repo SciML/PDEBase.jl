@@ -57,8 +57,8 @@ time = nothing
 intervals = Dict([x => (x0, x_end), y => (y0, y_end)])
 depvar_ops = [operation(safe_unwrap(u(x,y)))]
 args = Dict(depvar_ops[1] => [x, y])
-x2i = Dict([x => 1, y => 2])
-i2x = Dict([1 => x, 2 => y])
+x2i = Dict([x => 2, y => 1])
+i2x = Dict([2 => x, 1 => y])
 replaced_vars = Dict()
 
 v_generated = VariableMap(pde_system) 
@@ -73,7 +73,7 @@ println("Approximation of function 1D 2")
 
 func(x) = @. abs(x - 0.5) - 0.5
 
-eq = [u(2x) - u(0) ~ func(2x)]
+eq = [u(2x - u(x-3)) - u(0) ~ func(2x)]
 bc = [u(0) ~ 2.5]
 
 x0 = 0
@@ -82,7 +82,7 @@ domain = [x ∈ (x0, x_end)]
 
 @named pde_system = PDESystem(eq, bc, domain, [x], [u(x)])
 
-ū = [u(2x)]
+ū = [u(2x - u(x-3)), u(x-3)]
 x̄ = [x]
 ps = []
 time = nothing
