@@ -25,6 +25,9 @@ function make_pdesys_compatible(pdesys::PDESystem)
     eqs = pdesys.eqs
     bcs = pdesys.bcs
     dvs = pdesys.dvs
+    if any(u -> u isa Symbolics.Arr, dvs)
+        dvs = reduce(vcat, collect.(dvs))
+    end
 
     ch = chain_flatten_array_variables(dvs)
     safe_ch(x) = safe_unwrap(x) |> ch
