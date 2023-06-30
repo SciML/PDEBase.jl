@@ -104,6 +104,21 @@ function get_depvars(eq, depvar_ops)
     return depvars
 end
 
+function get_indvars(eq, v)
+    ivs = Set()
+    eq = safe_unwrap(eq)
+    if istree(eq)
+        for o in map(x -> get_indvars(x, v), arguments(eq))
+            union!(ivs, o)
+        end
+    else
+        if any(x -> isequal(eq, x), v.x̄)
+            push!(ivs, eq)
+        end
+    end
+    return ivs
+end
+
 @inline function get_all_depvars(pdeeqs, depvar_ops)
     return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪ mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
 end

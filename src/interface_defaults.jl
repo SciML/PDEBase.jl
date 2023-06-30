@@ -134,6 +134,7 @@ end
 Get the time variable for the given discretization.
 """
 get_time(discretization::AbstractDiscretization) = nothing
+get_time(_) = nothing
 
 ############################################################################################
 # Default interface functions for `AbstractDiscreteSpace`
