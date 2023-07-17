@@ -26,7 +26,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     check_boundarymap(boundarymap, v, discretization)
 
     # Transform system so that it is compatible with the discretization
-    if should_transform(pdesys, discretization)
+    if should_transform(pdesys, discretization, boundarymap)
         pdesys = transform_pde_system!(v, boundarymap, pdesys, discretization)
     end
 
