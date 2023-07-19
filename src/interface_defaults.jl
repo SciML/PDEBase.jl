@@ -22,7 +22,7 @@ check_boundarymap(bmap, v::VariableMap, disc::AbstractDiscretization) = nothing
 Boolean function that determines whether a PDESystem should be transformed to
 make it compatible with the given discretization.
 """
-should_transform(pdesys::PDESystem, disc::AbstractDiscretization) = false
+should_transform(pdesys::PDESystem, disc::AbstractDiscretization, boundarymap) = false
 
 """
     transform_pde_system!(v::VariableMap, boundarymap, pdesys::PDESystem, disc::AbstractDiscretization)
