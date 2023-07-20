@@ -2,6 +2,9 @@ function cardinalize_eqs!(pdesys)
     for (i, eq) in enumerate(pdesys.eqs)
         pdesys.eqs[i] = eq.lhs - eq.rhs ~ 0
     end
+    for (i, bc) in enumerate(pdesys.bcs)
+        pdesys.bcs[i] = bc.lhs - bc.rhs ~ 0
+    end
 end
 
 function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::AbstractDiscretization)
