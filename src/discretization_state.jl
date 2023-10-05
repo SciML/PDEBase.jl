@@ -90,9 +90,9 @@ function SciMLBase.discretize(pdesys::PDESystem,
 end
 
 function error_analysis(sys, e)
-    eqs = sys.eqs
-    states = sys.states
-    t = sys.iv
+    eqs = get_eqs(sys)
+    states = get_states(sys)
+    t = get_iv(sys)
     println("The system of equations is:")
     println(eqs)
     if e isa ModelingToolkit.ExtraVariablesSystemException

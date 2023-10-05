@@ -13,7 +13,7 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 [compat]
 DomainSets = "0.5, 0.6"
 ModelingToolkit = "8"
-SciMLBase = "1.91"
+SciMLBase = "2, 1.94"
 SymbolicUtils = "1"
 Symbolics = "5"
 julia = "1.6"
