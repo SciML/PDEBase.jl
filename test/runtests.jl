@@ -1,6 +1,4 @@
 using SafeTestsets, Test
-import CompatHelperLocal
-CompatHelperLocal.@check()
 
 const GROUP = get(ENV, "GROUP", "All")
 
