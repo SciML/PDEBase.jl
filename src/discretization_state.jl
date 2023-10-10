@@ -64,7 +64,7 @@ function SciMLBase.discretize(pdesys::PDESystem,
                                            discretization.kwargs..., kwargs...)
         else
             # Use ODAE if nessesary
-            if hasfield(typeof(sys.metadata), :use_ODAE) && sys.metadata.use_ODAE
+            if hasfield(typeof(get_metadata(sys)), :use_ODAE) && get_metadata(sys).use_ODAE
                 add_metadata!(get_metadata(simpsys),
                               DAEProblem(simpsys; discretization.kwargs..., kwargs...))
                 return prob = ODAEProblem(simpsys, Pair[], tspan; discretization.kwargs...,
