@@ -89,7 +89,7 @@ function SciMLBase.discretize(pdesys::PDESystem,
     end
 end
 
-function error_analysis(sys, e)
+function error_analysis(sys::ODESystem, e)
     eqs = get_eqs(sys)
     states = get_states(sys)
     t = get_iv(sys)
@@ -122,4 +122,8 @@ function error_analysis(sys, e)
     else
         rethrow(e)
     end
+end
+
+function error_analysis(sys::NonlinearSystem, e)
+    rethrow(e)
 end
