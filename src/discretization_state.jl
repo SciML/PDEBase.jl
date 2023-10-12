@@ -64,7 +64,7 @@ function SciMLBase.discretize(pdesys::PDESystem,
                                            discretization.kwargs..., kwargs...)
         else
             # Use ODAE if nessesary
-            if hasfield(typeof(sys.metadata), :use_ODAE) && sys.metadata.use_ODAE
+            if hasfield(typeof(get_metadata(sys)), :use_ODAE) && get_metadata(sys).use_ODAE
                 add_metadata!(get_metadata(simpsys),
                               DAEProblem(simpsys; discretization.kwargs..., kwargs...))
                 return prob = ODAEProblem(simpsys, Pair[], tspan; discretization.kwargs...,
@@ -89,10 +89,10 @@ function SciMLBase.discretize(pdesys::PDESystem,
     end
 end
 
-function error_analysis(sys, e)
-    eqs = sys.eqs
-    states = sys.states
-    t = sys.iv
+function error_analysis(sys::ODESystem, e)
+    eqs = get_eqs(sys)
+    states = get_states(sys)
+    t = get_iv(sys)
     println("The system of equations is:")
     println(eqs)
     if e isa ModelingToolkit.ExtraVariablesSystemException
@@ -122,4 +122,8 @@ function error_analysis(sys, e)
     else
         rethrow(e)
     end
+end
+
+function error_analysis(sys::NonlinearSystem, e)
+    rethrow(e)
 end
