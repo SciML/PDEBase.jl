@@ -25,7 +25,6 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
     #     checks = metadata.disc.kwargs[:checks]
     # else
     checks = true
-    @show metadata
     # end
     try
         if t === nothing

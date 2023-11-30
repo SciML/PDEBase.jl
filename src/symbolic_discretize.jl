@@ -60,8 +60,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
             x => boundarymap[u][x]
         end)
     end)
-@info "ping"
-@show complexmap
+
     ####
     # Loop over equations, Discretizing them and their dependent variables' boundary conditions
     ####
@@ -81,7 +80,6 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
         discretize_equation!(disc_state, pde, vareqmap, eqvar, bcmap,
                              depvars, s, derivweights, indexmap, discretization)
     end
-    @info "pong"
 
     u0 = generate_ic_defaults(ics, s, discretization)
 
