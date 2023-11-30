@@ -109,7 +109,7 @@ Generate the metadata for the discretization. This can be used to store any extr
 may be needed to convert the system in to a problem, or to reshape the solution once it is solved.
 It is a good idea for this to return a subtype of SciMLBase.AbstractDiscretizationMetadata.
 """
-generate_metadata(s, discretization, pdesys, boundarymap) = nothing
+generate_metadata(s, discretization, pdesys, boundarymap, complexmap) = nothing
 
 """
     generate_system(disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace, u0, tspan, metadata::AbstractDiscretizationMetadata, discretization::AbstractDiscretization)
