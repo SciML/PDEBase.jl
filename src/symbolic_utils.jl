@@ -287,3 +287,16 @@ function recursive_unwrap(ex)
     args = arguments(ex)
     return safe_unwrap(op(recursive_unwrap.(args)))
 end
+
+hascomplex(eq::Equation) = hascomplex(eq.lhs) || hascomplex(eq.rhs)
+hascomplex(term) = !isequal(term, real(term))
+
+split_complex(eq::Vector) = eq
+split_complex(eq::Equation) = split_complex(eq.lhs) .~ split_complex(eq.rhs)
+function split_complex(term)
+    if hascomplex(term)
+        return [real(term), imag(term)]
+    else
+        return [term, term]
+    end
+end

@@ -6,6 +6,7 @@ end
 
 function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::AbstractDiscretization)
     t = get_time(discretization)
+    pdesys, complexmap = handle_complex(pdesys)
     cardinalize_eqs!(pdesys)
     pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 
@@ -83,7 +84,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     u0 = generate_ic_defaults(ics, s, discretization)
 
     # Combine PDE equations and BC equations
-    metadata = generate_metadata(s, discretization, pdesys, boundarymap)
+    metadata = generate_metadata(s, discretization, pdesys, boundarymap, complexmap)
 
     return generate_system(disc_state, s, u0, tspan, metadata, discretization)
 end
