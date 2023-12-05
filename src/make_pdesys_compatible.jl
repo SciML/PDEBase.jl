@@ -55,6 +55,23 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
     if eq isa Vector
         eq1 = eq[1]
         eq2 = eq[2]
+        reeq1 = substitute(eq1.lhs, redvmaps) ~ substitute(eq1.rhs, redvmaps)
+        imeq2 = substitute(eq2.lhs, imdvmaps) ~ substitute(eq2.rhs, imdvmaps)
+        reeq2 = substitute(eq2.lhs, redvmaps) ~ substitute(eq2.rhs, redvmaps)
+        imeq1 = substitute(eq1.lhs, imdvmaps) ~ substitute(eq1.rhs, imdvmaps)
+        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs , reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
+    else
+        eq1 = substitute(eq.lhs, redvmaps) ~ substitute(eq.rhs, redvmaps)
+        eq2 = substitute(eq.lhs, imdvmaps) ~ substitute(eq.rhs, imdvmaps)
+        return [eq1, eq2]
+    end
+end
+
+function split_complex_bc(eq, redvmaps, imdvmaps)
+    eq = split_complex(eq)
+    if eq isa Vector
+        eq1 = eq[1]
+        eq2 = eq[2]
         eq1 = substitute(eq1.lhs, redvmaps) ~ substitute(eq1.rhs, redvmaps)
         eq2 = substitute(eq2.lhs, imdvmaps) ~ substitute(eq2.rhs, imdvmaps)
     else
@@ -93,7 +110,7 @@ function handle_complex(pdesys)
         end
 
         bcs = mapreduce(vcat, pdesys.bcs) do eq
-            split_complex_eq(eq, redvmaps, imdvmaps)
+            split_complex_bc(eq, redvmaps, imdvmaps)
         end
 
         redvmaps = Dict(redvmaps)
@@ -105,6 +122,8 @@ function handle_complex(pdesys)
             imdv = imdvmaps[operation(dv)](arguments(dv)...)
             [redv, imdv]
         end
+        #eqs = substitute.(eqs, [false => 0.0])
+        #@show eqs
         pdesys = PDESystem(eqs, bcs, pdesys.domain, pdesys.ivs, dvs, pdesys.ps, name = pdesys.name)
         return pdesys, dvmaps
     else
