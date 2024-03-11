@@ -36,6 +36,8 @@ insert(args...) = insert!(args[1], args[2:end]...)
     end
 end
 
+show_verbosemode(x) = false
+
 vcat!(a::AbstractArray, b::AbstractArray) = append!(a, b)
 vcat!(a::AbstractArray, b...) = append!(a, vcat(b...))
 vcat!(a::AbstractArray, b) = push!(a, b)

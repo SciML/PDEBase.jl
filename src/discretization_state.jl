@@ -44,7 +44,7 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
         end
     catch e
         println("The system of equations is:")
-        println(alleqs)
+        #println(alleqs)
         println()
         println("Discretization failed, please post an issue on https://github.com/SciML/MethodOfLines.jl with the failing code and system at low point count.")
         println()
@@ -91,19 +91,19 @@ end
 
 function error_analysis(sys::ODESystem, e)
     eqs = get_eqs(sys)
-    states = get_states(sys)
+    unknowns = get_unknowns(sys)
     t = get_iv(sys)
     println("The system of equations is:")
     println(eqs)
     if e isa ModelingToolkit.ExtraVariablesSystemException
-        rs = [Differential(t)(state) => state for state in states]
-        extrastates = [state for state in states]
+        rs = [Differential(t)(state) => state for state in unknowns]
+        extraunknowns = [state for state in unknowns]
         extraeqs = [eq for eq in eqs]
         numderivs = 0
         for r in rs
             for eq in extraeqs
                 if subsmatch(eq.lhs, r) | subsmatch(eq.rhs, r)
-                    extrastates = vec(setdiff(extrastates, [r.second]))
+                    extraunknowns = vec(setdiff(extraunknowns, [r.second]))
                     extraeqs = vec(setdiff(extraeqs, [eq]))
                     numderivs += 1
                     break
@@ -111,10 +111,10 @@ function error_analysis(sys::ODESystem, e)
             end
         end
         println()
-        println("There are $(length(states)) variables and $(length(eqs)) equations.\n")
+        println("There are $(length(unknowns)) variables and $(length(eqs)) equations.\n")
         println("There are $numderivs time derivatives.\n")
         println("The variables without time derivatives are:")
-        println(extrastates)
+        println(extraunknowns)
         println()
         println("The equations without time derivatives are:")
         println(extraeqs)

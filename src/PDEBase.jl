@@ -4,7 +4,7 @@ using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata
 
 using ModelingToolkit
 
-using ModelingToolkit: operation, istree, arguments, variable, get_metadata, get_states,
+using ModelingToolkit: operation, istree, arguments, variable, get_metadata, get_unknowns,
                        parameters, defaults, varmap_to_vars, get_eqs, get_iv
 
 using Symbolics, SymbolicUtils
