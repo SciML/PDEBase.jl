@@ -71,7 +71,7 @@ function SciMLBase.discretize(pdesys::PDESystem,
                                           kwargs...)
             else
                 add_metadata!(get_metadata(simpsys), sys)
-                prob = ODEProblem(simpsys, Pair[], tspan; discretization.kwargs...,
+                prob = ODEProblem(simpsys, Pair[], tspan; build_initializeprob=false, discretization.kwargs...,
                                   kwargs...)
                 if analytic === nothing
                     return prob
