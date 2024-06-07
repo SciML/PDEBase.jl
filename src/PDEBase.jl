@@ -4,13 +4,13 @@ using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata
 
 using ModelingToolkit
 
-using ModelingToolkit: operation, istree, arguments, variable, get_metadata, get_unknowns,
+using ModelingToolkit: get_metadata, get_unknowns,
                        parameters, defaults, varmap_to_vars, get_eqs, get_iv
 
 using Symbolics, SymbolicUtils
-using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename,
-                 similarterm
-using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk
+using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename
+using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk, maketerm, metadata,
+      symtype, operation, iscall, arguments, variable
 using DomainSets
 
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
