@@ -8,9 +8,9 @@ using ModelingToolkit: get_metadata, get_unknowns,
                        parameters, defaults, varmap_to_vars, get_eqs, get_iv
 
 using Symbolics, SymbolicUtils
-using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename
+using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename, variable
 using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk, maketerm, metadata,
-      symtype, operation, iscall, arguments, variable
+      symtype, operation, iscall, arguments
 using DomainSets
 
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
