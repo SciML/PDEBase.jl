@@ -16,10 +16,9 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
-    defaults = Dict(pdesys.ps === nothing || pdesys.ps === SciMLBase.NullParameters() ? u0 :
-                    vcat(u0, pdesys.ps))
+    defaults = merge(ModelingToolkit.defaults(pdesys), Dict(u0))
     ps = pdesys.ps === nothing || pdesys.ps === SciMLBase.NullParameters() ? Num[] :
-         first.(pdesys.ps)
+         pdesys.ps
     # Finalize
     # if haskey(metadata.disc.kwargs, :checks)
     #     checks = metadata.disc.kwargs[:checks]

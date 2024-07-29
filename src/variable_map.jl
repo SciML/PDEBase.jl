@@ -22,9 +22,6 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     if ps isa SciMLBase.NullParameters
         ps = []
     end
-    ps = map(ps) do p
-        safe_unwrap(p.first)
-    end
     depvar_ops = get_ops(depvars)
     # Get all dependent variables in the correct type
     alldepvars = get_all_depvars([eqs; bcs], depvar_ops)
