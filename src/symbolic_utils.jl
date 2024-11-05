@@ -273,7 +273,7 @@ function ex2term(term, v)
     symdvs = filter(u -> all(x -> !(safe_unwrap(x) isa Number), arguments(u)), termdvs)
     exdv = last(sort(symdvs, by=u -> length(arguments(u))))
     name = Symbol("⟦" * string(term) * "⟧")
-    return setname(similarterm(typeof(exdv), rename(operation(exdv), name), arguments(exdv), symtype(exdv), metadata(exdv)), name)
+    return setname(maketerm(typeof(exdv), rename(operation(exdv), name), arguments(exdv), metadata(exdv)), name)
 end
 
 safe_unwrap(x) = x isa Num ? unwrap(x) : x
