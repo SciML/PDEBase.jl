@@ -1,7 +1,7 @@
 name = "PDEBase"
 uuid = "a7812802-0625-4b9e-961c-d332478797e5"
 authors = ["xtalax <alex.lemony@gmail.com>"]
-version = "0.1.16"
+version = "0.1.17"
 
 [deps]
 DomainSets = "5b8099bc-c8ec-5219-889f-1d9e522a28bf"
