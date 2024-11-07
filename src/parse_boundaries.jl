@@ -151,6 +151,7 @@ function generate_boundary_matching_rules(v, orders)
     return (lower, upper)
 end
 
+
 """
 Creates a map of boundaries for each variable to be used later when discretizing the boundary condition equations
 """
