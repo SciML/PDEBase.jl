@@ -1,6 +1,7 @@
 function cardinalize_eqs!(pdesys)
-    for (i, eq) in enumerate(pdesys.eqs)
-        pdesys.eqs[i] = eq.lhs - eq.rhs ~ 0
+    pdeeqs = get_eqs(pdesys)
+    for (i, eq) in enumerate(pdeeqs)
+        pdeeqs[i] = eq.lhs - eq.rhs ~ 0
     end
 end
 
@@ -20,9 +21,9 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     # Extract tspan
     tspan = t !== nothing ? v.intervals[t] : nothing
     # Find the derivative orders in the bcs
-    bcorders = Dict(map(x -> x => d_orders(x, pdesys.bcs), all_ivs(v)))
+    bcorders = Dict(map(x -> x => d_orders(x, get_bcs(pdesys)), all_ivs(v)))
     # Create a map of each variable to their boundary conditions including initial conditions
-    boundarymap = parse_bcs(pdesys.bcs, v, bcorders)
+    boundarymap = parse_bcs(get_bcs(pdesys), v, bcorders)
     # Check that the boundary map is valid
     check_boundarymap(boundarymap, v, discretization)
 
@@ -31,8 +32,8 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
         pdesys = transform_pde_system!(v, boundarymap, pdesys, discretization)
     end
 
-    pdeeqs = pdesys.eqs
-    bcs = pdesys.bcs
+    pdeeqs = get_eqs(pdesys)
+    bcs = get_bcs(pdesys)
 
     ############################
     # Discretization of system

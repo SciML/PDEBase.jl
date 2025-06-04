@@ -4,8 +4,10 @@ using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata
 
 using ModelingToolkit
 
-using ModelingToolkit: get_unknowns, ProblemTypeCtx,
-                       parameters, defaults, varmap_to_vars, get_eqs, get_iv
+using ModelingToolkit: get_unknowns, ProblemTypeCtx, get_ps, get_bcs, get_dvs,
+                       parameters, defaults, varmap_to_vars, get_eqs, get_iv,
+                       get_domain, get_ivs, get_defaults, get_systems, get_connector_type,
+                       get_metadata, get_gui_metadata
 
 using Symbolics, SymbolicUtils
 using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename, variable

@@ -124,7 +124,7 @@ end
 end
 
 @inline function get_all_depvars(pdesys::PDESystem, depvar_ops)
-    pdeeqs = pdesys.eqs
+    pdeeqs = get_eqs(pdesys)
     return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪ mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
 end
 

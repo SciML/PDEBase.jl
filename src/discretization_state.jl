@@ -11,14 +11,14 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
                                  disc::AbstractEquationSystemDiscretization)
     discvars = get_discvars(s)
     t = get_time(disc)
-    name = metadata.pdesys.name
+    name = getfield(metadata.pdesys, :name)
     pdesys = metadata.pdesys
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
     defaults = merge(ModelingToolkit.defaults(pdesys), Dict(u0))
-    ps = pdesys.ps === nothing || pdesys.ps === SciMLBase.NullParameters() ? Num[] :
-         pdesys.ps
+    ps = get_ps(pdesys)
+    ps = ps === nothing || ps === SciMLBase.NullParameters() ? Num[] : ps
     # Finalize
     # if haskey(metadata.disc.kwargs, :checks)
     #     checks = metadata.disc.kwargs[:checks]
