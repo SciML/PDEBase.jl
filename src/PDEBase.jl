@@ -4,7 +4,7 @@ using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata
 
 using ModelingToolkit
 
-using ModelingToolkit: get_unknowns,
+using ModelingToolkit: get_unknowns, ProblemTypeCtx,
                        parameters, defaults, varmap_to_vars, get_eqs, get_iv
 
 using Symbolics, SymbolicUtils

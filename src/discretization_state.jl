@@ -7,8 +7,6 @@ function EquationState()
     return EquationState(Equation[], Equation[])
 end
 
-struct PDEBaseMetadataKey end
-
 function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
                                  disc::AbstractEquationSystemDiscretization)
     discvars = get_discvars(s)
@@ -34,13 +32,13 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
             # Thus, before creating a NonlinearSystem we normalize the equations s.t. the lhs is zero.
             eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
             sys = System(eqs, alldepvarsdisc, ps, defaults = defaults, name = name,
-                                  metadata = [PDEBaseMetadataKey => metadata], checks = checks)
+                                  metadata = [ProblemTypeCtx => metadata], checks = checks)
             return sys, nothing
         else
             # * In the end we have reduced the problem to a system of equations in terms of Dt that can be solved by an ODE solver.
 
             sys = System(alleqs, t, alldepvarsdisc, ps, defaults = defaults, name = name,
-                            metadata = [PDEBaseMetadataKey => metadata], checks = checks)
+                            metadata = [ProblemTypeCtx => metadata], checks = checks)
             return sys, tspan
         end
     catch e
@@ -60,18 +58,18 @@ function SciMLBase.discretize(pdesys::PDESystem,
     try
         simpsys = mtkcompile(sys)
         if tspan === nothing
-            add_metadata!(getmetadata(sys, PDEBaseMetadataKey, nothing), sys)
+            add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
             return prob = NonlinearProblem(simpsys, ones(length(get_eqs(simpsys)));
                                            discretization.kwargs..., kwargs...)
         else
             # Use ODAE if nessesary
-            if hasfield(typeof(getmetadata(sys, PDEBaseMetadataKey, nothing)), :use_ODAE) && getmetadata(sys, PDEBaseMetadataKey, nothing).use_ODAE
-                add_metadata!(getmetadata(simpsys, PDEBaseMetadataKey, nothing),
+            if hasfield(typeof(getmetadata(sys, ProblemTypeCtx, nothing)), :use_ODAE) && getmetadata(sys, ProblemTypeCtx, nothing).use_ODAE
+                add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing),
                               DAEProblem(simpsys; discretization.kwargs..., kwargs...))
                 return prob = ODAEProblem(simpsys, Pair[], tspan; discretization.kwargs...,
                                           kwargs...)
             else
-                add_metadata!(getmetadata(simpsys, PDEBaseMetadataKey, nothing), sys)
+                add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing), sys)
                 prob = ODEProblem(simpsys, Pair[], tspan; build_initializeprob=false, discretization.kwargs...,
                                   kwargs...)
                 if analytic === nothing
@@ -91,6 +89,7 @@ function SciMLBase.discretize(pdesys::PDESystem,
 end
 
 function error_analysis(sys::System, e)
+    is_time_dependent(sys) || rethrow(e)
     eqs = get_eqs(sys)
     unknowns = get_unknowns(sys)
     t = get_iv(sys)
@@ -123,8 +122,4 @@ function error_analysis(sys::System, e)
     else
         rethrow(e)
     end
-end
-
-function error_analysis(sys::System, e)
-    rethrow(e)
 end
