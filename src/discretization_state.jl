@@ -62,25 +62,17 @@ function SciMLBase.discretize(pdesys::PDESystem,
             return prob = NonlinearProblem(simpsys, ones(length(get_eqs(simpsys)));
                                            discretization.kwargs..., kwargs...)
         else
-            # Use ODAE if nessesary
-            if hasfield(typeof(getmetadata(sys, ProblemTypeCtx, nothing)), :use_ODAE) && getmetadata(sys, ProblemTypeCtx, nothing).use_ODAE
-                add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing),
-                              DAEProblem(simpsys; discretization.kwargs..., kwargs...))
-                return prob = ODAEProblem(simpsys, Pair[], tspan; discretization.kwargs...,
-                                          kwargs...)
+            add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing), sys)
+            prob = ODEProblem(simpsys, Pair[], tspan; build_initializeprob=false, discretization.kwargs...,
+                              kwargs...)
+            if analytic === nothing
+                return prob
             else
-                add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing), sys)
-                prob = ODEProblem(simpsys, Pair[], tspan; build_initializeprob=false, discretization.kwargs...,
-                                  kwargs...)
-                if analytic === nothing
-                    return prob
-                else
-                    f = ODEFunction(pdesys, discretization, analytic = analytic,
-                                    discretization.kwargs..., kwargs...)
+                f = ODEFunction(pdesys, discretization, analytic = analytic,
+                                discretization.kwargs..., kwargs...)
 
-                    return ODEProblem(f, prob.u0, prob.tspan, prob.p;
-                                      discretization.kwargs..., kwargs...)
-                end
+                return ODEProblem(f, prob.u0, prob.tspan, prob.p;
+                                  discretization.kwargs..., kwargs...)
             end
         end
     catch e
