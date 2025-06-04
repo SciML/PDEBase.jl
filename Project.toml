@@ -13,7 +13,7 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [compat]
 DomainSets = "0.7"
-ModelingToolkit = "10"
+ModelingToolkit = "10.1"
 SciMLBase = "2"
 SymbolicIndexingInterface = "0.3.40"
 SymbolicUtils = "2, 3"
