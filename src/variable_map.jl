@@ -13,11 +13,11 @@ end
 
 function VariableMap(pdesys, disc; replaced_vars = Dict())
     time = safe_unwrap(get_time(disc))
-    eqs = pdesys.eqs
-    bcs = pdesys.bcs
-    depvars = pdesys.dvs
-    domain = pdesys.domain
-    ps = pdesys.ps
+    eqs = get_eqs(pdesys)
+    bcs = get_bcs(pdesys)
+    depvars = get_dvs(pdesys)
+    domain = get_domain(pdesys)
+    ps = get_ps(pdesys)
 
     if ps isa SciMLBase.NullParameters
         ps = []

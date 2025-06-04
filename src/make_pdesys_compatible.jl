@@ -22,9 +22,9 @@ function apply_lhs_rhs(f, eqs)
 end
 
 function make_pdesys_compatible(pdesys::PDESystem)
-    eqs = pdesys.eqs
-    bcs = pdesys.bcs
-    dvs = pdesys.dvs
+    eqs = get_eqs(pdesys)
+    bcs = get_bcs(pdesys)
+    dvs = get_dvs(pdesys)
     if any(u -> u isa Symbolics.Arr, dvs)
         dvs = reduce(vcat, collect.(dvs))
     end
@@ -41,12 +41,12 @@ function make_pdesys_compatible(pdesys::PDESystem)
     bcs = apply_lhs_rhs(ch, bcs)
     dvs = map(safe_ch, dvs)
 
-    return PDESystem(eqs, bcs, pdesys.domain, pdesys.ivs, dvs, pdesys.ps,
-                     defaults = pdesys.defaults, systems = pdesys.systems,
-                     connector_type = pdesys.connector_type, metadata = pdesys.metadata,
-                     analytic = pdesys.analytic, analytic_func = pdesys.analytic_func,
-                     gui_metadata = pdesys.gui_metadata,
-                     name = pdesys.name), replaced_vars
+    return PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs, get_ps(pdesys),
+                     defaults = get_defaults(pdesys), systems = get_systems(pdesys),
+                     connector_type = get_connector_type(pdesys), metadata = get_metadata(pdesys),
+                     analytic = getfield(pdesys, :analytic), analytic_func = getfield(pdesys, :analytic_func),
+                     gui_metadata = get_gui_metadata(pdesys),
+                     name = getfield(pdesys, :name)), replaced_vars
 
 end
 
@@ -96,9 +96,9 @@ function split_complex_bc(eq, redvmaps, imdvmaps)
 end
 
 function handle_complex(pdesys)
-    eqs = pdesys.eqs
+    eqs = get_eqs(pdesys)
     if any(eq -> (eq isa Vector) || hascomplex(eq), eqs)
-        dvmaps = map(pdesys.dvs) do dv
+        dvmaps = map(get_dvs(pdesys)) do dv
             args = arguments(safe_unwrap(dv))
             dv = operation(safe_unwrap(dv))
             resym = Symbol("Re"*string(dv))
@@ -123,21 +123,21 @@ function handle_complex(pdesys)
             split_complex_eq(eq, redvmaps, imdvmaps)
         end
 
-        bcs = mapreduce(vcat, pdesys.bcs) do eq
+        bcs = mapreduce(vcat, get_bcs(pdesys)) do eq
             split_complex_bc(eq, redvmaps, imdvmaps)
         end
 
         redvmaps = Dict(redvmaps)
         imdvmaps = Dict(imdvmaps)
 
-        dvs = mapreduce(vcat, pdesys.dvs) do dv
+        dvs = mapreduce(vcat, get_dvs(pdesys)) do dv
             dv = safe_unwrap(dv)
             redv = redvmaps[operation(dv)](arguments(dv)...)
             imdv = imdvmaps[operation(dv)](arguments(dv)...)
             [redv, imdv]
         end
         
-        pdesys = PDESystem(eqs, bcs, pdesys.domain, pdesys.ivs, dvs, pdesys.ps, name = pdesys.name)
+        pdesys = PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs, get_ps(pdesys), name = getfield(pdesys, :name))
         return pdesys, dvmaps
     else
         dvmaps = nothing
