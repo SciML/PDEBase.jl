@@ -11,6 +11,7 @@ using Symbolics, SymbolicUtils
 using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename, variable
 using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk, maketerm, metadata,
       symtype, operation, iscall, arguments, getmetadata
+using SymbolicIndexingInterface: is_time_dependent
 using DomainSets
 
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
