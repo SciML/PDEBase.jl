@@ -1,1 +1,1 @@
-pages = ["index.md",]
+pages = ["index.md"]

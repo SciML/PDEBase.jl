@@ -8,7 +8,7 @@ function EquationState()
 end
 
 function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
-                                 disc::AbstractEquationSystemDiscretization)
+        disc::AbstractEquationSystemDiscretization)
     discvars = get_discvars(s)
     t = get_time(disc)
     name = getfield(metadata.pdesys, :name)
@@ -32,13 +32,13 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
             # Thus, before creating a NonlinearSystem we normalize the equations s.t. the lhs is zero.
             eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
             sys = System(eqs, alldepvarsdisc, ps, defaults = defaults, name = name,
-                                  metadata = [ProblemTypeCtx => metadata], checks = checks)
+                metadata = [ProblemTypeCtx => metadata], checks = checks)
             return sys, nothing
         else
             # * In the end we have reduced the problem to a system of equations in terms of Dt that can be solved by an ODE solver.
 
             sys = System(alleqs, t, alldepvarsdisc, ps, defaults = defaults, name = name,
-                            metadata = [ProblemTypeCtx => metadata], checks = checks)
+                metadata = [ProblemTypeCtx => metadata], checks = checks)
             return sys, tspan
         end
     catch e
@@ -52,27 +52,28 @@ function generate_system(disc_state::EquationState, s, u0, tspan, metadata,
 end
 
 function SciMLBase.discretize(pdesys::PDESystem,
-                              discretization::AbstractEquationSystemDiscretization;
-                              analytic = nothing, kwargs...)
+        discretization::AbstractEquationSystemDiscretization;
+        analytic = nothing, kwargs...)
     sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization)
     try
         simpsys = mtkcompile(sys)
         if tspan === nothing
             add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
             return prob = NonlinearProblem(simpsys, ones(length(get_eqs(simpsys)));
-                                           discretization.kwargs..., kwargs...)
+                discretization.kwargs..., kwargs...)
         else
             add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing), sys)
-            prob = ODEProblem(simpsys, Pair[], tspan; build_initializeprob=false, discretization.kwargs...,
-                              kwargs...)
+            prob = ODEProblem(simpsys, Pair[], tspan; build_initializeprob = false,
+                discretization.kwargs...,
+                kwargs...)
             if analytic === nothing
                 return prob
             else
                 f = ODEFunction(pdesys, discretization, analytic = analytic,
-                                discretization.kwargs..., kwargs...)
+                    discretization.kwargs..., kwargs...)
 
                 return ODEProblem(f, prob.u0, prob.tspan, prob.p;
-                                  discretization.kwargs..., kwargs...)
+                    discretization.kwargs..., kwargs...)
             end
         end
     catch e

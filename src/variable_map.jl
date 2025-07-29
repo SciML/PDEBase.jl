@@ -1,14 +1,14 @@
 struct VariableMap
-    ū
-    x̄
-    ps
-    time
-    intervals
-    args
-    depvar_ops
-    x2i
-    i2x
-    replaced_vars
+    ū::Any
+    x̄::Any
+    ps::Any
+    time::Any
+    intervals::Any
+    args::Any
+    depvar_ops::Any
+    x2i::Any
+    i2x::Any
+    replaced_vars::Any
 end
 
 function VariableMap(pdesys, disc; replaced_vars = Dict())
@@ -28,7 +28,8 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     # Filter out boundaries
     ū = filter(u -> !any(x -> x isa Number, arguments(u)), alldepvars)
     # Get all independent variables in the correct type
-    allivs = collect(filter(x -> !(x isa Number), reduce(union, map(arguments, alldepvars))))
+    allivs = collect(filter(
+        x -> !(x isa Number), reduce(union, map(arguments, alldepvars))))
     x̄ = remove(allivs, time)
     intervals = Dict(map(allivs) do x
         xdomain = domain[findfirst(d -> isequal(x, d.variables), domain)]
@@ -38,7 +39,8 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     args = [operation(u) => arguments(u) for u in ū]
     x̄2dim = [x̄[i] => i for i in 1:nspace]
     dim2x̄ = [i => x̄[i] for i in 1:nspace]
-    return VariableMap(ū, x̄, ps, time, Dict(intervals), Dict(args), depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars)
+    return VariableMap(ū, x̄, ps, time, Dict(intervals), Dict(args),
+        depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars)
 end
 
 VariableMap(pdesys) = VariableMap(pdesys, nothing)
@@ -48,7 +50,6 @@ function update_varmap!(v, newdv)
     merge!(v.args, Dict(operation(newdv) => arguments(newdv)))
     push!(v.depvar_ops, operation(safe_unwrap(newdv)))
 end
-
 
 ivs(u, v::VariableMap) = remove(v.args[operation(u)], v.time)
 

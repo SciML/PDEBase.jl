@@ -12,7 +12,7 @@ using ModelingToolkit: get_unknowns, ProblemTypeCtx, get_ps, get_bcs, get_dvs,
 using Symbolics, SymbolicUtils
 using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename, variable
 using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk, maketerm, metadata,
-      symtype, operation, iscall, arguments, getmetadata
+                     symtype, operation, iscall, arguments, getmetadata
 using SymbolicIndexingInterface: is_time_dependent
 using DomainSets
 
@@ -48,7 +48,8 @@ export get_time
 export count_differentials, differential_order, has_derivatives, find_derivative, d_orders,
        subs_alleqs!, get_depvars, getvars,
        get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
-       recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface, haslowerupper, has_interfaces, isupper
+       recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface,
+       haslowerupper, has_interfaces, isupper
 export VariableMap
 export ivs, all_ivs, depvar, depvars, indvars, x2i
 export PeriodicMap

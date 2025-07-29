@@ -84,7 +84,9 @@ function subs_alleqs!(eqs, bcs, rules)
     subs_alleqs!(bcs, rules)
 end
 
-subs_alleqs!(eqs, rules) = map!(eq -> substitute(eq.lhs, rules) ~ substitute(eq.rhs, rules), eqs, eqs)
+function subs_alleqs!(eqs, rules)
+    map!(eq -> substitute(eq.lhs, rules) ~ substitute(eq.rhs, rules), eqs, eqs)
+end
 
 """
 find all the dependent variables given by depvar_ops in an expression
@@ -120,12 +122,14 @@ function get_indvars(eq, v)
 end
 
 @inline function get_all_depvars(pdeeqs, depvar_ops)
-    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪ mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
+    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪
+                   mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
 end
 
 @inline function get_all_depvars(pdesys::PDESystem, depvar_ops)
     pdeeqs = get_eqs(pdesys)
-    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪ mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
+    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪
+                   mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
 end
 
 get_ops(depvars) = map(u -> operation(safe_unwrap(u)), depvars)
@@ -140,7 +144,9 @@ function _split_terms(term)
     S = Symbolics
     SU = SymbolicUtils
     # TODO: Update this to be exclusive of derivatives and depvars rather than inclusive of +-/*
-    if S.iscall(term) && ((operation(term) == +) | (operation(term) == -) | (operation(term) == *) | (operation(term) == /))
+    if S.iscall(term) &&
+       ((operation(term) == +) | (operation(term) == -) | (operation(term) == *) |
+        (operation(term) == /))
         return mapreduce(_split_terms, vcat, SU.arguments(term))
     else
         return [term]
@@ -226,8 +232,10 @@ end
 
 function split_additive_terms(eq)
     # Calling the methods from symbolicutils matches the expressions
-    rhs_arg = iscall(eq.rhs) && (SymbolicUtils.operation(eq.rhs) == +) ? SymbolicUtils.arguments(eq.rhs) : [eq.rhs]
-    lhs_arg = iscall(eq.lhs) && (SymbolicUtils.operation(eq.lhs) == +) ? SymbolicUtils.arguments(eq.lhs) : [eq.lhs]
+    rhs_arg = iscall(eq.rhs) && (SymbolicUtils.operation(eq.rhs) == +) ?
+              SymbolicUtils.arguments(eq.rhs) : [eq.rhs]
+    lhs_arg = iscall(eq.lhs) && (SymbolicUtils.operation(eq.lhs) == +) ?
+              SymbolicUtils.arguments(eq.lhs) : [eq.lhs]
 
     return vcat(lhs_arg, rhs_arg)
 end
@@ -271,9 +279,12 @@ function ex2term(term, v)
     iscall(term) || return term
     termdvs = collect(get_depvars(term, v.depvar_ops))
     symdvs = filter(u -> all(x -> !(safe_unwrap(x) isa Number), arguments(u)), termdvs)
-    exdv = last(sort(symdvs, by=u -> length(arguments(u))))
+    exdv = last(sort(symdvs, by = u -> length(arguments(u))))
     name = Symbol("⟦" * string(term) * "⟧")
-    return setname(maketerm(typeof(exdv), rename(operation(exdv), name), arguments(exdv), metadata(exdv)), name)
+    return setname(
+        maketerm(
+            typeof(exdv), rename(operation(exdv), name), arguments(exdv), metadata(exdv)),
+        name)
 end
 
 safe_unwrap(x) = x isa Num ? unwrap(x) : x

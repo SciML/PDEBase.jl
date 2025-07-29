@@ -30,7 +30,7 @@ should_transform(pdesys::PDESystem, disc::AbstractDiscretization, boundarymap) =
 Transforms the PDESystem to make it compatible with the given discretization.
 """
 function transform_pde_system!(v::VariableMap, boundarymap,
-                               pdesys::PDESystem, disc::AbstractDiscretization)
+        pdesys::PDESystem, disc::AbstractDiscretization)
     nothing
 end
 
@@ -58,8 +58,8 @@ given the equations, boundary conditions, and discretization. This is a good tim
 extra information needed for the boundary condition handling.
 """
 function construct_var_equation_mapping(pdeeqs, bmap,
-                                        s::AbstractDiscreteSpace,
-                                        disc::AbstractDiscretization)
+        s::AbstractDiscreteSpace,
+        disc::AbstractDiscretization)
     nothing
 end
 
@@ -86,10 +86,10 @@ depvars: the dependent variables in the equation.
 indexmap: dict mapping each iv in this equation to its index in the eqvar.
 """
 function discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equation,
-                              vareqmap::AbstractVarEqMapping,
-                              eqvar, bcmap, depvars, s::AbstractDiscreteSpace,
-                              derivweights::AbstractDifferentialDiscretizer, indexmap,
-                              discretization::AbstractDiscretization)
+        vareqmap::AbstractVarEqMapping,
+        eqvar, bcmap, depvars, s::AbstractDiscreteSpace,
+        derivweights::AbstractDifferentialDiscretizer, indexmap,
+        discretization::AbstractDiscretization)
     nothing
 end
 
@@ -120,8 +120,8 @@ u0: the return value of generate_ic_defaults
 tspan: the time span of the problem, if relevant. (else nothing)
 """
 function generate_system(disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace,
-                         u0, tspan, metadata::AbstractDiscretizationMetadata,
-                         discretization::AbstractDiscretization)
+        u0, tspan, metadata::AbstractDiscretizationMetadata,
+        discretization::AbstractDiscretization)
     nothing
 end
 
