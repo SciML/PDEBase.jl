@@ -75,7 +75,7 @@ This is a type useful for doing any precalculations that are needed for the disc
 construct_differential_discretizer(pdesys, s, discretization, orders) = nothing
 
 """
-    discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equaation, vareqmap::AbstractVarEqMap,
+    discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equation, vareqmap::AbstractVarEqMap,
                          eqvar, bcmap, depvars, s::AbstractDiscreteSpace,
                          derivweights::AbstractDifferentialDiscretizer, indexmap, discretization::AbstractDiscretization)
 Add the information from the given pde equation to the discretization state. Also, discretize the bcs associated with the eqvar.
