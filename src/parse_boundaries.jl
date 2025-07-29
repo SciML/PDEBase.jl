@@ -43,7 +43,7 @@ struct UpperBoundary <: AbstractTruncatingBoundary
     end
 end
 
-# Note that it is assumed throughout MOL that the variables in an inteface BC have the same argument signature,
+# Note that it is assumed throughout MOL that the variables in an interface BC have the same argument signature,
 # differing in only one variable which is that of the interface. This is not checked here, but will cause errors if it is not true.
 # Interfaces are assumed to be on the lower boundary of the domain.
 

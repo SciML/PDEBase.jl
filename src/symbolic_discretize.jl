@@ -53,7 +53,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     # Generate finite difference weights
     derivweights = construct_differential_discretizer(pdesys, s, discretization, orders)
 
-    # Seperate bcs and ics
+    # Separate bcs and ics
     ics = t === nothing ? [] : mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
 
     bcmap = Dict(map(collect(keys(boundarymap))) do u
