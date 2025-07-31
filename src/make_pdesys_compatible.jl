@@ -1,24 +1,24 @@
 
 function chain_flatten_array_variables(dvs)
-	rs = []
-	for dv in dvs
-		dv = safe_unwrap(dv)
-		if isequal(operation(dv), getindex)
-			name = operation(arguments(dv)[1])
-			args = arguments(arguments(dv)[1])
-			idxs = arguments(dv)[2:end]
-			fullname = Symbol(string(name) * "_" * string(idxs))
-			newop = (@variables $fullname(..))[1]
-			push!(rs, @rule getindex($(name)(~~a), idxs...) => newop(~a...))
-		end
-	end
-	return isempty(rs) ? identity : Prewalk(Chain(rs))
+    rs = []
+    for dv in dvs
+        dv = safe_unwrap(dv)
+        if isequal(operation(dv), getindex)
+            name = operation(arguments(dv)[1])
+            args = arguments(arguments(dv)[1])
+            idxs = arguments(dv)[2:end]
+            fullname = Symbol(string(name) * "_" * string(idxs))
+            newop = (@variables $fullname(..))[1]
+            push!(rs, @rule getindex($(name)(~~a), idxs...) => newop(~a...))
+        end
+    end
+    return isempty(rs) ? identity : Prewalk(Chain(rs))
 end
 
 function apply_lhs_rhs(f, eqs)
-	map(eqs) do eq
-		f(eq.lhs) ~ f(eq.rhs)
-	end
+    map(eqs) do eq
+        f(eq.lhs) ~ f(eq.rhs)
+    end
 end
 
 function make_pdesys_compatible(pdesys::PDESystem)
@@ -42,12 +42,12 @@ function make_pdesys_compatible(pdesys::PDESystem)
     dvs = map(safe_ch, dvs)
 
     return PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs, get_ps(pdesys),
-                     defaults = get_defaults(pdesys), systems = get_systems(pdesys),
-                     connector_type = get_connector_type(pdesys), metadata = get_metadata(pdesys),
-                     analytic = getfield(pdesys, :analytic), analytic_func = getfield(pdesys, :analytic_func),
-                     gui_metadata = get_gui_metadata(pdesys),
-                     name = getfield(pdesys, :name)), replaced_vars
-
+        defaults = get_defaults(pdesys), systems = get_systems(pdesys),
+        connector_type = get_connector_type(pdesys), metadata = get_metadata(pdesys),
+        analytic = getfield(pdesys, :analytic), analytic_func = getfield(pdesys, :analytic_func),
+        gui_metadata = get_gui_metadata(pdesys),
+        name = getfield(pdesys, :name)),
+    replaced_vars
 end
 
 function split_complex_eq(eq, redvmaps, imdvmaps)
@@ -59,7 +59,8 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
         imeq2 = substitute(eq2.lhs, imdvmaps) ~ substitute(eq2.rhs, imdvmaps)
         reeq2 = substitute(eq2.lhs, redvmaps) ~ substitute(eq2.rhs, redvmaps)
         imeq1 = substitute(eq1.lhs, imdvmaps) ~ substitute(eq1.rhs, imdvmaps)
-        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs , reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
+        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
+            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
     else
         eq1 = substitute(eq.lhs, redvmaps) ~ substitute(eq.rhs, redvmaps)
         eq2 = substitute(eq.lhs, imdvmaps) ~ substitute(eq.rhs, imdvmaps)
@@ -68,22 +69,23 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
 end
 
 struct ComplexEq
-    reeq1
-    imeq1
-    reeq2
-    imeq2
+    reeq1::Any
+    imeq1::Any
+    reeq2::Any
+    imeq2::Any
 end
 
 function split_complex_bc(eq, redvmaps, imdvmaps)
-    eq = eq isa Pair ? eq : split_complex(eq) 
-    if eq isa Vector 
+    eq = eq isa Pair ? eq : split_complex(eq)
+    if eq isa Vector
         eq1 = eq[1]
-        eq2 = eq[2]   
+        eq2 = eq[2]
         reeq1 = substitute(eq1.lhs, redvmaps) ~ substitute(eq1.rhs, redvmaps)
         imeq2 = substitute(eq2.lhs, imdvmaps) ~ substitute(eq2.rhs, imdvmaps)
         reeq2 = substitute(eq2.lhs, redvmaps) ~ substitute(eq2.rhs, redvmaps)
         imeq1 = substitute(eq1.lhs, imdvmaps) ~ substitute(eq1.rhs, imdvmaps)
-        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs , reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
+        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
+            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
     elseif eq isa Pair
         rhs = split_complex(unwrap(eq.second))
         eq1 = substitute(eq.first, redvmaps) ~ rhs[1]
@@ -136,12 +138,12 @@ function handle_complex(pdesys)
             imdv = imdvmaps[operation(dv)](arguments(dv)...)
             [redv, imdv]
         end
-        
-        pdesys = PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs, get_ps(pdesys), name = getfield(pdesys, :name))
+
+        pdesys = PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs,
+            get_ps(pdesys), name = getfield(pdesys, :name))
         return pdesys, dvmaps
     else
         dvmaps = nothing
         return pdesys, dvmaps
     end
 end
-

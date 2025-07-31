@@ -54,7 +54,8 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     derivweights = construct_differential_discretizer(pdesys, s, discretization, orders)
 
     # Separate bcs and ics
-    ics = t === nothing ? [] : mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
+    ics = t === nothing ? [] :
+          mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
 
     bcmap = Dict(map(collect(keys(boundarymap))) do u
         u => Dict(map(indvars(v)) do x
@@ -77,9 +78,9 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
         # * Assumes that all variables in the equation have same dimensionality except edgevals
         args = ivs(eqvar, v)
         indexmap = Dict([args[i] => i for i in 1:length(args)])
-            # Generate the equations for the interior points
+        # Generate the equations for the interior points
         discretize_equation!(disc_state, pde, vareqmap, eqvar, bcmap,
-                             depvars, s, derivweights, indexmap, discretization)
+            depvars, s, derivweights, indexmap, discretization)
     end
 
     u0 = generate_ic_defaults(ics, s, discretization)

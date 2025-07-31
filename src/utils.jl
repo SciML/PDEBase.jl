@@ -21,12 +21,16 @@ Get a unit `CartesianIndex` in dimension `j` of length `N`.
 """
 unitindex(N, j) = CartesianIndex(ntuple(i -> i == j, N))
 
-remove(args, t) = filter(x -> t === nothing || !isequal(safe_unwrap(x), safe_unwrap(t)), args)
+function remove(args, t)
+    filter(x -> t === nothing || !isequal(safe_unwrap(x), safe_unwrap(t)), args)
+end
 remove(v::AbstractVector, a::Number) = filter(x -> !isequal(x, a), v)
 
-
-
-d_orders(x, pdeeqs) = reverse(sort(collect(union((differential_order(pde.rhs, safe_unwrap(x)) for pde in pdeeqs)..., (differential_order(pde.lhs, safe_unwrap(x)) for pde in pdeeqs)...))))
+function d_orders(x, pdeeqs)
+    reverse(sort(collect(union(
+        (differential_order(pde.rhs, safe_unwrap(x)) for pde in pdeeqs)...,
+        (differential_order(pde.lhs, safe_unwrap(x)) for pde in pdeeqs)...))))
+end
 
 insert(args...) = insert!(args[1], args[2:end]...)
 
