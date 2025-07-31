@@ -9,36 +9,38 @@ abstract type AbstractTruncatingBoundary <: AbstractBoundary end
 abstract type AbstractInterfaceBoundary <: AbstractTruncatingBoundary end
 
 struct LowerBoundary <: AbstractTruncatingBoundary
-    u
-    x
-    depvars
-    indvars
-    eq
-    order
+    u::Any
+    x::Any
+    depvars::Any
+    indvars::Any
+    eq::Any
+    order::Any
     function LowerBoundary(u, t, x, order, eq, v)
         depvars_lhs = get_depvars(eq.lhs, v.depvar_ops)
         depvars_rhs = get_depvars(eq.rhs, v.depvar_ops)
         depvars = collect(depvars_lhs ∪ depvars_rhs)
         #depvars =  filter(u -> !any(map(x-> x isa Number, arguments(u))), depvars)
 
-        allx̄ = Set(filter(!isempty, map(u -> filter(x -> t === nothing || !isequal(x, t), arguments(u)), depvars)))
+        allx̄ = Set(filter(
+            !isempty, map(u -> filter(x -> t === nothing || !isequal(x, t), arguments(u)), depvars)))
         return new(u, x, depvar.(depvars, [v]), first(allx̄), eq, order)
     end
 end
 
 struct UpperBoundary <: AbstractTruncatingBoundary
-    u
-    x
-    depvars
-    indvars
-    eq
-    order
+    u::Any
+    x::Any
+    depvars::Any
+    indvars::Any
+    eq::Any
+    order::Any
     function UpperBoundary(u, t, x, order, eq, v)
         depvars_lhs = get_depvars(eq.lhs, v.depvar_ops)
         depvars_rhs = get_depvars(eq.rhs, v.depvar_ops)
         depvars = collect(depvars_lhs ∪ depvars_rhs)
 
-        allx̄ = Set(filter(!isempty, map(u -> filter(x -> t === nothing || !isequal(x, t), arguments(u)), depvars)))
+        allx̄ = Set(filter(
+            !isempty, map(u -> filter(x -> t === nothing || !isequal(x, t), arguments(u)), depvars)))
         return new(u, x, depvar.(depvars, [v]), first(allx̄), eq, order)
     end
 end
@@ -47,43 +49,48 @@ end
 # differing in only one variable which is that of the interface. This is not checked here, but will cause errors if it is not true.
 # Interfaces are assumed to be on the lower boundary of the domain.
 
-struct InterfaceBoundary{IsUpper_u,IsUpper_u2} <: AbstractInterfaceBoundary
-    u
-    u2
-    x
-    x2
-    eq
+struct InterfaceBoundary{IsUpper_u, IsUpper_u2} <: AbstractInterfaceBoundary
+    u::Any
+    u2::Any
+    x::Any
+    x2::Any
+    eq::Any
 end
 
 struct HigherOrderInterfaceBoundary <: AbstractInterfaceBoundary
-    u
-    u2
-    x
-    x2
-    depvars
-    indvars
-    eq
-    order
+    u::Any
+    u2::Any
+    x::Any
+    x2::Any
+    depvars::Any
+    indvars::Any
+    eq::Any
+    order::Any
     function HigherOrderInterfaceBoundary(u, u2, x, x2, t, order, eq, v)
         depvars_lhs = get_depvars(eq.lhs, v.depvar_ops)
         depvars_rhs = get_depvars(eq.rhs, v.depvar_ops)
         depvars = collect(depvars_lhs ∪ depvars_rhs)
 
-        allx̄ = Set(filter(!isempty, map(u -> filter(x -> t === nothing || !isequal(x, t), arguments(u)), depvars)))
+        allx̄ = Set(filter(
+            !isempty, map(u -> filter(x -> t === nothing || !isequal(x, t), arguments(u)), depvars)))
         return new(u, u2, x, x2, depvar.(depvars, [v]), first(allx̄), eq, order)
     end
 end
 
 function Base.isequal(i1::InterfaceBoundary, i2::InterfaceBoundary)
-    front = (isequal(i1.u, i2.u) & isequal(i1.u2, i2.u2) & isequal(i1.x, i2.x) & isequal(i1.x2, i2.x2))
-    back = (isequal(i1.u, i2.u2) & isequal(i1.u2, i2.u) & isequal(i1.x, i2.x2) & isequal(i1.x2, i2.x))
+    front = (isequal(i1.u, i2.u) & isequal(i1.u2, i2.u2) & isequal(i1.x, i2.x) &
+             isequal(i1.x2, i2.x2))
+    back = (isequal(i1.u, i2.u2) & isequal(i1.u2, i2.u) & isequal(i1.x, i2.x2) &
+            isequal(i1.x2, i2.x))
     return front | back
 end
 
 getvars(b::AbstractBoundary) = (b.u, b.x)
 
-function isperiodic(b1::InterfaceBoundary{b1u,b1u2}, b2::InterfaceBoundary{b2u,b2u2}) where {b1u,b1u2,b2u,b2u2}
-    us_equal = isequal(operation(b1.u), operation(b2.u2)) && isequal(operation(b2.u), operation(b1.u2))
+function isperiodic(b1::InterfaceBoundary{b1u, b1u2},
+        b2::InterfaceBoundary{b2u, b2u2}) where {b1u, b1u2, b2u, b2u2}
+    us_equal = isequal(operation(b1.u), operation(b2.u2)) &&
+               isequal(operation(b2.u), operation(b1.u2))
     xs_equal = issequal(b1.x, b2.x2) && isequal(b1.x2, b2.x)
     return us_equal && xs_equal
 end
@@ -113,12 +120,16 @@ function haslowerupper(bs, x)
     return haslower, hasupper
 end
 
-has_interfaces(bmps) = any(b -> b isa InterfaceBoundary, reduce(vcat, reduce(vcat, collect.(values.(collect(values(bmps)))))))
+function has_interfaces(bmps)
+    any(b -> b isa InterfaceBoundary, reduce(vcat, reduce(vcat, collect.(values.(collect(values(bmps)))))))
+end
 
 # indexes for Iedge depending on boundary type
 isupper(::LowerBoundary) = false
 isupper(::UpperBoundary) = true
-isupper(::InterfaceBoundary{IsUpper_u}) where {IsUpper_u} = IsUpper_u isa Val{true} ? true : false
+function isupper(::InterfaceBoundary{IsUpper_u}) where {IsUpper_u}
+    IsUpper_u isa Val{true} ? true : false
+end
 isupper(::HigherOrderInterfaceBoundary) = true
 
 flatten_vardict(bmps) = reduce(vcat, reduce(vcat, collect.(values.(collect(values(bmps))))))
@@ -128,10 +139,12 @@ function _boundary_rules(v, orders, u, x, val)
     args = substitute.(args, (x => val,))
     varrule = operation(u)(args...) => [operation(u)(args...), x, 0]
 
-    spacerules = [(Differential(x)^d)(operation(u)(args...)) => [operation(u)(args...), x, d] for d in reverse(orders[x])]
+    spacerules = [(Differential(x)^d)(operation(u)(args...)) => [
+                      operation(u)(args...), x, d] for d in reverse(orders[x])]
 
     if v.time !== nothing && x !== v.time
-        timerules = [Differential(v.time)(operation(u)(args...)) => [operation(u)(args...), x, d] for d in reverse(orders[v.time])]
+        timerules = [Differential(v.time)(operation(u)(args...)) => [
+                         operation(u)(args...), x, d] for d in reverse(orders[v.time])]
         return vcat(spacerules, timerules, varrule)
     else
         return vcat(spacerules, varrule)
@@ -144,13 +157,16 @@ function generate_boundary_matching_rules(v, orders)
     upperboundary(x) = v.intervals[x][2]
 
     # Rules to match boundary conditions on the lower boundaries
-    lower = Dict([operation(u) => Dict([x => _boundary_rules(v, orders, u, x, lowerboundary(x)) for x in all_ivs(u, v)]) for u in v.ū])
+    lower = Dict([operation(u) => Dict([x => _boundary_rules(
+                                            v, orders, u, x, lowerboundary(x))
+                                        for x in all_ivs(u, v)]) for u in v.ū])
 
-    upper = Dict([operation(u) => Dict([x => _boundary_rules(v, orders, u, x, upperboundary(x)) for x in all_ivs(u, v)]) for u in v.ū])
+    upper = Dict([operation(u) => Dict([x => _boundary_rules(
+                                            v, orders, u, x, upperboundary(x))
+                                        for x in all_ivs(u, v)]) for u in v.ū])
 
     return (lower, upper)
 end
-
 
 """
 Creates a map of boundaries for each variable to be used later when discretizing the boundary condition equations
@@ -192,7 +208,9 @@ function parse_bcs(bcs, v::VariableMap, orders)
                 end
                 # do it again for the upper end to check for periodic, but only check the current depvar and indvar
                 push!(interface_orders, order)
-                for term_ in setdiff(terms, [term]), r_ in flatten_vardict(upper_boundary_rules)
+                for term_ in setdiff(terms, [term]),
+                    r_ in flatten_vardict(upper_boundary_rules)
+
                     if subsmatch(term_, r_)
                         isinterface = true
                         u__, x__, order__ = r_.second
@@ -208,15 +226,17 @@ function parse_bcs(bcs, v::VariableMap, orders)
         # Else if it is a simple interface, make interface boundaries
         if isinterface
             if all(==(0), interface_orders)
-                boundary = (InterfaceBoundary{Val(false),Val(true)}(u_, u__, x_, x__, bc),
-                    InterfaceBoundary{Val(true),Val(false)}(u__, u_, x__, x_, bc))
+                boundary = (InterfaceBoundary{Val(false), Val(true)}(u_, u__, x_, x__, bc),
+                    InterfaceBoundary{Val(true), Val(false)}(u__, u_, x__, x_, bc))
             else
-                boundary = HigherOrderInterfaceBoundary(u__, u_, x__, x_, t, maximum(interface_orders), bc, v)
+                boundary = HigherOrderInterfaceBoundary(
+                    u__, u_, x__, x_, t, maximum(interface_orders), bc, v)
             end
         end
         # repeat for upper boundary
         if boundary === nothing
             for term in terms, r in flatten_vardict(upper_boundary_rules)
+
                 if subsmatch(term, r)
                     u_, x_, order = r.second
                     boundary = UpperBoundary(u_, t, x_, order, bc, v)
