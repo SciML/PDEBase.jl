@@ -297,7 +297,10 @@ function recursive_unwrap(ex)
 end
 
 hascomplex(eq::Equation) = hascomplex(eq.lhs) || hascomplex(eq.rhs)
-hascomplex(term) = !isequal(term, real(term))
+function hascomplex(term)
+    term = unwrap(term)
+    symtype(term) <: Complex || eltype(symtype(term)) <: Complex
+end
 
 split_complex(eq::Vector) = eq
 split_complex(eq::Equation) = split_complex(eq.lhs) .~ split_complex(eq.rhs)
