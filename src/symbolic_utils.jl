@@ -59,8 +59,7 @@ Finds the derivative or depvar within a term
 function find_derivative(term, depvar_op)
     S = Symbolics
     SU = SymbolicUtils
-    orders = Set{Int}()
-    if S.iscall(eq)
+    if S.iscall(term)
         op = SU.operation(term)
         if (op isa Differential) | isequal(op, depvar_op)
             return term
@@ -185,7 +184,7 @@ function _split_terms(term, x̄)
             if S.iscall(args[1])
                 if args[1] isa Differential
                     try
-                        args[1] = operation(arg)(flatten_division.(SU.arguments(arg))...)
+                        args[1] = operation(args[1])(flatten_division.(SU.arguments(args[1]))...)
                     catch e
                         println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
                         throw(e)
