@@ -35,6 +35,7 @@ include("parse_boundaries.jl")
 include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
+include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
        AbstractDifferentialDiscretizer, AbstractDiscretizationState,
