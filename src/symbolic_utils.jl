@@ -1,6 +1,15 @@
 """
-Counts the Differential operators for given variable x. This is used to determine
-the order of a PDE.
+    count_differentials(term, x::Symbolics.Symbolic)
+
+Counts the number of `Differential` operators with respect to variable `x` in a term.
+This is used to determine the order of a PDE.
+
+# Arguments
+- `term`: A symbolic expression to analyze
+- `x::Symbolics.Symbolic`: The variable to count differentials for
+
+# Returns
+The total count of differential operators with respect to `x` in the term.
 """
 function count_differentials(term, x::Symbolics.Symbolic)
     S = Symbolics
@@ -18,7 +27,16 @@ function count_differentials(term, x::Symbolics.Symbolic)
 end
 
 """
-return list of differential orders in the equation
+    differential_order(eq, x::Symbolics.Symbolic)
+
+Returns a set of all differential orders present in the equation with respect to variable `x`.
+
+# Arguments
+- `eq`: A symbolic equation or expression to analyze
+- `x::Symbolics.Symbolic`: The variable to compute differential orders for
+
+# Returns
+A set of integers representing all differential orders found in the equation (excluding zero).
 """
 function differential_order(eq, x::Symbolics.Symbolic)
     S = Symbolics
@@ -38,7 +56,15 @@ function differential_order(eq, x::Symbolics.Symbolic)
 end
 
 """
-Determine whether a term has a derivative anywhere in it.
+    has_derivatives(term)
+
+Determines whether a term contains any `Differential` operators.
+
+# Arguments
+- `term`: A symbolic expression to check
+
+# Returns
+`true` if the term contains any derivatives, `false` otherwise.
 """
 function has_derivatives(term)
     if iscall(term)
@@ -54,7 +80,16 @@ function has_derivatives(term)
 end
 
 """
-Finds the derivative or depvar within a term
+    find_derivative(term, depvar_op)
+
+Finds the first `Differential` operator or dependent variable matching `depvar_op` within a term.
+
+# Arguments
+- `term`: A symbolic expression to search
+- `depvar_op`: The operation (function symbol) of the dependent variable to find
+
+# Returns
+The first matching derivative or dependent variable found, or `nothing` if none exists.
 """
 function find_derivative(term, depvar_op)
     S = Symbolics
@@ -76,7 +111,14 @@ function find_derivative(term, depvar_op)
 end
 
 """
-Substitute rules in all equations and bcs inplace
+    subs_alleqs!(eqs, bcs, rules)
+
+Applies substitution rules to all equations and boundary conditions in place.
+
+# Arguments
+- `eqs`: Vector of equations to modify
+- `bcs`: Vector of boundary conditions to modify
+- `rules`: Substitution rules to apply
 """
 function subs_alleqs!(eqs, bcs, rules)
     subs_alleqs!(eqs, rules)
@@ -88,7 +130,16 @@ function subs_alleqs!(eqs, rules)
 end
 
 """
-find all the dependent variables given by depvar_ops in an expression
+    get_depvars(eq, depvar_ops)
+
+Finds all dependent variables matching the given operations in an expression.
+
+# Arguments
+- `eq`: A symbolic expression to search
+- `depvar_ops`: Collection of dependent variable operations to match
+
+# Returns
+A set of all dependent variables found in the expression that match the given operations.
 """
 function get_depvars(eq, depvar_ops)
     depvars = Set()

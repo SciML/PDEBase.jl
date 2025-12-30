@@ -47,6 +47,14 @@ construct_disc_state(::AbstractEquationSystemDiscretization) = EquationState()
 """
     construct_discrete_space(v::VariableMap, disc::AbstractDiscretization)
 
+Constructs the discrete space representation for the given discretization.
+
+# Arguments
+- `v::VariableMap`: The variable map containing dependent and independent variables
+- `disc::AbstractDiscretization`: The discretization scheme
+
+# Returns
+An instance of `AbstractDiscreteSpace` containing the discretized spatial domain information.
 """
 construct_discrete_space(v::VariableMap, disc::AbstractDiscretization) = nothing
 
@@ -94,11 +102,15 @@ function discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equa
 end
 
 """
-    generate_ic_defaults(ics, s::AbstractDiscreteSpace disc::AbstractDiscretization)
+    generate_ic_defaults(ics, s::AbstractDiscreteSpace, disc::AbstractDiscretization)
 
 Generate the default initial conditions for the given discretization. This is a good time to check
 that the initial conditions are valid for the given discretization.
-ics is a list of all conditions on the time variable.
+
+# Arguments
+- `ics`: A list of all conditions on the time variable
+- `s::AbstractDiscreteSpace`: The discrete space
+- `disc::AbstractDiscretization`: The discretization
 """
 generate_ic_defaults(ics, s::AbstractDiscreteSpace, disc::AbstractDiscretization) = nothing
 

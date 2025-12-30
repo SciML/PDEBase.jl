@@ -2,12 +2,40 @@
 
 #TODO: Retire DiscreteSpace and move to a DiscreteEquation class with corresponding DiscreteVariables which carry all the required information, define substitute methods for these.
 
+"""
+    AbstractBoundary
+
+Abstract base type for all boundary condition representations.
+"""
 abstract type AbstractBoundary end
 
+"""
+    AbstractTruncatingBoundary <: AbstractBoundary
+
+Abstract type for boundary conditions at domain boundaries that truncate the domain.
+"""
 abstract type AbstractTruncatingBoundary <: AbstractBoundary end
 
+"""
+    AbstractInterfaceBoundary <: AbstractTruncatingBoundary
+
+Abstract type for boundary conditions at interfaces between different regions or subdomains.
+"""
 abstract type AbstractInterfaceBoundary <: AbstractTruncatingBoundary end
 
+"""
+    LowerBoundary <: AbstractTruncatingBoundary
+
+Represents a boundary condition at the lower boundary of a domain.
+
+# Fields
+- `u`: The dependent variable
+- `x`: The independent variable at this boundary
+- `depvars`: All dependent variables involved in the boundary condition
+- `indvars`: All independent variables involved in the boundary condition
+- `eq`: The boundary condition equation
+- `order`: The order of the derivative in the boundary condition
+"""
 struct LowerBoundary <: AbstractTruncatingBoundary
     u::Any
     x::Any
@@ -27,6 +55,19 @@ struct LowerBoundary <: AbstractTruncatingBoundary
     end
 end
 
+"""
+    UpperBoundary <: AbstractTruncatingBoundary
+
+Represents a boundary condition at the upper boundary of a domain.
+
+# Fields
+- `u`: The dependent variable
+- `x`: The independent variable at this boundary
+- `depvars`: All dependent variables involved in the boundary condition
+- `indvars`: All independent variables involved in the boundary condition
+- `eq`: The boundary condition equation
+- `order`: The order of the derivative in the boundary condition
+"""
 struct UpperBoundary <: AbstractTruncatingBoundary
     u::Any
     x::Any
@@ -49,6 +90,27 @@ end
 # differing in only one variable which is that of the interface. This is not checked here, but will cause errors if it is not true.
 # Interfaces are assumed to be on the lower boundary of the domain.
 
+"""
+    InterfaceBoundary{IsUpper_u, IsUpper_u2} <: AbstractInterfaceBoundary
+
+Represents a boundary condition at an interface between two regions or subdomains.
+
+# Type Parameters
+- `IsUpper_u`: `Val{true}` if the first variable is at the upper boundary, `Val{false}` otherwise
+- `IsUpper_u2`: `Val{true}` if the second variable is at the upper boundary, `Val{false}` otherwise
+
+# Fields
+- `u`: The first dependent variable at the interface
+- `u2`: The second dependent variable at the interface
+- `x`: The independent variable for the first variable
+- `x2`: The independent variable for the second variable
+- `eq`: The interface boundary condition equation
+
+# Note
+It is assumed that the variables in an interface boundary condition have the same argument
+signature, differing in only one variable which defines the interface. This assumption is
+not validated but will cause errors if violated.
+"""
 struct InterfaceBoundary{IsUpper_u, IsUpper_u2} <: AbstractInterfaceBoundary
     u::Any
     u2::Any
@@ -57,6 +119,25 @@ struct InterfaceBoundary{IsUpper_u, IsUpper_u2} <: AbstractInterfaceBoundary
     eq::Any
 end
 
+"""
+    HigherOrderInterfaceBoundary <: AbstractInterfaceBoundary
+
+Represents a higher-order boundary condition at an interface between regions.
+
+Higher-order interface boundary conditions involve derivatives and are handled differently
+from simple interface conditions. These are typically flux conditions or derivative matching
+conditions at interfaces.
+
+# Fields
+- `u`: The first dependent variable at the interface
+- `u2`: The second dependent variable at the interface
+- `x`: The independent variable for the first variable
+- `x2`: The independent variable for the second variable
+- `depvars`: All dependent variables involved in the boundary condition
+- `indvars`: All independent variables involved in the boundary condition
+- `eq`: The interface boundary condition equation
+- `order`: The maximum order of derivatives in the boundary condition
+"""
 struct HigherOrderInterfaceBoundary <: AbstractInterfaceBoundary
     u::Any
     u2::Any
