@@ -12,7 +12,7 @@ interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization) =
 """
     check_boundarymap(bmap, v::VariableMap, disc::AbstractDiscretization)
 
-    Once the boundaries have been parsed, check that they are valid for the given discretization.
+Once the boundaries have been parsed, check that they are valid for the given discretization.
 """
 check_boundarymap(bmap, v::VariableMap, disc::AbstractDiscretization) = nothing
 
@@ -94,7 +94,7 @@ function discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equa
 end
 
 """
-    generate_ic_defaults(ics, s::AbstractDiscreteSpace disc::AbstractDiscretization)
+    generate_ic_defaults(ics, s::AbstractDiscreteSpace, disc::AbstractDiscretization)
 
 Generate the default initial conditions for the given discretization. This is a good time to check
 that the initial conditions are valid for the given discretization.
