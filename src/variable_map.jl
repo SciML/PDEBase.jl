@@ -1,3 +1,20 @@
+"""
+    VariableMap
+
+A container that maps dependent and independent variables from a `PDESystem` along with their properties.
+
+# Fields
+- `ū`: Collection of all dependent variables (filtered to exclude boundary values)
+- `x̄`: Collection of spatial independent variables (excludes time)
+- `ps`: Parameters of the system
+- `time`: The time variable (if the system is time-dependent)
+- `intervals`: Dictionary mapping each independent variable to its domain bounds (min, max)
+- `args`: Dictionary mapping each dependent variable operation to its arguments
+- `depvar_ops`: Operations (function symbols) of the dependent variables
+- `x2i`: Dictionary mapping independent variables to their dimension indices
+- `i2x`: Dictionary mapping dimension indices to independent variables
+- `replaced_vars`: Dictionary of variable substitutions/replacements
+"""
 struct VariableMap
     ū::Any
     x̄::Any

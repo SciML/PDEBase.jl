@@ -37,4 +37,4 @@ For solving PDEs directly, consider using [MethodOfLines.jl](https://github.com/
 
 ## Contributing
 
-If you are using this package or want to use it, please post an issue so we are aware. Contributions and feedback are welcome!
+If you are using this package or want to use it, please open an issue so we are aware. Contributions and feedback are welcome!
