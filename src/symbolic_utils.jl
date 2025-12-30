@@ -11,19 +11,19 @@ This is used to determine the order of a PDE.
 # Returns
 The total count of differential operators with respect to `x` in the term.
 """
-function count_differentials(term, x::Symbolics.Symbolic)
-    S = Symbolics
-    SU = SymbolicUtils
-    if !S.iscall(term)
+function count_differentials(term, x::Symbolics.Symbolic)::Int
+    if !iscall(term)
         return 0
-    else
-        op = SU.operation(term)
-        count_children = sum(map(arg -> count_differentials(arg, x), SU.arguments(term)))
-        if op isa Differential && isequal(op.x, x)
-            return 1 + count_children
-        end
-        return count_children
     end
+    op = operation(term)
+    count_children = 0
+    for arg in arguments(term)
+        count_children += count_differentials(arg, x)
+    end
+    if op isa Differential && isequal(op.x, x)
+        return 1 + count_children
+    end
+    return count_children
 end
 
 """
@@ -39,20 +39,24 @@ Returns a set of all differential orders present in the equation with respect to
 A set of integers representing all differential orders found in the equation (excluding zero).
 """
 function differential_order(eq, x::Symbolics.Symbolic)
-    S = Symbolics
-    SU = SymbolicUtils
     orders = Set{Int}()
-    if S.iscall(eq)
-        op = SU.operation(eq)
+    _differential_order!(orders, eq, x)
+    return filter(!iszero, orders)
+end
+
+# Internal helper to avoid allocations from closures
+function _differential_order!(orders::Set{Int}, eq, x::Symbolics.Symbolic)
+    if iscall(eq)
+        op = operation(eq)
         if op isa Differential
             push!(orders, count_differentials(eq, x))
         else
-            for o in map(ch -> differential_order(ch, x), SU.arguments(eq))
-                union!(orders, o)
+            for ch in arguments(eq)
+                _differential_order!(orders, ch, x)
             end
         end
     end
-    return filter(!iszero, orders)
+    return nothing
 end
 
 """
@@ -66,14 +70,18 @@ Determines whether a term contains any `Differential` operators.
 # Returns
 `true` if the term contains any derivatives, `false` otherwise.
 """
-function has_derivatives(term)
+function has_derivatives(term)::Bool
     if iscall(term)
         op = operation(term)
         if op isa Differential
             return true
-        else
-            return any(has_derivatives, arguments(term))
         end
+        for arg in arguments(term)
+            if has_derivatives(arg)
+                return true
+            end
+        end
+        return false
     else
         return false
     end
@@ -92,18 +100,15 @@ Finds the first `Differential` operator or dependent variable matching `depvar_o
 The first matching derivative or dependent variable found, or `nothing` if none exists.
 """
 function find_derivative(term, depvar_op)
-    S = Symbolics
-    SU = SymbolicUtils
-    if S.iscall(term)
-        op = SU.operation(term)
-        if (op isa Differential) | isequal(op, depvar_op)
+    if iscall(term)
+        op = operation(term)
+        if (op isa Differential) || isequal(op, depvar_op)
             return term
-        else
-            for arg in SU.arguments(term)
-                res = find_derivative(arg, depvar_op)
-                if res !== nothing
-                    return res
-                end
+        end
+        for arg in arguments(term)
+            res = find_derivative(arg, depvar_op)
+            if res !== nothing
+                return res
             end
         end
     end
@@ -143,32 +148,53 @@ A set of all dependent variables found in the expression that match the given op
 """
 function get_depvars(eq, depvar_ops)
     depvars = Set()
-    eq = safe_unwrap(eq)
+    _get_depvars!(depvars, safe_unwrap(eq), depvar_ops)
+    return depvars
+end
+
+# Internal helper to avoid allocations from closures and intermediate sets
+function _get_depvars!(depvars::Set, eq, depvar_ops)
     if iscall(eq)
-        if any(u -> isequal(operation(eq), u), depvar_ops)
+        op = operation(eq)
+        found = false
+        for u in depvar_ops
+            if isequal(op, u)
+                found = true
+                break
+            end
+        end
+        if found
             push!(depvars, eq)
         else
-            for o in map(x -> get_depvars(x, depvar_ops), arguments(eq))
-                union!(depvars, o)
+            for arg in arguments(eq)
+                _get_depvars!(depvars, arg, depvar_ops)
             end
         end
     end
-    return depvars
+    return nothing
 end
 
 function get_indvars(eq, v)
     ivs = Set()
-    eq = safe_unwrap(eq)
+    _get_indvars!(ivs, safe_unwrap(eq), v)
+    return ivs
+end
+
+# Internal helper to avoid allocations from closures and intermediate sets
+function _get_indvars!(ivs::Set, eq, v)
     if iscall(eq)
-        for o in map(x -> get_indvars(x, v), arguments(eq))
-            union!(ivs, o)
+        for arg in arguments(eq)
+            _get_indvars!(ivs, arg, v)
         end
     else
-        if any(x -> isequal(eq, x), v.x̄)
-            push!(ivs, eq)
+        for x in v.x̄
+            if isequal(eq, x)
+                push!(ivs, eq)
+                break
+            end
         end
     end
-    return ivs
+    return nothing
 end
 
 @inline function get_all_depvars(pdeeqs, depvar_ops)
@@ -191,84 +217,92 @@ function split_terms(eq::Equation)
 end
 
 function _split_terms(term)
-    S = Symbolics
-    SU = SymbolicUtils
     # TODO: Update this to be exclusive of derivatives and depvars rather than inclusive of +-/*
-    if S.iscall(term) &&
-       ((operation(term) == +) | (operation(term) == -) | (operation(term) == *) |
-        (operation(term) == /))
-        return mapreduce(_split_terms, vcat, SU.arguments(term))
-    else
-        return [term]
+    if iscall(term)
+        op = operation(term)
+        if op === (+) || op === (-) || op === (*) || op === (/)
+            result = Any[]
+            for arg in arguments(term)
+                append!(result, _split_terms(arg))
+            end
+            return result
+        end
     end
+    return [term]
 end
 
 # Additional handling to get around limitations in rules
 # Splits out derivatives from containing math expressions for ingestion by the rules
 function _split_terms(term, x̄)
-    S = Symbolics
-    SU = SymbolicUtils
-    st(t) = _split_terms(t, x̄)
     # TODO: Update this to handle more ops e.g. exp sin tanh etc.
     # TODO: Handle cases where two nonlinear laplacians are multiplied together
-    if S.iscall(term)
-        # Additional handling for upwinding
-        if (operation(term) == *)
-            args = SU.arguments(term)
-            for (i, arg) in enumerate(args)
-                # Incase of upwinding, we need to keep the original term
-                if S.iscall(arg) && operation(arg) isa Differential
-                    # Flatten the arguments of the differential to make nonlinear laplacian work in more cases
-                    try
-                        args[i] = operation(arg)(flatten_division.(SU.arguments(arg))...)
-                    catch e
-                        println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
-                        throw(e)
-                    end
-                    return [*(flatten_division.(args)...)]
+    if !iscall(term)
+        return [term]
+    end
+
+    op = operation(term)
+    args = arguments(term)
+
+    # Additional handling for upwinding
+    if op === (*)
+        for (i, arg) in enumerate(args)
+            # Incase of upwinding, we need to keep the original term
+            if iscall(arg) && operation(arg) isa Differential
+                # Flatten the arguments of the differential to make nonlinear laplacian work in more cases
+                try
+                    args[i] = operation(arg)(flatten_division.(arguments(arg))...)
+                catch e
+                    println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
+                    throw(e)
                 end
+                return [*(flatten_division.(args)...)]
             end
-            return mapreduce(st, vcat, SU.arguments(term))
-        elseif (operation(term) == /)
-            args = SU.arguments(term)
-            # Incase of upwinding or spherical, we need to keep the original term
-            if S.iscall(args[1])
-                if args[1] isa Differential
-                    try
-                        args[1] = operation(args[1])(flatten_division.(SU.arguments(args[1]))...)
-                    catch e
-                        println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
-                        throw(e)
-                    end
-                    return [/(flatten_division.(args)...)]
-                    # Handle with care so that spherical still works
-                elseif operation(args[1]) == *
-                    subargs = SU.arguments(args[1])
-                    # look for a differential in the arguments
-                    for (i, arg) in enumerate(subargs)
-                        if S.iscall(arg) && operation(arg) isa Differential
-                            # Flatten the arguments of the differential to make nonlinear laplacian/spherical work in more cases
-                            try
-                                subargs[i] = operation(arg)(flatten_division.(SU.arguments(arg))...)
-                                args[1] = operation(args[1])(flatten_division.(subargs)...)
-                            catch e
-                                println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
-                                throw(e)
-                            end
-                            return [/(flatten_division.(args)...)]
-                        end
-                    end
-                end
-            end
-            # Basecase for division
-            return vcat(st(args[1]), st(args[2]))
-        elseif (operation(term) == +) | (operation(term) == -)
-            return mapreduce(st, vcat, SU.arguments(term))
-        elseif (operation(term) isa Differential)
-            return [operation(term)(flatten_division.(SU.arguments(term))...)]
-        else
-            return [term]
         end
+        result = Any[]
+        for arg in args
+            append!(result, _split_terms(arg, x̄))
+        end
+        return result
+    elseif op === (/)
+        # Incase of upwinding or spherical, we need to keep the original term
+        if iscall(args[1])
+            if args[1] isa Differential
+                try
+                    args[1] = operation(args[1])(flatten_division.(arguments(args[1]))...)
+                catch e
+                    println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
+                    throw(e)
+                end
+                return [/(flatten_division.(args)...)]
+                # Handle with care so that spherical still works
+            elseif operation(args[1]) === (*)
+                subargs = arguments(args[1])
+                # look for a differential in the arguments
+                for (i, arg) in enumerate(subargs)
+                    if iscall(arg) && operation(arg) isa Differential
+                        # Flatten the arguments of the differential to make nonlinear laplacian/spherical work in more cases
+                        try
+                            subargs[i] = operation(arg)(flatten_division.(arguments(arg))...)
+                            args[1] = operation(args[1])(flatten_division.(subargs)...)
+                        catch e
+                            println("Argument to derivative in $term is not a dependant variable, is trivially differentiable or is otherwise not differentiable.")
+                            throw(e)
+                        end
+                        return [/(flatten_division.(args)...)]
+                    end
+                end
+            end
+        end
+        # Basecase for division
+        return vcat(_split_terms(args[1], x̄), _split_terms(args[2], x̄))
+    elseif op === (+) || op === (-)
+        result = Any[]
+        for arg in args
+            append!(result, _split_terms(arg, x̄))
+        end
+        return result
+    elseif op isa Differential
+        return [op(flatten_division.(arguments(term))...)]
     else
         return [term]
     end

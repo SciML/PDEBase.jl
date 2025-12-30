@@ -64,3 +64,10 @@ const is_CI = haskey(ENV, "CI")
         @test length(JET.get_reports(rep)) == 0
     end
 end
+
+# Run allocation tests in a separate group to avoid precompilation interference
+if GROUP == "All" || GROUP == "nopre"
+    @safetestset "Allocation Tests" begin
+        include("alloc_tests.jl")
+    end
+end
