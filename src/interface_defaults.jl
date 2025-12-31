@@ -12,7 +12,7 @@ interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization) =
 """
     check_boundarymap(bmap, v::VariableMap, disc::AbstractDiscretization)
 
-    Once the boundaries have been parsed, check that they are valid for the given discretization.
+Once the boundaries have been parsed, check that they are valid for the given discretization.
 """
 check_boundarymap(bmap, v::VariableMap, disc::AbstractDiscretization) = nothing
 
