@@ -181,8 +181,8 @@ v = VariableMap(pdesys)
 
 # Access variable information
 depvars(v)         # [u(t,x,y)]
-indvars(v)         # [x, y]
-all_ivs(v)         # [x, y] (no time without discretization)
+indvars(v)         # [t, x, y] (all variables when created without discretization)
+all_ivs(v)         # [t, x, y]
 v.intervals[x]     # (0, 1)
 v.intervals[y]     # (0, 1)
 ```
