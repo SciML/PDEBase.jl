@@ -1,7 +1,11 @@
 using Documenter, PDEBase
 
-cp("./docs/Manifest.toml", "./docs/src/assets/Manifest.toml", force = true)
-cp("./docs/Project.toml", "./docs/src/assets/Project.toml", force = true)
+# Create assets directory if needed
+mkpath("./src/assets")
+
+# Copy manifest/project files if they exist
+isfile("./Manifest.toml") && cp("./Manifest.toml", "./src/assets/Manifest.toml", force = true)
+isfile("./Project.toml") && cp("./Project.toml", "./src/assets/Project.toml", force = true)
 
 include("pages.jl")
 

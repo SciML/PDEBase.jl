@@ -68,8 +68,8 @@ check_boundarymap(boundarymap, v, discretization)
 
 The boundary parsing identifies:
 - Which variable each BC applies to
-- Which boundary (lower/upper) it's on
-- Whether it's a periodic or interface condition
+- Which boundary (lower/upper) it is on
+- Whether it is a periodic or interface condition
 - The derivative order involved
 
 ### Phase 5: System Transformation (Optional)
