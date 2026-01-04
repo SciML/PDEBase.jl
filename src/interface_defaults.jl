@@ -29,9 +29,11 @@ should_transform(pdesys::PDESystem, disc::AbstractDiscretization, boundarymap) =
 
 Transforms the PDESystem to make it compatible with the given discretization.
 """
-function transform_pde_system!(v::VariableMap, boundarymap,
-        pdesys::PDESystem, disc::AbstractDiscretization)
-    nothing
+function transform_pde_system!(
+        v::VariableMap, boundarymap,
+        pdesys::PDESystem, disc::AbstractDiscretization
+    )
+    return nothing
 end
 
 """
@@ -65,10 +67,12 @@ Constructs the mapping from the variables in the PDESystem to which equations th
 given the equations, boundary conditions, and discretization. This is a good time to calculate any
 extra information needed for the boundary condition handling.
 """
-function construct_var_equation_mapping(pdeeqs, bmap,
+function construct_var_equation_mapping(
+        pdeeqs, bmap,
         s::AbstractDiscreteSpace,
-        disc::AbstractDiscretization)
-    nothing
+        disc::AbstractDiscretization
+    )
+    return nothing
 end
 
 """
@@ -93,12 +97,14 @@ bcmap: boundarymap with any conditions on time removed.
 depvars: the dependent variables in the equation.
 indexmap: dict mapping each iv in this equation to its index in the eqvar.
 """
-function discretize_equation!(disc_state::AbstractDiscretizationState, pde::Equation,
+function discretize_equation!(
+        disc_state::AbstractDiscretizationState, pde::Equation,
         vareqmap::AbstractVarEqMapping,
         eqvar, bcmap, depvars, s::AbstractDiscreteSpace,
         derivweights::AbstractDifferentialDiscretizer, indexmap,
-        discretization::AbstractDiscretization)
-    nothing
+        discretization::AbstractDiscretization
+    )
+    return nothing
 end
 
 """
@@ -131,10 +137,12 @@ You likely want this to return one of the symbolic system types from ModelingToo
 u0: the return value of generate_ic_defaults
 tspan: the time span of the problem, if relevant. (else nothing)
 """
-function generate_system(disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace,
+function generate_system(
+        disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace,
         u0, tspan, metadata::AbstractDiscretizationMetadata,
-        discretization::AbstractDiscretization)
-    nothing
+        discretization::AbstractDiscretization
+    )
+    return nothing
 end
 
 ############################################################################################
@@ -176,5 +184,5 @@ get_eqvar(vareqmap::AbstractVarEqMapping, eq) = nothing
     add_metadata!(metadata::AbstractDiscretizationMetadata, value)
 """
 function add_metadata!(metadata::AbstractDiscretizationMetadata, value)
-    metadata.metadata[] = value
+    return metadata.metadata[] = value
 end

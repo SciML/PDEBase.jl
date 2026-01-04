@@ -1,4 +1,3 @@
-
 """
 A function that creates a tuple of CartesianIndices of unit length and `N` dimensions, one pointing along each dimension.
 """
@@ -22,20 +21,27 @@ Get a unit `CartesianIndex` in dimension `j` of length `N`.
 unitindex(N, j) = CartesianIndex(ntuple(i -> i == j, N))
 
 function remove(args, t)
-    filter(x -> t === nothing || !isequal(safe_unwrap(x), safe_unwrap(t)), args)
+    return filter(x -> t === nothing || !isequal(safe_unwrap(x), safe_unwrap(t)), args)
 end
 remove(v::AbstractVector, a::Number) = filter(x -> !isequal(x, a), v)
 
 function d_orders(x, pdeeqs)
-    reverse(sort(collect(union(
-        (differential_order(pde.rhs, safe_unwrap(x)) for pde in pdeeqs)...,
-        (differential_order(pde.lhs, safe_unwrap(x)) for pde in pdeeqs)...))))
+    return reverse(
+        sort(
+            collect(
+                union(
+                    (differential_order(pde.rhs, safe_unwrap(x)) for pde in pdeeqs)...,
+                    (differential_order(pde.lhs, safe_unwrap(x)) for pde in pdeeqs)...
+                )
+            )
+        )
+    )
 end
 
 insert(args...) = insert!(args[1], args[2:end]...)
 
 @inline function sym_dot(a, b)
-    mapreduce((+), zip(a, b)) do (a_, b_)
+    return mapreduce((+), zip(a, b)) do (a_, b_)
         a_ * b_
     end
 end

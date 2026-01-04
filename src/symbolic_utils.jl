@@ -127,11 +127,11 @@ Applies substitution rules to all equations and boundary conditions in place.
 """
 function subs_alleqs!(eqs, bcs, rules)
     subs_alleqs!(eqs, rules)
-    subs_alleqs!(bcs, rules)
+    return subs_alleqs!(bcs, rules)
 end
 
 function subs_alleqs!(eqs, rules)
-    map!(eq -> substitute(eq.lhs, rules) ~ substitute(eq.rhs, rules), eqs, eqs)
+    return map!(eq -> substitute(eq.lhs, rules) ~ substitute(eq.rhs, rules), eqs, eqs)
 end
 
 """
@@ -198,14 +198,18 @@ function _get_indvars!(ivs::Set, eq, v)
 end
 
 @inline function get_all_depvars(pdeeqs, depvar_ops)
-    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪
-                   mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
+    return collect(
+        mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪
+            mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs)
+    )
 end
 
 @inline function get_all_depvars(pdesys::PDESystem, depvar_ops)
     pdeeqs = get_eqs(pdesys)
-    return collect(mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪
-                   mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs))
+    return collect(
+        mapreduce(x -> get_depvars(x.lhs, depvar_ops), union, pdeeqs) ∪
+            mapreduce(x -> get_depvars(x.rhs, depvar_ops), union, pdeeqs)
+    )
 end
 
 get_ops(depvars) = map(u -> operation(safe_unwrap(u)), depvars)
@@ -317,9 +321,9 @@ end
 function split_additive_terms(eq)
     # Calling the methods from symbolicutils matches the expressions
     rhs_arg = iscall(eq.rhs) && (SymbolicUtils.operation(eq.rhs) == +) ?
-              SymbolicUtils.arguments(eq.rhs) : [eq.rhs]
+        SymbolicUtils.arguments(eq.rhs) : [eq.rhs]
     lhs_arg = iscall(eq.lhs) && (SymbolicUtils.operation(eq.lhs) == +) ?
-              SymbolicUtils.arguments(eq.lhs) : [eq.lhs]
+        SymbolicUtils.arguments(eq.lhs) : [eq.lhs]
 
     return vcat(lhs_arg, rhs_arg)
 end

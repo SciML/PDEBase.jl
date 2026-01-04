@@ -31,36 +31,46 @@ const is_CI = haskey(ENV, "CI")
 
     # Test safe_unwrap - simple function that should be type stable
     @testset "safe_unwrap" begin
-        rep = JET.report_call(PDEBase.safe_unwrap, (typeof(u(x, y, t)),);
-                              target_modules=(PDEBase,))
+        rep = JET.report_call(
+            PDEBase.safe_unwrap, (typeof(u(x, y, t)),);
+            target_modules = (PDEBase,)
+        )
         @test length(JET.get_reports(rep)) == 0
     end
 
     # Test has_derivatives with target_modules filter
     @testset "has_derivatives" begin
-        rep = JET.report_call(PDEBase.has_derivatives, (typeof(term),);
-                              target_modules=(PDEBase,))
+        rep = JET.report_call(
+            PDEBase.has_derivatives, (typeof(term),);
+            target_modules = (PDEBase,)
+        )
         @test length(JET.get_reports(rep)) == 0
     end
 
     # Test count_differentials with target_modules filter
     @testset "count_differentials" begin
-        rep = JET.report_call(PDEBase.count_differentials, (typeof(term), typeof(x_sym));
-                              target_modules=(PDEBase,))
+        rep = JET.report_call(
+            PDEBase.count_differentials, (typeof(term), typeof(x_sym));
+            target_modules = (PDEBase,)
+        )
         @test length(JET.get_reports(rep)) == 0
     end
 
     # Test find_derivative with target_modules filter
     @testset "find_derivative" begin
-        rep = JET.report_call(PDEBase.find_derivative, (typeof(term), typeof(operation(u_term)));
-                              target_modules=(PDEBase,))
+        rep = JET.report_call(
+            PDEBase.find_derivative, (typeof(term), typeof(operation(u_term)));
+            target_modules = (PDEBase,)
+        )
         @test length(JET.get_reports(rep)) == 0
     end
 
     # Test recursive_unwrap with target_modules filter
     @testset "recursive_unwrap" begin
-        rep = JET.report_call(PDEBase.recursive_unwrap, (typeof(term),);
-                              target_modules=(PDEBase,))
+        rep = JET.report_call(
+            PDEBase.recursive_unwrap, (typeof(term),);
+            target_modules = (PDEBase,)
+        )
         @test length(JET.get_reports(rep)) == 0
     end
 end
