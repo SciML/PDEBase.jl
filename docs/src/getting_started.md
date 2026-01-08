@@ -56,7 +56,7 @@ Helpers for symbolic manipulation:
 
 ## Example: Inspecting a PDESystem
 
-While you typically don't use PDEBase directly, you can use it to analyze PDESystems:
+While you typically do not use PDEBase directly, you can use it to analyze PDESystems:
 
 ```julia
 using ModelingToolkit, PDEBase
@@ -116,6 +116,7 @@ function PDEBase.construct_discrete_space(v::PDEBase.VariableMap, disc::SimpleFi
     lo, hi = v.intervals[x]
     grid = collect(lo:disc.dx:hi)
     # Create discrete variables...
+    u_disc = []  # placeholder for discretized variables
     return SimpleSpace(grid, u_disc)
 end
 

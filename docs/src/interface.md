@@ -173,7 +173,9 @@ function PDEBase.generate_system(
     disc::MyDiscretization
 )
     # Combine all equations into an ODESystem or similar
-    # ...
+    # Extract time variable and build system
+    t = PDEBase.get_time(disc)
+    # eqs = ... (build equations from disc_state)
     return ODESystem(eqs, t; name=:discretized)
 end
 ```
