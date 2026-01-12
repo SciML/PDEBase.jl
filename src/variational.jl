@@ -149,7 +149,7 @@ Implementations should provide:
 - Access to the underlying mesh geometry
 
 # See Also
-- [`AbstractCartesianDiscreteSpace`](@ref): For structured Cartesian grids
+- `AbstractCartesianDiscreteSpace`: For structured Cartesian grids
 """
 abstract type AbstractUnstructuredDiscreteSpace <: AbstractDiscreteSpace end
 
