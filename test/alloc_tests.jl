@@ -40,7 +40,8 @@ using Test
         @test median(b4).time < 10_000  # Under 10 microseconds
 
         b5 = @benchmark PDEBase.find_derivative(
-            $term, $(operation(u_term))) samples = 10 evals = 100
+            $term, $(operation(u_term))
+        ) samples = 10 evals = 100
         @test median(b5).time < 1_000  # Under 1 microsecond
 
         b6 = @benchmark PDEBase.split_terms($complex_eq) samples = 10 evals = 100
@@ -67,7 +68,8 @@ using Test
         @test minimum(b4).allocs <= 15  # Bounded allocations
 
         b5 = @benchmark PDEBase.find_derivative(
-            $term, $(operation(u_term))) samples = 5 evals = 50
+            $term, $(operation(u_term))
+        ) samples = 5 evals = 50
         @test minimum(b5).allocs == 0  # Should be zero for direct match
     end
 end

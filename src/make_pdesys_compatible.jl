@@ -1,4 +1,3 @@
-
 function chain_flatten_array_variables(dvs)
     rs = []
     for dv in dvs
@@ -16,7 +15,7 @@ function chain_flatten_array_variables(dvs)
 end
 
 function apply_lhs_rhs(f, eqs)
-    map(eqs) do eq
+    return map(eqs) do eq
         f(eq.lhs) ~ f(eq.rhs)
     end
 end
@@ -41,13 +40,15 @@ function make_pdesys_compatible(pdesys::PDESystem)
     bcs = apply_lhs_rhs(ch, bcs)
     dvs = map(safe_ch, dvs)
 
-    return PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs, get_ps(pdesys),
-        defaults = get_defaults(pdesys), systems = get_systems(pdesys),
-        connector_type = get_connector_type(pdesys), metadata = get_metadata(pdesys),
-        analytic = getfield(pdesys, :analytic), analytic_func = getfield(pdesys, :analytic_func),
-        gui_metadata = get_gui_metadata(pdesys),
-        name = getfield(pdesys, :name)),
-    replaced_vars
+    return PDESystem(
+            eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs, get_ps(pdesys),
+            defaults = get_defaults(pdesys), systems = get_systems(pdesys),
+            connector_type = get_connector_type(pdesys), metadata = get_metadata(pdesys),
+            analytic = getfield(pdesys, :analytic), analytic_func = getfield(pdesys, :analytic_func),
+            gui_metadata = get_gui_metadata(pdesys),
+            name = getfield(pdesys, :name)
+        ),
+        replaced_vars
 end
 
 function split_complex_eq(eq, redvmaps, imdvmaps)
@@ -59,8 +60,10 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
         imeq2 = substitute(eq2.lhs, imdvmaps) ~ substitute(eq2.rhs, imdvmaps)
         reeq2 = substitute(eq2.lhs, redvmaps) ~ substitute(eq2.rhs, redvmaps)
         imeq1 = substitute(eq1.lhs, imdvmaps) ~ substitute(eq1.rhs, imdvmaps)
-        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
-            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
+        return [
+            reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
+            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs,
+        ]
     else
         eq1 = substitute(eq.lhs, redvmaps) ~ substitute(eq.rhs, redvmaps)
         eq2 = substitute(eq.lhs, imdvmaps) ~ substitute(eq.rhs, imdvmaps)
@@ -84,8 +87,10 @@ function split_complex_bc(eq, redvmaps, imdvmaps)
         imeq2 = substitute(eq2.lhs, imdvmaps) ~ substitute(eq2.rhs, imdvmaps)
         reeq2 = substitute(eq2.lhs, redvmaps) ~ substitute(eq2.rhs, redvmaps)
         imeq1 = substitute(eq1.lhs, imdvmaps) ~ substitute(eq1.rhs, imdvmaps)
-        return [reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
-            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs]
+        return [
+            reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
+            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs,
+        ]
     elseif eq isa Pair
         rhs = split_complex(unwrap(eq.second))
         eq1 = substitute(eq.first, redvmaps) ~ rhs[1]
@@ -103,8 +108,8 @@ function handle_complex(pdesys)
         dvmaps = map(get_dvs(pdesys)) do dv
             args = arguments(safe_unwrap(dv))
             dv = operation(safe_unwrap(dv))
-            resym = Symbol("Re"*string(dv))
-            imsym = Symbol("Im"*string(dv))
+            resym = Symbol("Re" * string(dv))
+            imsym = Symbol("Im" * string(dv))
             redv = first(@variables $resym(..))
             imdv = first(@variables $imsym(..))
             redv = operation(unwrap(redv(args...)))
@@ -117,9 +122,11 @@ function handle_complex(pdesys)
         imdvmaps = map(dvmaps) do dvmap
             dvmap[2]
         end
-        dvmaps = Dict(map(dvmaps) do dvmap
-            dvmap[1].first => (dvmap[1].second, dvmap[2].second)
-        end)
+        dvmaps = Dict(
+            map(dvmaps) do dvmap
+                dvmap[1].first => (dvmap[1].second, dvmap[2].second)
+            end
+        )
 
         eqs = mapreduce(vcat, eqs) do eq
             split_complex_eq(eq, redvmaps, imdvmaps)
@@ -139,8 +146,10 @@ function handle_complex(pdesys)
             [redv, imdv]
         end
 
-        pdesys = PDESystem(eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs,
-            get_ps(pdesys), name = getfield(pdesys, :name))
+        pdesys = PDESystem(
+            eqs, bcs, get_domain(pdesys), get_ivs(pdesys), dvs,
+            get_ps(pdesys), name = getfield(pdesys, :name)
+        )
         return pdesys, dvmaps
     else
         dvmaps = nothing

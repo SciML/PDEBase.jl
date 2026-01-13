@@ -3,6 +3,7 @@ function cardinalize_eqs!(pdesys)
     for (i, eq) in enumerate(pdeeqs)
         pdeeqs[i] = eq.lhs - eq.rhs ~ 0
     end
+    return
 end
 
 function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::AbstractDiscretization)
@@ -55,13 +56,17 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
 
     # Separate bcs and ics
     ics = t === nothing ? [] :
-          mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
+        mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
 
-    bcmap = Dict(map(collect(keys(boundarymap))) do u
-        u => Dict(map(indvars(v)) do x
-            x => boundarymap[u][x]
-        end)
-    end)
+    bcmap = Dict(
+        map(collect(keys(boundarymap))) do u
+            u => Dict(
+                map(indvars(v)) do x
+                    x => boundarymap[u][x]
+                end
+            )
+        end
+    )
 
     ####
     # Loop over equations, Discretizing them and their dependent variables' boundary conditions
@@ -79,8 +84,10 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
         args = ivs(eqvar, v)
         indexmap = Dict([args[i] => i for i in 1:length(args)])
         # Generate the equations for the interior points
-        discretize_equation!(disc_state, pde, vareqmap, eqvar, bcmap,
-            depvars, s, derivweights, indexmap, discretization)
+        discretize_equation!(
+            disc_state, pde, vareqmap, eqvar, bcmap,
+            depvars, s, derivweights, indexmap, discretization
+        )
     end
 
     u0 = generate_ic_defaults(ics, s, discretization)
