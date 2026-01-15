@@ -121,13 +121,14 @@ that the initial conditions are valid for the given discretization.
 generate_ic_defaults(ics, s::AbstractDiscreteSpace, disc::AbstractDiscretization) = nothing
 
 """
-    generate_metadata(s, discretization, pdesys, boundarymap)
+    generate_metadata(s, discretization, pdesys, boundarymap, complexmap, u0)
 
 Generate the metadata for the discretization. This can be used to store any extra information that
 may be needed to convert the system in to a problem, or to reshape the solution once it is solved.
 It is a good idea for this to return a subtype of SciMLBase.AbstractDiscretizationMetadata.
+u0: the discretized initial conditions (for MTK v11 compatibility, these need to be stored separately)
 """
-generate_metadata(s, discretization, pdesys, boundarymap, complexmap) = nothing
+generate_metadata(s, discretization, pdesys, boundarymap, complexmap, u0 = []) = nothing
 
 """
     generate_system(disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace, u0, tspan, metadata::AbstractDiscretizationMetadata, discretization::AbstractDiscretization)

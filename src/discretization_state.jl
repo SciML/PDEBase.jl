@@ -18,7 +18,11 @@ function generate_system(
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
-    defaults = merge(ModelingToolkit.defaults(pdesys), Dict(u0))
+    # u0 is now stored in metadata (passed during metadata construction)
+    # MTK v11's AtomicArrayDict doesn't allow indexed array symbolics as keys in initial_conditions
+    # Only pass non-indexed initial conditions to System
+    sys_defaults = Dict(pdesys.initial_conditions)
+
     ps = get_ps(pdesys)
     ps = ps === nothing || ps === SciMLBase.NullParameters() ? Num[] : ps
     # Finalize
@@ -34,7 +38,7 @@ function generate_system(
             # Thus, before creating a NonlinearSystem we normalize the equations s.t. the lhs is zero.
             eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
             sys = System(
-                eqs, alldepvarsdisc, ps, defaults = defaults, name = name,
+                eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
                 metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, nothing
@@ -42,14 +46,17 @@ function generate_system(
             # * In the end we have reduced the problem to a system of equations in terms of Dt that can be solved by an ODE solver.
 
             sys = System(
-                alleqs, t, alldepvarsdisc, ps, defaults = defaults, name = name,
+                alleqs, t, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
                 metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, tspan
         end
     catch e
         println("The system of equations is:")
-        #println(alleqs)
+        println("Number of equations: ", length(alleqs))
+        for (i, eq) in enumerate(alleqs)
+            println("Eq $i: $eq")
+        end
         println()
         println("Discretization failed, please post an issue on https://github.com/SciML/MethodOfLines.jl with the failing code and system at low point count.")
         println()
@@ -67,17 +74,61 @@ function SciMLBase.discretize(
         simpsys = mtkcompile(sys)
         if tspan === nothing
             add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
+            # MTK v11 requires symbolic map for initial guess
+            unknowns_list = ModelingToolkit.unknowns(simpsys)
+            u0_guess = Dict(u => 1.0 for u in unknowns_list)
             return prob = NonlinearProblem(
-                simpsys, ones(length(get_eqs(simpsys)));
+                simpsys, u0_guess;
                 discretization.kwargs..., kwargs...
             )
         else
-            add_metadata!(getmetadata(simpsys, ProblemTypeCtx, nothing), sys)
-            prob = ODEProblem(
-                simpsys, Pair[], tspan; build_initializeprob = false,
-                discretization.kwargs...,
-                kwargs...
-            )
+            mol_metadata = getmetadata(simpsys, ProblemTypeCtx, nothing)
+            add_metadata!(mol_metadata, sys)
+            # Get u0 from metadata (stored there for MTK v11 compatibility)
+            u0 = hasproperty(mol_metadata, :u0) ? mol_metadata.u0 : []
+            # Get parameter values from the original pdesys initial_conditions
+            # MTK v11 needs parameter values passed explicitly when creating ODEProblem
+            pdesys_ic = mol_metadata.pdesys.initial_conditions
+            ps = get_ps(mol_metadata.pdesys)
+            if ps !== nothing && ps !== SciMLBase.NullParameters() && !isempty(ps)
+                # Extract only parameter values (not unknown initial conditions)
+                # Use isequal for proper symbolic comparison
+                ps_unwrapped = [safe_unwrap(p) for p in ps]
+                param_vals = Dict{Any,Any}()
+                for (k, v) in pairs(pdesys_ic)
+                    k_unwrapped = safe_unwrap(k)
+                    if any(p -> isequal(k_unwrapped, safe_unwrap(p)), ps_unwrapped)
+                        # Extract numeric value from symbolic constant if needed
+                        v_numeric = try
+                            Symbolics.value(v)
+                        catch
+                            safe_unwrap(v)
+                        end
+                        param_vals[k] = v_numeric
+                    end
+                end
+                if !isempty(param_vals)
+                    # MTK v11 API: merge u0 and params into a single Dict
+                    op = merge(Dict(u0), param_vals)
+                    prob = ODEProblem(
+                        simpsys, op, tspan; build_initializeprob = false,
+                        discretization.kwargs...,
+                        kwargs...
+                    )
+                else
+                    prob = ODEProblem(
+                        simpsys, u0, tspan; build_initializeprob = false,
+                        discretization.kwargs...,
+                        kwargs...
+                    )
+                end
+            else
+                prob = ODEProblem(
+                    simpsys, u0, tspan; build_initializeprob = false,
+                    discretization.kwargs...,
+                    kwargs...
+                )
+            end
             if analytic === nothing
                 return prob
             else

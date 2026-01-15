@@ -76,7 +76,7 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
         depvars_lhs = get_depvars(pde.lhs, v.depvar_ops)
         depvars_rhs = get_depvars(pde.rhs, v.depvar_ops)
         depvars = collect(depvars_lhs ∪ depvars_rhs)
-        depvars = filter(u -> !any(map(x -> x isa Number, arguments(u))), depvars)
+        depvars = filter(u -> !any(map(x -> unwrap_const(safe_unwrap(x)) isa Number, arguments(u))), depvars)
 
         eqvar = get_eqvar(vareqmap, pde)
 
@@ -93,7 +93,8 @@ function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::Abstra
     u0 = generate_ic_defaults(ics, s, discretization)
 
     # Combine PDE equations and BC equations
-    metadata = generate_metadata(s, discretization, pdesys, boundarymap, complexmap)
+    # Pass u0 to generate_metadata for storage (needed for MTK v11 compatibility)
+    metadata = generate_metadata(s, discretization, pdesys, boundarymap, complexmap, u0)
 
     return generate_system(disc_state, s, u0, tspan, metadata, discretization)
 end
