@@ -40,16 +40,23 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
         ps = []
     end
     depvar_ops = get_ops(depvars)
+    # Flatten equations - in MTK v11, complex equations may be nested vectors (real/imag splits)
+    flat_eqs = _flatten_eqs(eqs)
+    flat_bcs = _flatten_bcs(bcs)
     # Get all dependent variables in the correct type
-    alldepvars = get_all_depvars([eqs; bcs], depvar_ops)
+    alldepvars = get_all_depvars([flat_eqs; flat_bcs], depvar_ops)
     # Filter out boundaries
-    ū = filter(u -> !any(x -> x isa Number, arguments(u)), alldepvars)
+    ū = filter(u -> !any(x -> unwrap_const(x) isa Number, arguments(u)), alldepvars)
     # Get all independent variables in the correct type
-    allivs = collect(filter(x -> !(x isa Number), reduce(union, map(arguments, alldepvars))))
+    allivs = collect(filter(x -> !(unwrap_const(x) isa Number), reduce(union, map(arguments, alldepvars))))
     x̄ = remove(allivs, time)
     intervals = Dict(
         map(allivs) do x
-            xdomain = domain[findfirst(d -> isequal(x, d.variables), domain)]
+            idx = findfirst(d -> isequal(safe_unwrap(x), safe_unwrap(d.variables)), domain)
+            if idx === nothing
+                error("Could not find domain for variable $x. Available domains: $([d.variables for d in domain])")
+            end
+            xdomain = domain[idx]
             x => (DomainSets.infimum(xdomain.domain), DomainSets.supremum(xdomain.domain))
         end
     )
@@ -91,5 +98,75 @@ x2i(v::VariableMap, u, x) = findfirst(isequal(x), remove(v.args[operation(u)], v
     u = depvar(u_, v)
     return map(ivs(u, v)) do x
         x => (I[x2i(v, u, x)] == 1 ? v.intervals[x][1] : v.intervals[x][2])
+    end
+end
+
+# Helper functions to flatten nested equation structures
+# In MTK v11, complex equations may result in nested Vector{Equation}
+function _flatten_eqs(eqs)
+    result = Equation[]
+    for eq in eqs
+        if eq isa Equation
+            push!(result, eq)
+        elseif eq isa AbstractVector
+            append!(result, _flatten_eqs(eq))
+        end
+    end
+    return result
+end
+
+function _flatten_bcs(bcs)
+    result = Any[]
+    for bc in bcs
+        if bc isa Equation || bc isa Pair
+            push!(result, bc)
+        elseif bc isa AbstractVector
+            # Handle auto-split complex BCs from Symbolics v7
+            # When a BC like `ψ(t, 0) ~ exp(im*...)` is split, it becomes:
+            # [ψ(t, 0) ~ cos(...), 0 ~ sin(...)]
+            # Keep the pair together as a PreSplitComplexBC so handle_complex can process it correctly
+            flattened = _flatten_bcs(bc)
+            if length(flattened) == 2 && all(x -> x isa Equation, flattened)
+                eq1, eq2 = flattened
+                # Check if second equation has a zero-like LHS (incorrectly split imaginary part)
+                lhs2 = safe_unwrap(eq2.lhs)
+                if _is_zero_like(lhs2) && iscall(safe_unwrap(eq1.lhs))
+                    # This is a pre-split complex BC - keep as a pair for proper handling
+                    eq2_fixed = eq1.lhs ~ eq2.rhs
+                    push!(result, PreSplitComplexBC(eq1, eq2_fixed))
+                else
+                    # Not a pre-split BC, just append
+                    append!(result, flattened)
+                end
+            else
+                append!(result, flattened)
+            end
+        end
+    end
+    return result
+end
+
+# Wrapper type to identify pre-split complex boundary conditions
+struct PreSplitComplexBC
+    real_eq::Equation
+    imag_eq::Equation
+end
+
+# Helper to check if a symbolic expression is zero-like
+function _is_zero_like(x)
+    x = safe_unwrap(x)
+    if x isa Number
+        return x == 0
+    end
+    # Check if it's a call expression (function application) - those aren't zero
+    if iscall(x)
+        return false
+    end
+    # For symbolic constants, use Symbolics.value to extract the numeric value
+    try
+        val = Symbolics.value(x)
+        return val isa Number && iszero(val)
+    catch
+        return false
     end
 end
