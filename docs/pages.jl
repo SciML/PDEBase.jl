@@ -8,6 +8,8 @@ pages = [
     "Types" => [
         "VariableMap" => "variablemap.md",
         "Boundary Conditions" => "boundaries.md",
+        "Domain Types" => "domains.md",
+        "Variational Methods" => "variational.md",
     ],
     "API Reference" => "api.md",
 ]
