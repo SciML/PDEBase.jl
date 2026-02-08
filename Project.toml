@@ -4,13 +4,18 @@ version = "0.1.20"
 authors = ["xtalax <alex.lemony@gmail.com>"]
 
 [deps]
+AllocCheck = "9b6a8646-10ed-4001-bbdc-1d2f46dfbb1a"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 DomainSets = "5b8099bc-c8ec-5219-889f-1d9e522a28bf"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
+SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 SymbolicIndexingInterface = "2efcf032-c050-4f8e-a9bb-153293bab1f5"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 AllocCheck = "0.2"
@@ -19,10 +24,12 @@ DomainSets = "0.7"
 JET = "0.9, 0.10, 0.11"
 ModelingToolkit = "11"
 PrecompileTools = "1"
+SafeTestsets = "0.1.0"
 SciMLBase = "2"
 SymbolicIndexingInterface = "0.3.40"
 SymbolicUtils = "4"
 Symbolics = "7"
+Test = "1.11.0"
 julia = "1.10"
 
 [extras]
