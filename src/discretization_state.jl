@@ -10,7 +10,7 @@ end
 function generate_system(
         disc_state::EquationState, s, u0, tspan, metadata,
         disc::AbstractEquationSystemDiscretization;
-        kwargs...
+        checks=true
     )
     discvars = get_discvars(s)
     t = get_time(disc)
@@ -34,7 +34,7 @@ function generate_system(
             eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], kwargs...
+                metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, nothing
         else
@@ -42,7 +42,7 @@ function generate_system(
 
             sys = System(
                 alleqs, t, alldepvarsdisc, ps; initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], kwargs...
+                metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, tspan
         end
@@ -62,9 +62,9 @@ end
 function SciMLBase.discretize(
         pdesys::PDESystem,
         discretization::AbstractEquationSystemDiscretization;
-        analytic = nothing, system_kwargs=[], kwargs...
+        analytic = nothing, checks=true, kwargs...
     )
-    sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; system_kwargs...)
+    sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; checks=checks)
     return try
         simpsys = mtkcompile(sys)
         if tspan === nothing

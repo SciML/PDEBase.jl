@@ -137,13 +137,13 @@ Generate the discretized system from the discretization state, the discretizatio
 You likely want this to return one of the symbolic system types from ModelingToolkit.jl.
 u0: the return value of generate_ic_defaults
 tspan: the time span of the problem, if relevant. (else nothing)
-kwargs are passed to the system constructor.
+checks is passed to the system constructor.
 """
 function generate_system(
         disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace,
         u0, tspan, metadata::AbstractDiscretizationMetadata,
         discretization::AbstractDiscretization;
-        kwargs...
+        checks=true
     )
     return nothing
 end
