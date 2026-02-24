@@ -9,7 +9,8 @@ end
 
 function generate_system(
         disc_state::EquationState, s, u0, tspan, metadata,
-        disc::AbstractEquationSystemDiscretization
+        disc::AbstractEquationSystemDiscretization;
+        kwargs...
     )
     discvars = get_discvars(s)
     t = get_time(disc)
@@ -25,12 +26,6 @@ function generate_system(
 
     ps = get_ps(pdesys)
     ps = ps === nothing || ps === SciMLBase.NullParameters() ? Num[] : ps
-    # Finalize
-    # if haskey(metadata.disc.kwargs, :checks)
-    #     checks = metadata.disc.kwargs[:checks]
-    # else
-    checks = true
-    # end
     return try
         if t === nothing
             # At the time of writing, NonlinearProblems require that the system of equations be in this form:
@@ -39,15 +34,15 @@ function generate_system(
             eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                metadata = [ProblemTypeCtx => metadata], kwargs...
             )
             return sys, nothing
         else
             # * In the end we have reduced the problem to a system of equations in terms of Dt that can be solved by an ODE solver.
 
             sys = System(
-                alleqs, t, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                alleqs, t, alldepvarsdisc, ps; initial_conditions = sys_defaults, name = name,
+                metadata = [ProblemTypeCtx => metadata], kwargs...
             )
             return sys, tspan
         end
@@ -67,9 +62,9 @@ end
 function SciMLBase.discretize(
         pdesys::PDESystem,
         discretization::AbstractEquationSystemDiscretization;
-        analytic = nothing, kwargs...
+        analytic = nothing, system_kwargs=[], kwargs...
     )
-    sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization)
+    sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; system_kwargs...)
     return try
         simpsys = mtkcompile(sys)
         if tspan === nothing
