@@ -24,8 +24,15 @@ function generate_system(
     # Only pass non-indexed initial conditions to System
     sys_defaults = Dict(pdesys.initial_conditions)
 
-    ps = get_ps(pdesys)
-    ps = ps === nothing || ps === SciMLBase.NullParameters() ? Num[] : ps
+    ps_raw = get_ps(pdesys)
+    ps_raw = ps_raw === nothing || ps_raw === SciMLBase.NullParameters() ? Num[] : ps_raw
+    # get_ps may return Pairs (e.g. [v => 0.5]); extract symbols and merge values into defaults
+    if !isempty(ps_raw) && first(ps_raw) isa Pair
+        ps = Num[first(p) for p in ps_raw]
+        merge!(sys_defaults, Dict(first(p) => last(p) for p in ps_raw))
+    else
+        ps = ps_raw
+    end
     return try
         if t === nothing
             # At the time of writing, NonlinearProblems require that the system of equations be in this form:
@@ -84,22 +91,27 @@ function SciMLBase.discretize(
             # Get parameter values from the original pdesys initial_conditions
             # MTK v11 needs parameter values passed explicitly when creating ODEProblem
             pdesys_ic = mol_metadata.pdesys.initial_conditions
-            ps = get_ps(mol_metadata.pdesys)
-            if ps !== nothing && ps !== SciMLBase.NullParameters() && !isempty(ps)
-                # Extract only parameter values (not unknown initial conditions)
-                # Use isequal for proper symbolic comparison
-                ps_unwrapped = [safe_unwrap(p) for p in ps]
+            ps_raw = get_ps(mol_metadata.pdesys)
+            if ps_raw !== nothing && ps_raw !== SciMLBase.NullParameters() && !isempty(ps_raw)
+                # get_ps may return Pairs (e.g. [v => 0.5]); extract parameter values
                 param_vals = Dict{Any,Any}()
-                for (k, v) in pairs(pdesys_ic)
-                    k_unwrapped = safe_unwrap(k)
-                    if any(p -> isequal(k_unwrapped, safe_unwrap(p)), ps_unwrapped)
-                        # Extract numeric value from symbolic constant if needed
-                        v_numeric = try
-                            Symbolics.value(v)
-                        catch
-                            safe_unwrap(v)
+                if first(ps_raw) isa Pair
+                    for p in ps_raw
+                        param_vals[first(p)] = last(p)
+                    end
+                else
+                    # Fall back to looking up parameters in initial_conditions
+                    ps_unwrapped = [safe_unwrap(p) for p in ps_raw]
+                    for (k, v) in pairs(pdesys_ic)
+                        k_unwrapped = safe_unwrap(k)
+                        if any(p -> isequal(k_unwrapped, safe_unwrap(p)), ps_unwrapped)
+                            v_numeric = try
+                                Symbolics.value(v)
+                            catch
+                                safe_unwrap(v)
+                            end
+                            param_vals[k] = v_numeric
                         end
-                        param_vals[k] = v_numeric
                     end
                 end
                 if !isempty(param_vals)
