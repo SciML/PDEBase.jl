@@ -228,6 +228,10 @@ function isupper(::InterfaceBoundary{IsUpper_u}) where {IsUpper_u}
 end
 isupper(::HigherOrderInterfaceBoundary) = true
 
+offset(::LowerBoundary, i, len) = i
+offset(::UpperBoundary, i, len) = len - i + 1
+offset(b::AbstractInterfaceBoundary, i, len) = isupper(b) ? len - i + 1 : i
+
 flatten_vardict(bmps) = reduce(vcat, reduce(vcat, collect.(values.(collect(values(bmps))))))
 
 function _boundary_rules(v, orders, u, x, val)

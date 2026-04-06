@@ -75,6 +75,22 @@ const is_CI = haskey(ENV, "CI")
     end
 end
 
+# Verify correct dispatch and calculations for boundary offsets (Resolves #67)
+@safetestset "Boundary Type Hierarchy and Offset Dispatch Tests" begin
+    using Test
+    using PDEBase
+
+    upper_interface = PDEBase.InterfaceBoundary{Val(true), Val(false)}(1, 2, 3, 4, 5)
+    lower_interface = PDEBase.InterfaceBoundary{Val(false), Val(true)}(1, 2, 3, 4, 5)
+
+    @test PDEBase.offset(upper_interface, 2, 10) == 9
+    @test PDEBase.offset(lower_interface, 2, 10) == 2
+
+    @test hasmethod(PDEBase.offset, Tuple{PDEBase.LowerBoundary, Int, Int})
+    @test hasmethod(PDEBase.offset, Tuple{PDEBase.UpperBoundary, Int, Int})
+    @test hasmethod(PDEBase.offset, Tuple{PDEBase.HigherOrderInterfaceBoundary, Int, Int})
+end
+
 # Run allocation tests in a separate group to avoid precompilation interference
 if GROUP == "All" || GROUP == "nopre"
     @safetestset "Allocation Tests" begin
