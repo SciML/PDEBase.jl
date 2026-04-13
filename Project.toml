@@ -1,6 +1,6 @@
 name = "PDEBase"
 uuid = "a7812802-0625-4b9e-961c-d332478797e5"
-version = "0.1.22"
+version = "0.1.23"
 authors = ["xtalax <alex.lemony@gmail.com>"]
 
 [deps]
@@ -19,7 +19,7 @@ DomainSets = "0.7"
 JET = "0.9, 0.10, 0.11"
 ModelingToolkit = "11"
 PrecompileTools = "1"
-SciMLBase = "2"
+SciMLBase = "2, 3.1"
 SymbolicIndexingInterface = "0.3.40"
 SymbolicUtils = "4"
 Symbolics = "7"
