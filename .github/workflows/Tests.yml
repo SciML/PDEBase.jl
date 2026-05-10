@@ -25,4 +25,8 @@ jobs:
     uses: "SciML/.github/.github/workflows/tests.yml@v1"
     with:
       julia-version: "${{ matrix.version }}"
+      # JET 0.11.x has `julia = "1.12"` registry compat (1.12.x only),
+      # so it cannot resolve on Julia 1.13 prereleases. The `pre` matrix
+      # entry is allowed to fail until upstream JET widens its julia compat.
+      continue-on-error: ${{ matrix.version == 'pre' }}
     secrets: "inherit"
