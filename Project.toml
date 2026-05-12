@@ -16,7 +16,6 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 AllocCheck = "0.2"
 BenchmarkTools = "1"
 DomainSets = "0.7"
-JET = "0.9, 0.10, 0.11"
 ModelingToolkit = "11"
 PrecompileTools = "1"
 SciMLBase = "2, 3.1"
@@ -28,9 +27,9 @@ julia = "1.10"
 [extras]
 AllocCheck = "9b6a8646-10ed-4001-bbdc-1d2f46dfbb1a"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
-JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["AllocCheck", "BenchmarkTools", "JET", "SafeTestsets", "Test"]
+test = ["AllocCheck", "BenchmarkTools", "Pkg", "SafeTestsets", "Test"]
