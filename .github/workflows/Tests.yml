@@ -22,11 +22,17 @@ jobs:
           - "1"
           - "lts"
           - "pre"
+        group:
+          - Core
+          - QA
+        exclude:
+          # JET 0.11.x has `julia = "1.12"` registry compat (1.12.x only),
+          # so it cannot resolve on Julia 1.13 prereleases. Skip the QA
+          # group on `pre` until upstream JET widens its julia compat.
+          - version: "pre"
+            group: QA
     uses: "SciML/.github/.github/workflows/tests.yml@v1"
     with:
       julia-version: "${{ matrix.version }}"
-      # JET 0.11.x has `julia = "1.12"` registry compat (1.12.x only),
-      # so it cannot resolve on Julia 1.13 prereleases. The `pre` matrix
-      # entry is allowed to fail until upstream JET widens its julia compat.
-      continue-on-error: ${{ matrix.version == 'pre' }}
+      group: "${{ matrix.group }}"
     secrets: "inherit"
