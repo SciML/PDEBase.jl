@@ -143,7 +143,7 @@ function generate_system(
         disc_state::AbstractDiscretizationState, s::AbstractDiscreteSpace,
         u0, tspan, metadata::AbstractDiscretizationMetadata,
         discretization::AbstractDiscretization;
-        checks=true
+        checks = true
     )
     return nothing
 end

@@ -10,7 +10,7 @@ end
 function generate_system(
         disc_state::EquationState, s, u0, tspan, metadata,
         disc::AbstractEquationSystemDiscretization;
-        checks=true
+        checks = true
     )
     discvars = get_discvars(s)
     t = get_time(disc)
@@ -69,9 +69,9 @@ end
 function SciMLBase.discretize(
         pdesys::PDESystem,
         discretization::AbstractEquationSystemDiscretization;
-        analytic = nothing, checks=true, kwargs...
+        analytic = nothing, checks = true, kwargs...
     )
-    sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; checks=checks)
+    sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; checks = checks)
     return try
         simpsys = mtkcompile(sys)
         if tspan === nothing
@@ -94,7 +94,7 @@ function SciMLBase.discretize(
             ps_raw = get_ps(mol_metadata.pdesys)
             if ps_raw !== nothing && ps_raw !== SciMLBase.NullParameters() && !isempty(ps_raw)
                 # get_ps may return Pairs (e.g. [v => 0.5]); extract parameter values
-                param_vals = Dict{Any,Any}()
+                param_vals = Dict{Any, Any}()
                 if first(ps_raw) isa Pair
                     for p in ps_raw
                         param_vals[first(p)] = last(p)
