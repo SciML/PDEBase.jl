@@ -215,7 +215,7 @@ function handle_complex(pdesys)
                 half = n_eqs ÷ 2
                 eqs = vcat(
                     [_replace_ops(eq.lhs, redvmaps_dict) ~ _replace_ops(eq.rhs, redvmaps_dict) for eq in eqs_flat[1:half]],
-                    [_replace_ops(eq.lhs, imdvmaps_dict) ~ _replace_ops(eq.rhs, imdvmaps_dict) for eq in eqs_flat[half+1:end]]
+                    [_replace_ops(eq.lhs, imdvmaps_dict) ~ _replace_ops(eq.rhs, imdvmaps_dict) for eq in eqs_flat[(half + 1):end]]
                 )
             else
                 # Odd number of equations - just rename all with real maps
