@@ -1,0 +1,8 @@
+[Core]
+versions = ["lts", "1", "pre"]
+
+[QA]
+# JET 0.11.x has `julia = "1.12"` registry compat (1.12.x only), so it cannot
+# resolve on Julia 1.13 prereleases. Keep QA off `pre` until upstream JET
+# widens its julia compat.
+versions = ["lts", "1"]
