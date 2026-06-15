@@ -35,6 +35,8 @@ include("parse_boundaries.jl")
 include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
+include("domains.jl")
+include("variational.jl")
 include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
@@ -54,5 +56,20 @@ export count_differentials, differential_order, has_derivatives, find_derivative
 export VariableMap
 export ivs, all_ivs, depvar, depvars, indvars, x2i
 export PeriodicMap
+
+# Domain types for unstructured meshes
+export AbstractDiscretizedDomain, MeshDomain
+export BoundaryRegion, ConditionalBoundary
+export get_mesh, get_boundary_markers, get_boundary_name, get_parent_domain, get_condition
+export mark_boundary!
+
+# Variational method types for FEM/FVM/DG discretizations
+export AbstractVariationalMethod, AbstractGalerkinMethod
+export AbstractRitzGalerkin, AbstractPetrovGalerkin
+export RitzGalerkin
+export AbstractUnstructuredDiscretization, AbstractUnstructuredDiscreteSpace
+export get_variational_method, is_galerkin, is_symmetric_galerkin
+export AbstractFEMTrait, SupportsWeakForm, SupportsStrongForm, SupportsBothForms
+export get_supported_form
 
 end # module PDEBase
