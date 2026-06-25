@@ -187,7 +187,7 @@ function isperiodic(
     ) where {b1u, b1u2, b2u, b2u2}
     us_equal = isequal(operation(b1.u), operation(b2.u2)) &&
         isequal(operation(b2.u), operation(b1.u2))
-    xs_equal = issequal(b1.x, b2.x2) && isequal(b1.x2, b2.x)
+    xs_equal = isequal(b1.x, b2.x2) && isequal(b1.x2, b2.x)
     return us_equal && xs_equal
 end
 
@@ -311,7 +311,7 @@ function parse_bcs(bcs, v::VariableMap, orders)
         terms = split_terms(bc)
         # * Assume that the BC is defined on the edge of the domain
         # Check whether the bc is on the lower boundary, or periodic, we don't care which depvar/var
-        local u_, u__, x_, x__
+        u_ = u__ = x_ = x__ = nothing
         isinterface = false
         interface_orders = []
         for term in terms, r in flatten_vardict(lower_boundary_rules)
