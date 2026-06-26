@@ -32,22 +32,15 @@ run_qa(
         ),
         all_qualified_accesses_are_public = (;
             ignore = (
-                :Arr,                            # Symbolics non-public
                 :ExtraVariablesSystemException,  # ModelingToolkit non-public
-                :NullParameters,                 # SciMLBase non-public
-                :unwrap,                         # Symbolics non-public
-                :value,                          # Symbolics non-public
             ),
         ),
         all_explicit_imports_are_public = (;
             ignore = (
                 :AbstractDiscretization, :AbstractDiscretizationMetadata,  # SciMLBase non-public
                 :Chain, :Prewalk, :maketerm, :metadata,                    # SymbolicUtils non-public
-                # ModelingToolkit non-public
-                :ProblemTypeCtx, :get_bcs, :get_connector_type, :get_domain,
-                :get_dvs, :get_eqs, :get_gui_metadata, :get_iv, :get_ivs,
-                :get_metadata, :get_ps, :get_systems, :get_unknowns,
-                :rename, :setname, :unwrap,                                # Symbolics non-public
+                :ProblemTypeCtx,                                           # ModelingToolkit non-public
+                :rename, :setname,                                         # Symbolics non-public
             ),
         ),
     ),
