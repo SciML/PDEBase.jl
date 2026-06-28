@@ -27,7 +27,6 @@ run_qa(
         all_qualified_accesses_via_owners = (;
             ignore = (
                 :ExtraVariablesSystemException,  # ModelingToolkit re-export; owner ModelingToolkitBase
-                :unwrap,                         # Symbolics re-export; owner SymbolicUtils
             ),
         ),
         all_qualified_accesses_are_public = (;
