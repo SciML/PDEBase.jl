@@ -5,14 +5,14 @@ using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata
 using ModelingToolkit
 
 using ModelingToolkit: get_unknowns, ProblemTypeCtx, get_ps, get_bcs, get_dvs,
-    parameters, varmap_to_vars, get_eqs, get_iv,
+    get_eqs, get_iv,
     get_domain, get_ivs, get_systems, get_connector_type,
     get_metadata, get_gui_metadata
 
 using Symbolics, SymbolicUtils
-using Symbolics: unwrap, solve_for, expand_derivatives, diff2term, setname, rename, variable
-using SymbolicUtils: operation, arguments, Chain, Prewalk, Postwalk, maketerm, metadata,
-    symtype, operation, iscall, arguments, getmetadata, unwrap_const, substitute
+using Symbolics: unwrap, setname, rename
+using SymbolicUtils: operation, arguments, Chain, Prewalk, maketerm, metadata,
+    iscall, getmetadata, unwrap_const, substitute
 using SymbolicIndexingInterface: is_time_dependent
 using DomainSets
 
@@ -47,7 +47,7 @@ export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
 
 export get_time
 export count_differentials, differential_order, has_derivatives, find_derivative, d_orders,
-    subs_alleqs!, get_depvars, getvars, pde_substitute, pde_substitute_filter,
+    subs_alleqs!, get_depvars, getvars, pde_substitute,
     get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
     recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface,
     haslowerupper, has_interfaces, isupper
