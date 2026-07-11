@@ -11,6 +11,7 @@ run_qa(
         piracies = (; treat_as_own = [PDEBase.symbolic_discretize]),
         deps_compat = (; check_extras = false),
     ),
+    api_docs_kwargs = (; rendered = true),
     ei_kwargs = (;
         all_explicit_imports_via_owners = (;
             ignore = (

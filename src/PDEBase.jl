@@ -16,14 +16,60 @@ using SymbolicUtils: operation, arguments, Chain, Prewalk, maketerm, metadata,
 using SymbolicIndexingInterface: is_time_dependent
 using DomainSets
 
+"""
+    AbstractEquationSystemDiscretization <: AbstractDiscretization
+
+Supertype for discretizations that lower a `PDESystem` into an equation-based
+SciML system, typically an `ODESystem` or `DAESystem`.
+"""
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
+
+"""
+    AbstractOptimizationSystemDiscretization <: AbstractDiscretization
+
+Supertype for discretizations that lower a `PDESystem` into an optimization
+system.
+"""
 abstract type AbstractOptimizationSystemDiscretization <: AbstractDiscretization end
 
+"""
+    AbstractDiscreteSpace
+
+Supertype for discretized spatial domain representations produced from a
+`PDESystem` and a discretization.
+"""
 abstract type AbstractDiscreteSpace end
+
+"""
+    AbstractCartesianDiscreteSpace <: AbstractDiscreteSpace
+
+Supertype for discrete space representations whose coordinates form a
+Cartesian product grid.
+"""
 abstract type AbstractCartesianDiscreteSpace <: AbstractDiscreteSpace end
 
+"""
+    AbstractVarEqMapping
+
+Supertype for mappings that assign dependent variables and boundary conditions
+to the equations used to discretize them.
+"""
 abstract type AbstractVarEqMapping end
+
+"""
+    AbstractDifferentialDiscretizer
+
+Supertype for objects that hold the data needed to discretize differential
+operators on a discrete space.
+"""
 abstract type AbstractDifferentialDiscretizer end
+
+"""
+    AbstractDiscretizationState
+
+Supertype for mutable state accumulated while PDE equations and boundary
+conditions are discretized.
+"""
 abstract type AbstractDiscretizationState end
 
 include("symbolic_utils.jl")

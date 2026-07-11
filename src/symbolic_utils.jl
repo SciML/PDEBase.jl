@@ -278,6 +278,13 @@ end
     return (x.first, x.second)
 end
 
+"""
+    get_all_depvars(pdeeqs, depvar_ops)
+    get_all_depvars(pdesys::PDESystem, depvar_ops)
+
+Return all dependent variables with operations in `depvar_ops` that appear in
+the equations or boundary conditions.
+"""
 @inline function get_all_depvars(pdeeqs, depvar_ops)
     return collect(
         mapreduce(x -> get_depvars(_get_lhs_rhs(x)[1], depvar_ops), union, pdeeqs) ∪
@@ -295,6 +302,13 @@ end
 
 get_ops(depvars) = map(u -> operation(safe_unwrap(u)), depvars)
 
+"""
+    split_terms(eq)
+    split_terms(eq, x̄)
+
+Split an equation or boundary condition into symbolic terms used by PDE
+discretization rules.
+"""
 function split_terms(eq::Equation)
     lhs = _split_terms(eq.lhs)
     rhs = _split_terms(eq.rhs)
@@ -406,6 +420,11 @@ function split_terms(eq::Equation, x̄)
     return filter(term -> !isequal(term, Num(0)), flatten_division.(vcat(lhs, rhs)))
 end
 
+"""
+    split_additive_terms(eq)
+
+Return the left- and right-hand additive terms of equation `eq`.
+"""
 function split_additive_terms(eq)
     # Calling the methods from symbolicutils matches the expressions
     rhs_arg = iscall(eq.rhs) && (SymbolicUtils.operation(eq.rhs) == +) ?
@@ -430,6 +449,11 @@ end
     return term
 end
 
+"""
+    subsmatch(expr, rule)
+
+Return `true` when `rule.first` appears anywhere in expression `expr`.
+"""
 subsmatch(eq::Equation, rule) = subsmatch(eq.lhs, rule) | subsmatch(eq.rhs, rule)
 
 function subsmatch(expr, rule)
@@ -460,8 +484,19 @@ function ex2term(term, v)
     return setname(maketerm(typeof(exdv), rename(operation(exdv), name), arguments(exdv), metadata(exdv)), name)
 end
 
+"""
+    safe_unwrap(x)
+
+Return the wrapped symbolic value for `Num` inputs and leave all other values
+unchanged.
+"""
 safe_unwrap(x) = x isa Num ? unwrap(x) : x
 
+"""
+    recursive_unwrap(ex)
+
+Recursively unwrap `Num` values inside a symbolic expression.
+"""
 function recursive_unwrap(ex)
     if !iscall(ex)
         return safe_unwrap(ex)
