@@ -8,10 +8,10 @@ using PrecompileTools
         @variables u(..)
 
         # Get unwrapped symbolic types
-        x_sym = Symbolics.unwrap(x)
-        y_sym = Symbolics.unwrap(y)
-        t_sym = Symbolics.unwrap(t)
-        u_term = Symbolics.unwrap(u(x, y, t))
+        x_sym = SymbolicUtils.unwrap(x)
+        y_sym = SymbolicUtils.unwrap(y)
+        t_sym = SymbolicUtils.unwrap(t)
+        u_term = SymbolicUtils.unwrap(u(x, y, t))
 
         # Precompile safe_unwrap for common types
         safe_unwrap(u(x, y, t))
@@ -21,7 +21,7 @@ using PrecompileTools
         # Create a differential term for testing
         Dx = Differential(x)
         term = Dx(u(x, y, t))
-        term_sym = Symbolics.unwrap(term)
+        term_sym = SymbolicUtils.unwrap(term)
 
         # Precompile has_derivatives
         has_derivatives(term_sym)
@@ -42,7 +42,7 @@ using PrecompileTools
         get_depvars(u_term, depvar_ops)
 
         # Precompile split_terms
-        eq = Symbolics.unwrap(Dx(u(x, y, t)) ~ u(x, y, t))
+        eq = SymbolicUtils.unwrap(Dx(u(x, y, t)) ~ u(x, y, t))
         split_terms(eq)
 
         # Precompile split_additive_terms
