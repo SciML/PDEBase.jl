@@ -7,6 +7,24 @@ function EquationState()
     return EquationState(Equation[], Equation[])
 end
 
+function _split_discrete_ic_key(x)
+    x = unwrap(x)
+    iscall(x) || return x, (), false
+
+    op = operation(x)
+    args = arguments(x)
+    if op === getindex
+        idx = Tuple(unwrap_const(safe_unwrap(i)) for i in args[2:end])
+        return first(args), idx, true
+    elseif op isa Differential && length(args) == 1
+        arr, idx, isarr = _split_discrete_ic_key(first(args))
+        return isarr ? (op(arr), idx, true) : (x, (), false)
+    end
+    return x, (), false
+end
+
+_discrete_ic_value(v) = unwrap_const(safe_unwrap(v))
+
 """
     discrete_u0_to_atomic_map(u0)
 
@@ -20,35 +38,25 @@ function discrete_u0_to_atomic_map(u0)
     scalars = Dict{Any, Any}()
     for (k, v) in u0
         k = unwrap(k)
-        arr, isarr = split_indexed_var(k)
+        arr, idx, isarr = _split_discrete_ic_key(k)
         if isarr
             buf = get!(() -> Dict{Any, Any}(), groups, arr)
-            buf[get_stable_index(k)] = v
+            buf[idx] = v
         else
-            scalars[k] = v
+            scalars[k] = _discrete_ic_value(v)
         end
     end
     out = Dict{Any, Any}()
     for (arr, idxs) in groups
-        vals = Array{Float64}(undef, size(arr))
+        vals = Array{Any}(undef, size(arr))
         fill!(vals, NaN)
         for (idx, v) in idxs
-            vals[idx] = Float64(try
-                Symbolics.value(v)
-            catch
-                v
-            end)
+            vals[idx...] = _discrete_ic_value(v)
         end
         out[arr] = vals
     end
     return merge!(out, scalars)
 end
-
-_numeric_ic_value(v) = Float64(try
-    Symbolics.value(v)
-catch
-    v
-end)
 
 """
     variables_with_time_derivative(eqs, t)
@@ -99,12 +107,11 @@ function discrete_initialization(eqs, t, u0)
     for dv in variables_with_time_derivative(eqs, t)
         dv_u = unwrap(dv)
         if haskey(u0_dict, dv_u)
-            push!(init_eqs, dv ~ _numeric_ic_value(u0_dict[dv_u]))
+            push!(init_eqs, dv ~ _discrete_ic_value(u0_dict[dv_u]))
         else
-            # try isequal match (identity of keys can differ by wrapping)
             for (k, v) in u0_dict
                 if isequal(k, dv_u)
-                    push!(init_eqs, dv ~ _numeric_ic_value(v))
+                    push!(init_eqs, dv ~ _discrete_ic_value(v))
                     break
                 end
             end
