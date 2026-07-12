@@ -179,8 +179,20 @@ function Base.isequal(i1::InterfaceBoundary, i2::InterfaceBoundary)
     return front | back
 end
 
+"""
+    getvars(b::AbstractBoundary)
+
+Return the dependent variable and independent boundary variable represented by
+boundary object `b`.
+"""
 getvars(b::AbstractBoundary) = (b.u, b.x)
 
+"""
+    isperiodic(b1::InterfaceBoundary, b2::InterfaceBoundary)
+
+Return `true` when interface boundaries `b1` and `b2` form matching periodic
+boundary conditions.
+"""
 function isperiodic(
         b1::InterfaceBoundary{b1u, b1u2},
         b2::InterfaceBoundary{b2u, b2u2}
@@ -191,6 +203,11 @@ function isperiodic(
     return us_equal && xs_equal
 end
 
+"""
+    isinterface(b)
+
+Return `Val(true)` when `b` is an `InterfaceBoundary`, otherwise `Val(false)`.
+"""
 @inline function isinterface(b)
     if b isa InterfaceBoundary
         return Val(true)
@@ -199,8 +216,19 @@ end
     end
 end
 
+"""
+    filter_interfaces(bs)
+
+Return the interface boundaries contained in the collection `bs`.
+"""
 filter_interfaces(bs) = filter(b -> b isa InterfaceBoundary, bs)
 
+"""
+    haslowerupper(bs, x)
+
+Return booleans indicating whether interface boundaries in `bs` include lower
+and upper boundaries for independent variable `x`.
+"""
 function haslowerupper(bs, x)
     haslower = false
     hasupper = false
@@ -216,11 +244,23 @@ function haslowerupper(bs, x)
     return haslower, hasupper
 end
 
+"""
+    has_interfaces(bmps)
+
+Return `true` when a nested boundary map contains at least one
+`InterfaceBoundary`.
+"""
 function has_interfaces(bmps)
     return any(b -> b isa InterfaceBoundary, reduce(vcat, reduce(vcat, collect.(values.(collect(values(bmps)))))))
 end
 
 # indexes for Iedge depending on boundary type
+"""
+    isupper(b)
+
+Return `true` when boundary object `b` corresponds to the upper side of a
+domain or interface.
+"""
 isupper(::LowerBoundary) = false
 isupper(::UpperBoundary) = true
 function isupper(::InterfaceBoundary{IsUpper_u}) where {IsUpper_u}
@@ -228,6 +268,11 @@ function isupper(::InterfaceBoundary{IsUpper_u}) where {IsUpper_u}
 end
 isupper(::HigherOrderInterfaceBoundary) = true
 
+"""
+    flatten_vardict(bmps)
+
+Flatten a nested boundary map into a vector of boundary objects.
+"""
 flatten_vardict(bmps) = reduce(vcat, reduce(vcat, collect.(values.(collect(values(bmps))))))
 
 function _boundary_rules(v, orders, u, x, val)

@@ -2,6 +2,54 @@
 
 This page provides a comprehensive reference for all exported types and functions in PDEBase.jl.
 
+```@docs
+PDEBase.AbstractEquationSystemDiscretization
+PDEBase.AbstractOptimizationSystemDiscretization
+PDEBase.AbstractDiscreteSpace
+PDEBase.AbstractCartesianDiscreteSpace
+PDEBase.AbstractVarEqMapping
+PDEBase.AbstractDifferentialDiscretizer
+PDEBase.AbstractDiscretizationState
+PDEBase.AbstractBoundary
+PDEBase.AbstractTruncatingBoundary
+PDEBase.AbstractInterfaceBoundary
+PDEBase.LowerBoundary
+PDEBase.UpperBoundary
+PDEBase.InterfaceBoundary
+PDEBase.HigherOrderInterfaceBoundary
+PDEBase.VariableMap
+PDEBase.PeriodicMap
+PDEBase.count_differentials
+PDEBase.differential_order
+PDEBase.has_derivatives
+PDEBase.find_derivative
+PDEBase.d_orders
+PDEBase.subs_alleqs!
+PDEBase.get_depvars
+PDEBase.getvars
+PDEBase.pde_substitute
+PDEBase.get_all_depvars
+PDEBase.split_terms
+PDEBase.split_additive_terms
+PDEBase.subsmatch
+PDEBase.ex2term
+PDEBase.safe_unwrap
+PDEBase.recursive_unwrap
+PDEBase.flatten_vardict
+PDEBase.filter_interfaces
+PDEBase.isperiodic
+PDEBase.isinterface
+PDEBase.haslowerupper
+PDEBase.has_interfaces
+PDEBase.isupper
+PDEBase.ivs
+PDEBase.all_ivs
+PDEBase.depvar
+PDEBase.depvars
+PDEBase.indvars
+PDEBase.x2i
+```
+
 ## Abstract Types
 
 ### Discretization Types

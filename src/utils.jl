@@ -25,6 +25,12 @@ function remove(args, t)
 end
 remove(v::AbstractVector, a::Number) = filter(x -> !isequal(x, a), v)
 
+"""
+    d_orders(x, pdeeqs)
+
+Return derivative orders with respect to independent variable `x` that appear
+in the PDE equations or boundary conditions `pdeeqs`.
+"""
 function d_orders(x, pdeeqs)
     # Handle both Equation (has lhs, rhs) and Pair (has first, second) types
     _get_rhs(pde) = pde isa Pair ? pde.second : pde.rhs

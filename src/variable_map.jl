@@ -78,20 +78,54 @@ function update_varmap!(v, newdv)
     return push!(v.depvar_ops, operation(safe_unwrap(newdv)))
 end
 
+"""
+    ivs(u, v::VariableMap)
+
+Return the independent variables of dependent variable `u`, excluding the time
+variable stored in `v`.
+"""
 ivs(u, v::VariableMap) = remove(v.args[operation(u)], v.time)
 
 Base.ndims(u, v::VariableMap) = length(ivs(u, v))
 
+"""
+    all_ivs(v::VariableMap)
+    all_ivs(u, v::VariableMap)
+
+Return all independent variables tracked by `v`, including time when present.
+With a dependent variable `u`, return the full argument list for `u`.
+"""
 all_ivs(v::VariableMap) = v.time === nothing ? v.x̄ : v.x̄ ∪ [v.time]
 
 all_ivs(u, v::VariableMap) = v.args[operation(u)]
 
+"""
+    depvar(u, v::VariableMap)
+
+Reconstruct dependent variable `u` with the argument ordering stored in `v`.
+"""
 depvar(u, v::VariableMap) = operation(u)(v.args[operation(u)]...)
 
+"""
+    depvars(v::VariableMap)
+
+Return the dependent variables tracked by `v`.
+"""
 depvars(v::VariableMap) = v.ū
 
+"""
+    indvars(v::VariableMap)
+
+Return the spatial independent variables tracked by `v`, excluding time.
+"""
 indvars(v::VariableMap) = v.x̄
 
+"""
+    x2i(v::VariableMap, u, x)
+
+Return the spatial dimension index of independent variable `x` in the arguments
+of dependent variable `u`.
+"""
 x2i(v::VariableMap, u, x) = findfirst(isequal(x), remove(v.args[operation(u)], v.time))
 
 @inline function axiesvals(v::VariableMap, u_, x_, I)
