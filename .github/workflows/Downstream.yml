@@ -25,7 +25,7 @@ jobs:
           - {user: SciML, repo: MethodOfLines.jl, group: Integrals}
           - {user: SciML, repo: MethodOfLines.jl, group: Burgers}
           - {user: SciML, repo: MethodOfLines.jl, group: DAE}
-          - {user: SciML, repo: PDESystemLibrary.jl, group: MOL}
+          - {user: SciML, repo: PDESystemLibrary.jl, group: Core}
           - {user: SciML, repo: NeuralPDE.jl, group: NNPDE1}
           - {user: SciML, repo: NeuralPDE.jl, group: NNPDE2}
     uses: "SciML/.github/.github/workflows/downstream.yml@v1"

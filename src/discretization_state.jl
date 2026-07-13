@@ -7,6 +7,65 @@ function EquationState()
     return EquationState(Equation[], Equation[])
 end
 
+function _split_discrete_ic_key(x)
+    x = unwrap(x)
+    iscall(x) || return x, (), false
+
+    op = operation(x)
+    args = arguments(x)
+    if op === getindex
+        idx = Tuple(unwrap_const(safe_unwrap(i)) for i in args[2:end])
+        return first(args), idx, true
+    elseif op isa Symbolics.Differential && length(args) == 1
+        arr, idx, isarr = _split_discrete_ic_key(first(args))
+        return isarr ? (op(arr), idx, true) : (x, (), false)
+    end
+    return x, (), false
+end
+
+_discrete_ic_value(v) = unwrap_const(safe_unwrap(v))
+
+function _time_derivative_order(x, t)
+    x = unwrap(x)
+    iscall(x) || return x, 0
+    op = operation(x)
+    if op isa Symbolics.Differential && isequal(op.x, t)
+        return first(arguments(x)), op.order
+    end
+    return x, 0
+end
+
+function _discrete_initialization(eqs, t, u0)
+    isempty(u0) && return Equation[], Dict{Any, Any}()
+    t = unwrap(t)
+    differential_orders = Dict{Any, Real}()
+    for eq in eqs, derivative in Symbolics.get_differential_vars(eq)
+        var, order = _time_derivative_order(derivative, t)
+        order > 0 || continue
+        differential_orders[var] = max(order, get(differential_orders, var, 0))
+    end
+
+    init_eqs = Equation[]
+    guesses = Dict{Any, Any}()
+    for (key, value) in u0
+        key = unwrap(key)
+        value = _discrete_ic_value(value)
+        var, order = _time_derivative_order(key, t)
+        if order < get(differential_orders, var, 0)
+            push!(init_eqs, key ~ value)
+        end
+
+        array, index, isindexed = _split_discrete_ic_key(key)
+        if isindexed
+            values = get!(() -> fill!(Array{Any}(undef, size(array)), NaN), guesses, array)
+            values[index...] = value
+        else
+            guesses[key] = value
+        end
+    end
+    return init_eqs, guesses
+end
+
 function generate_system(
         disc_state::EquationState, s, u0, tspan, metadata,
         disc::AbstractEquationSystemDiscretization;
@@ -19,17 +78,19 @@ function generate_system(
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
-    # u0 is now stored in metadata (passed during metadata construction)
-    # MTK v11's AtomicArrayDict doesn't allow indexed array symbolics as keys in initial_conditions
-    # Only pass non-indexed initial conditions to System
-    sys_defaults = Dict(pdesys.initial_conditions)
+    sys_defaults = Dict{Any, Any}(pdesys.initial_conditions)
+    init_eqs = Equation[]
+    guesses = Dict{Any, Any}()
+    if t !== nothing && !isempty(u0)
+        init_eqs, guesses = _discrete_initialization(alleqs, t, u0)
+    end
 
     ps_raw = get_ps(pdesys)
     ps_raw = ps_raw === nothing || ps_raw === SciMLBase.NullParameters() ? Num[] : ps_raw
     # get_ps may return Pairs (e.g. [v => 0.5]); extract symbols and merge values into defaults
     if !isempty(ps_raw) && first(ps_raw) isa Pair
         ps = Num[first(p) for p in ps_raw]
-        merge!(sys_defaults, Dict(first(p) => last(p) for p in ps_raw))
+        merge!(sys_defaults, Dict{Any, Any}(first(p) => last(p) for p in ps_raw))
     else
         ps = ps_raw
     end
@@ -48,7 +109,11 @@ function generate_system(
             # * In the end we have reduced the problem to a system of equations in terms of Dt that can be solved by an ODE solver.
 
             sys = System(
-                alleqs, t, alldepvarsdisc, ps; initial_conditions = sys_defaults, name = name,
+                alleqs, t, alldepvarsdisc, ps;
+                initial_conditions = sys_defaults,
+                initialization_eqs = init_eqs,
+                guesses = guesses,
+                name = name,
                 metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, tspan
@@ -86,56 +151,11 @@ function SciMLBase.discretize(
         else
             mol_metadata = getmetadata(simpsys, ProblemTypeCtx, nothing)
             add_metadata!(mol_metadata, sys)
-            # Get u0 from metadata (stored there for MTK v11 compatibility)
-            u0 = hasproperty(mol_metadata, :u0) ? mol_metadata.u0 : []
-            # Get parameter values from the original pdesys initial_conditions
-            # MTK v11 needs parameter values passed explicitly when creating ODEProblem
-            pdesys_ic = mol_metadata.pdesys.initial_conditions
-            ps_raw = get_ps(mol_metadata.pdesys)
-            if ps_raw !== nothing && ps_raw !== SciMLBase.NullParameters() && !isempty(ps_raw)
-                # get_ps may return Pairs (e.g. [v => 0.5]); extract parameter values
-                param_vals = Dict{Any, Any}()
-                if first(ps_raw) isa Pair
-                    for p in ps_raw
-                        param_vals[first(p)] = last(p)
-                    end
-                else
-                    # Fall back to looking up parameters in initial_conditions
-                    ps_unwrapped = [safe_unwrap(p) for p in ps_raw]
-                    for (k, v) in pairs(pdesys_ic)
-                        k_unwrapped = safe_unwrap(k)
-                        if any(p -> isequal(k_unwrapped, safe_unwrap(p)), ps_unwrapped)
-                            v_numeric = try
-                                Symbolics.value(v)
-                            catch
-                                safe_unwrap(v)
-                            end
-                            param_vals[k] = v_numeric
-                        end
-                    end
-                end
-                if !isempty(param_vals)
-                    # MTK v11 API: merge u0 and params into a single Dict
-                    op = merge(Dict(u0), param_vals)
-                    prob = ODEProblem(
-                        simpsys, op, tspan; build_initializeprob = false,
-                        discretization.kwargs...,
-                        kwargs...
-                    )
-                else
-                    prob = ODEProblem(
-                        simpsys, u0, tspan; build_initializeprob = false,
-                        discretization.kwargs...,
-                        kwargs...
-                    )
-                end
-            else
-                prob = ODEProblem(
-                    simpsys, u0, tspan; build_initializeprob = false,
-                    discretization.kwargs...,
-                    kwargs...
-                )
-            end
+            prob = ODEProblem(
+                simpsys, nothing, tspan;
+                discretization.kwargs...,
+                kwargs...
+            )
             if analytic === nothing
                 return prob
             else
