@@ -16,7 +16,7 @@ function _split_discrete_ic_key(x)
     if op === getindex
         idx = Tuple(unwrap_const(safe_unwrap(i)) for i in args[2:end])
         return first(args), idx, true
-    elseif op isa Differential && length(args) == 1
+    elseif op isa Symbolics.Differential && length(args) == 1
         arr, idx, isarr = _split_discrete_ic_key(first(args))
         return isarr ? (op(arr), idx, true) : (x, (), false)
     end
@@ -25,99 +25,44 @@ end
 
 _discrete_ic_value(v) = unwrap_const(safe_unwrap(v))
 
-"""
-    discrete_u0_to_atomic_map(u0)
-
-Convert indexed discrete IC pairs `(u(t))[i] => val` into a map compatible with
-ModelingToolkit v11 `AtomicArrayDict` (whole-array keys only, e.g. `u(t) => values`).
-Used for `guesses` / non-indexed maps. Empty input returns an empty `Dict`.
-"""
-function discrete_u0_to_atomic_map(u0)
-    isempty(u0) && return Dict{Any, Any}()
-    groups = Dict{Any, Dict{Any, Any}}()
-    scalars = Dict{Any, Any}()
-    for (k, v) in u0
-        k = unwrap(k)
-        arr, idx, isarr = _split_discrete_ic_key(k)
-        if isarr
-            buf = get!(() -> Dict{Any, Any}(), groups, arr)
-            buf[idx] = v
-        else
-            scalars[k] = _discrete_ic_value(v)
-        end
+function _time_derivative_order(x, t)
+    x = unwrap(x)
+    iscall(x) || return x, 0
+    op = operation(x)
+    if op isa Symbolics.Differential && isequal(op.x, t)
+        return first(arguments(x)), op.order
     end
-    out = Dict{Any, Any}()
-    for (arr, idxs) in groups
-        vals = Array{Any}(undef, size(arr))
-        fill!(vals, NaN)
-        for (idx, v) in idxs
-            vals[idx...] = _discrete_ic_value(v)
-        end
-        out[arr] = vals
-    end
-    return merge!(out, scalars)
+    return x, 0
 end
 
-"""
-    variables_with_time_derivative(eqs, t)
-
-Return discrete unknowns that appear under `Differential(t)` in `eqs`. These are
-the differential states whose initial values should be hard initialization
-equations; remaining (algebraic) discrete states should only be guesses.
-"""
-function variables_with_time_derivative(eqs, t)
-    found = Any[]
-    t = unwrap(t)
-    function walk(ex)
-        ex = unwrap(ex)
-        if iscall(ex)
-            op = operation(ex)
-            args = arguments(ex)
-            if op isa Differential && isequal(op.x, t)
-                push!(found, args[1])
-            end
-            foreach(walk, args)
-        end
-        return nothing
-    end
-    for eq in eqs
-        walk(eq.lhs)
-        walk(eq.rhs)
-    end
-    return unique(found)
-end
-
-"""
-    discrete_initialization(eqs, t, u0)
-
-Build MTK initialization data from discrete IC pairs:
-
-- **Hard** `initialization_eqs`: `var ~ val` only for variables that appear under
-  `Differential(t)` (differential states). This matches the continuous IC
-  structure and avoids over-determining algebraic residuals.
-- **Guesses**: all discrete ICs as whole-array maps (algebraic nodes use the
-  projected continuous IC as a starting guess for the init solve).
-
-Returns `(initialization_eqs, guesses)`.
-"""
-function discrete_initialization(eqs, t, u0)
+function _discrete_initialization(eqs, t, u0)
     isempty(u0) && return Equation[], Dict{Any, Any}()
-    u0_dict = Dict{Any, Any}(unwrap(k) => v for (k, v) in u0)
+    t = unwrap(t)
+    differential_orders = Dict{Any, Real}()
+    for eq in eqs, derivative in Symbolics.get_differential_vars(eq)
+        var, order = _time_derivative_order(derivative, t)
+        order > 0 || continue
+        differential_orders[var] = max(order, get(differential_orders, var, 0))
+    end
+
     init_eqs = Equation[]
-    for dv in variables_with_time_derivative(eqs, t)
-        dv_u = unwrap(dv)
-        if haskey(u0_dict, dv_u)
-            push!(init_eqs, dv ~ _discrete_ic_value(u0_dict[dv_u]))
+    guesses = Dict{Any, Any}()
+    for (key, value) in u0
+        key = unwrap(key)
+        value = _discrete_ic_value(value)
+        var, order = _time_derivative_order(key, t)
+        if order < get(differential_orders, var, 0)
+            push!(init_eqs, key ~ value)
+        end
+
+        array, index, isindexed = _split_discrete_ic_key(key)
+        if isindexed
+            values = get!(() -> fill!(Array{Any}(undef, size(array)), NaN), guesses, array)
+            values[index...] = value
         else
-            for (k, v) in u0_dict
-                if isequal(k, dv_u)
-                    push!(init_eqs, dv ~ _discrete_ic_value(v))
-                    break
-                end
-            end
+            guesses[key] = value
         end
     end
-    guesses = discrete_u0_to_atomic_map(u0)
     return init_eqs, guesses
 end
 
@@ -133,14 +78,11 @@ function generate_system(
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
-    # Continuous/non-indexed defaults from the PDESystem (parameters, etc.)
     sys_defaults = Dict{Any, Any}(pdesys.initial_conditions)
-    # Discrete grid ICs: hard init eqs for differential states + guesses for all
-    # (including algebraic). Do not dump indexed keys into AtomicArrayDict ICs.
     init_eqs = Equation[]
     guesses = Dict{Any, Any}()
     if t !== nothing && !isempty(u0)
-        init_eqs, guesses = discrete_initialization(alleqs, t, u0)
+        init_eqs, guesses = _discrete_initialization(alleqs, t, u0)
     end
 
     ps_raw = get_ps(pdesys)
@@ -209,40 +151,8 @@ function SciMLBase.discretize(
         else
             mol_metadata = getmetadata(simpsys, ProblemTypeCtx, nothing)
             add_metadata!(mol_metadata, sys)
-            # Discrete ICs are already on the System as initialization_eqs (differential
-            # states) and guesses (all grid values). Do not re-pass indexed u0 pairs as
-            # the ODEProblem operating point: that forces every grid value as a hard IC
-            # and over-determines algebraic residuals. Only pass parameters here.
-            pdesys_ic = mol_metadata.pdesys.initial_conditions
-            ps_raw = get_ps(mol_metadata.pdesys)
-            param_vals = Dict{Any, Any}()
-            if ps_raw !== nothing && ps_raw !== SciMLBase.NullParameters() && !isempty(ps_raw)
-                # get_ps may return Pairs (e.g. [v => 0.5]); extract parameter values
-                if first(ps_raw) isa Pair
-                    for p in ps_raw
-                        param_vals[first(p)] = last(p)
-                    end
-                else
-                    # Fall back to looking up parameters in initial_conditions
-                    ps_unwrapped = [safe_unwrap(p) for p in ps_raw]
-                    for (k, v) in pairs(pdesys_ic)
-                        k_unwrapped = safe_unwrap(k)
-                        if any(p -> isequal(k_unwrapped, safe_unwrap(p)), ps_unwrapped)
-                            v_numeric = try
-                                Symbolics.value(v)
-                            catch
-                                safe_unwrap(v)
-                            end
-                            param_vals[k] = v_numeric
-                        end
-                    end
-                end
-            end
-            # Enable MTK initialization (DefaultInit -> OverrideInit).
-            # Callers may override build_initializeprob / op via kwargs.
-            op = isempty(param_vals) ? nothing : param_vals
             prob = ODEProblem(
-                simpsys, op, tspan; build_initializeprob = true,
+                simpsys, nothing, tspan;
                 discretization.kwargs...,
                 kwargs...
             )

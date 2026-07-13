@@ -24,7 +24,7 @@ using Test
         v[2] => 5.0,
     ]
 
-    init_eqs, guesses = PDEBase.discrete_initialization(eqs, t, u0)
+    init_eqs, guesses = PDEBase._discrete_initialization(eqs, t, u0)
 
     @test length(init_eqs) == 3
     @test Set(PDEBase.safe_unwrap(eq.lhs) for eq in init_eqs) ==
@@ -43,10 +43,15 @@ using Test
         initialization_eqs = init_eqs, guesses = guesses, name = :discrete_initialization_test
     )
 
-    derivative_guesses = PDEBase.discrete_u0_to_atomic_map(
-        [D(u[1]) => 0.1, D(u[2]) => p, D(u[3]) => 0.3]
+    second_order_eqs = [(D^2)(u[1]) ~ 0]
+    second_order_u0 = [u[1] => 1.0, D(u[1]) => p]
+    second_order_init, derivative_guesses = PDEBase._discrete_initialization(
+        second_order_eqs, t,
+        [second_order_u0; D(u[2]) => 0.2; D(u[3]) => 0.3]
     )
+    @test Set(PDEBase.safe_unwrap(eq.lhs) for eq in second_order_init) ==
+        Set(PDEBase.safe_unwrap(first(pair)) for pair in second_order_u0)
     D_u = PDEBase.safe_unwrap(D(u))
-    @test derivative_guesses[D_u][[1, 3]] == [0.1, 0.3]
-    @test isequal(derivative_guesses[D_u][2], PDEBase.safe_unwrap(p))
+    @test derivative_guesses[D_u][[2, 3]] == [0.2, 0.3]
+    @test isequal(derivative_guesses[D_u][1], PDEBase.safe_unwrap(p))
 end

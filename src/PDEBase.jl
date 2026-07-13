@@ -7,7 +7,7 @@ using ModelingToolkit
 using ModelingToolkit: get_unknowns, ProblemTypeCtx, get_ps, get_bcs, get_dvs,
     get_eqs, get_iv,
     get_domain, get_ivs, get_systems, get_connector_type,
-    get_metadata, get_gui_metadata, Differential
+    get_metadata, get_gui_metadata
 
 using Symbolics, SymbolicUtils
 using Symbolics: unwrap, setname, rename
