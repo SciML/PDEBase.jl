@@ -75,6 +75,23 @@ function _discrete_initialization(eqs, t, u0)
     return init_eqs, guesses
 end
 
+# Normalize an equation to `0 ~ ...` form for NonlinearSystem construction. Array
+# (slice-form) equations cannot equate an array with a scalar zero, so subtract via
+# broadcast and equate with a zero array of matching size.
+# symtype falls back to typeof for non-symbolic values, so this covers literal arrays,
+# symbolic arrays and scalars of either kind.
+_is_array_valued(x) = SymbolicUtils.symtype(safe_unwrap(x)) <: AbstractArray
+
+function _normalize_nonlinear_eq(eq::Equation)
+    if _is_array_valued(eq.lhs) || _is_array_valued(eq.rhs)
+        diff = Broadcast.materialize(
+            Broadcast.broadcasted(-, Symbolics.wrap(eq.rhs), Symbolics.wrap(eq.lhs))
+        )
+        return zeros(size(diff)) ~ diff
+    end
+    return 0 ~ eq.rhs - eq.lhs
+end
+
 function generate_system(
         disc_state::EquationState, s, u0, tspan, metadata,
         disc::AbstractEquationSystemDiscretization;
@@ -108,7 +125,7 @@ function generate_system(
             # At the time of writing, NonlinearProblems require that the system of equations be in this form:
             # 0 ~ ...
             # Thus, before creating a NonlinearSystem we normalize the equations s.t. the lhs is zero.
-            eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
+            eqs = map(_normalize_nonlinear_eq, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
                 metadata = [ProblemTypeCtx => metadata], checks = checks
