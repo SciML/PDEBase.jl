@@ -35,6 +35,13 @@ function _time_derivative_order(x, t)
     return x, 0
 end
 
+# Array (slice-form) equations differentiate whole slices, e.g. D(u[2:n-1]); expand
+# them to their elements so that they can be matched against elementwise IC keys.
+function _expand_differential_var(var)
+    SymbolicUtils.symtype(var) <: AbstractArray || return (var,)
+    return vec(unwrap.(collect(Symbolics.scalarize(Symbolics.wrap(var)))))
+end
+
 function _discrete_initialization(eqs, t, u0)
     isempty(u0) && return Equation[], Dict{Any, Any}()
     t = unwrap(t)
@@ -42,7 +49,9 @@ function _discrete_initialization(eqs, t, u0)
     for eq in eqs, derivative in Symbolics.get_differential_vars(eq)
         var, order = _time_derivative_order(derivative, t)
         order > 0 || continue
-        differential_orders[var] = max(order, get(differential_orders, var, 0))
+        for v in _expand_differential_var(var)
+            differential_orders[v] = max(order, get(differential_orders, v, 0))
+        end
     end
 
     init_eqs = Equation[]
