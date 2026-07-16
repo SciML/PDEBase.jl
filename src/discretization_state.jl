@@ -84,9 +84,7 @@ _is_array_valued(x) = SymbolicUtils.symtype(safe_unwrap(x)) <: AbstractArray
 
 function _normalize_nonlinear_eq(eq::Equation)
     if _is_array_valued(eq.lhs) || _is_array_valued(eq.rhs)
-        diff = Broadcast.materialize(
-            Broadcast.broadcasted(-, Symbolics.wrap(eq.rhs), Symbolics.wrap(eq.lhs))
-        )
+        diff = broadcast(-, Symbolics.wrap(eq.rhs), Symbolics.wrap(eq.lhs))
         return zeros(size(diff)) ~ diff
     end
     return 0 ~ eq.rhs - eq.lhs
