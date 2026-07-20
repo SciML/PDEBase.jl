@@ -35,6 +35,13 @@ function _time_derivative_order(x, t)
     return x, 0
 end
 
+# Array (slice-form) equations differentiate whole slices, e.g. D(u[2:n-1]); expand
+# them to their elements so that they can be matched against elementwise IC keys.
+function _expand_differential_var(var)
+    SymbolicUtils.symtype(var) <: AbstractArray || return (var,)
+    return vec(unwrap.(collect(Symbolics.scalarize(Symbolics.wrap(var)))))
+end
+
 function _discrete_initialization(eqs, t, u0)
     isempty(u0) && return Equation[], Dict{Any, Any}()
     t = unwrap(t)
@@ -42,7 +49,9 @@ function _discrete_initialization(eqs, t, u0)
     for eq in eqs, derivative in Symbolics.get_differential_vars(eq)
         var, order = _time_derivative_order(derivative, t)
         order > 0 || continue
-        differential_orders[var] = max(order, get(differential_orders, var, 0))
+        for v in _expand_differential_var(var)
+            differential_orders[v] = max(order, get(differential_orders, v, 0))
+        end
     end
 
     init_eqs = Equation[]
@@ -64,6 +73,21 @@ function _discrete_initialization(eqs, t, u0)
         end
     end
     return init_eqs, guesses
+end
+
+# Normalize an equation to `0 ~ ...` form for NonlinearSystem construction. Array
+# (slice-form) equations cannot equate an array with a scalar zero, so subtract via
+# broadcast and equate with a zero array of matching size.
+# symtype falls back to typeof for non-symbolic values, so this covers literal arrays,
+# symbolic arrays and scalars of either kind.
+_is_array_valued(x) = SymbolicUtils.symtype(safe_unwrap(x)) <: AbstractArray
+
+function _normalize_nonlinear_eq(eq::Equation)
+    if _is_array_valued(eq.lhs) || _is_array_valued(eq.rhs)
+        diff = broadcast(-, Symbolics.wrap(eq.rhs), Symbolics.wrap(eq.lhs))
+        return zeros(size(diff)) ~ diff
+    end
+    return 0 ~ eq.rhs - eq.lhs
 end
 
 function generate_system(
@@ -99,7 +123,7 @@ function generate_system(
             # At the time of writing, NonlinearProblems require that the system of equations be in this form:
             # 0 ~ ...
             # Thus, before creating a NonlinearSystem we normalize the equations s.t. the lhs is zero.
-            eqs = map(eq -> 0 ~ eq.rhs - eq.lhs, alleqs)
+            eqs = map(_normalize_nonlinear_eq, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
                 metadata = [ProblemTypeCtx => metadata], checks = checks
