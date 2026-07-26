@@ -1,7 +1,9 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 PDEBase = "a7812802-0625-4b9e-961c-d332478797e5"
 
 [compat]
 Documenter = "1"
-PDEBase = "0.1.19"
+ModelingToolkit = "11"
+PDEBase = "0.2"

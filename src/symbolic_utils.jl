@@ -481,7 +481,8 @@ function ex2term(term, v)
     symdvs = filter(u -> all(x -> !(unwrap_const(safe_unwrap(x)) isa Number), arguments(u)), termdvs)
     exdv = last(sort(symdvs, by = u -> length(arguments(u))))
     name = Symbol("⟦" * string(term) * "⟧")
-    return setname(maketerm(typeof(exdv), rename(operation(exdv), name), arguments(exdv), metadata(exdv)), name)
+    newop = Symbolics.variable(name; T = SymbolicUtils.symtype(operation(exdv)))
+    return newop(arguments(exdv)...)
 end
 
 """

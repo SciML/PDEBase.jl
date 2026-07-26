@@ -6,7 +6,11 @@ function cardinalize_eqs!(pdesys)
     return
 end
 
-function SciMLBase.symbolic_discretize(pdesys::PDESystem, discretization::AbstractDiscretization; checks = true)
+function SciMLBase.symbolic_discretize(
+        pdesys::PDESystem,
+        discretization::Union{AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization};
+        checks = true
+    )
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
     cardinalize_eqs!(pdesys)

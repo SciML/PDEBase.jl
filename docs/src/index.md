@@ -34,7 +34,7 @@ PDEBase defines how a `ModelingToolkit.PDESystem` is converted into a discretize
 - Boundary conditions specified at domain boundaries
 - Initial conditions for time-dependent problems
 
-See [PDESystem Interface](@ref) for complete details.
+See [Developer Extension API](@ref developer-extension-api) for complete details.
 
 ### The Discretization Workflow
 
