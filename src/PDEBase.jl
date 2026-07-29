@@ -6,8 +6,8 @@ import PrecompileTools
 import SciMLBase
 import Symbolics
 import SymbolicUtils
-using ModelingToolkitBase: PDESystem, System, get_bcs, get_connector_type, get_domain,
-    get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
+using ModelingToolkitBase: PDESystem, ProblemTypeCtx, System, get_bcs, get_connector_type,
+    get_domain, get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
     get_systems, get_unknowns, mtkcompile
 using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
@@ -73,8 +73,6 @@ Supertype for mutable state accumulated while PDE equations and boundary
 conditions are discretized.
 """
 abstract type AbstractDiscretizationState end
-
-struct PDEBaseMetadataCtx end
 
 include("symbolic_utils.jl")
 include("utils.jl")
