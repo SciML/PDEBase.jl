@@ -175,7 +175,7 @@ end
 
 ## Next Steps
 
-- Read the [PDESystem Interface](@ref) for detailed interface documentation
+- Read the [Developer Extension API](@ref developer-extension-api) for detailed interface documentation
 - Study [VariableMap](@ref variablemap) to understand variable handling
 - Review [Boundary Conditions](@ref boundaries) for BC types
 - See [Discretization Workflow](@ref workflow) for the complete pipeline

@@ -1,37 +1,47 @@
 name = "PDEBase"
 uuid = "a7812802-0625-4b9e-961c-d332478797e5"
-version = "0.1.30"
+version = "0.2.0"
 authors = ["xtalax <alex.lemony@gmail.com>"]
 
 [deps]
 DomainSets = "5b8099bc-c8ec-5219-889f-1d9e522a28bf"
-ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
+IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
+ModelingToolkitBase = "7771a370-6774-4173-bd38-47e70ca0b839"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
+SciMLPublic = "431bcebd-1456-4ced-9d72-93c2757fff0b"
 SymbolicIndexingInterface = "2efcf032-c050-4f8e-a9bb-153293bab1f5"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+TermInterface = "8ea1fca8-c5ef-4a55-8b96-4e9afe9c9a3c"
 
 [compat]
 AllocCheck = "0.2"
 BenchmarkTools = "1"
 DomainSets = "0.7, 0.8"
-ModelingToolkit = "11.26.7"
+IntervalSets = "0.7"
+ModelingToolkitBase = "1.57"
+ModelingToolkit = "11"
 PrecompileTools = "1.2.1"
 SciMLBase = "2.149.0, 3.1"
-SciMLTesting = "2.1"
+SciMLPublic = "1"
+SciMLTesting = "2.4"
+SafeTestsets = "0.0.1, 0.1, 1"
 SymbolicIndexingInterface = "0.3.43"
 SymbolicUtils = "4.31.0"
 Symbolics = "7.24.0"
+TermInterface = "2"
+Test = "1"
 julia = "1.10"
 
 [extras]
 AllocCheck = "9b6a8646-10ed-4001-bbdc-1d2f46dfbb1a"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 SciMLTesting = "09d9d899-5365-40a9-917a-5f67fddea283"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["AllocCheck", "BenchmarkTools", "SafeTestsets", "SciMLTesting", "SymbolicUtils", "Test"]
+test = ["AllocCheck", "BenchmarkTools", "ModelingToolkit", "SafeTestsets", "SciMLTesting", "SymbolicUtils", "Test"]

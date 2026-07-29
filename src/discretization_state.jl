@@ -126,7 +126,7 @@ function generate_system(
             eqs = map(_normalize_nonlinear_eq, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                metadata = [PDEBaseMetadataCtx => metadata], checks = checks
             )
             return sys, nothing
         else
@@ -138,7 +138,7 @@ function generate_system(
                 initialization_eqs = init_eqs,
                 guesses = guesses,
                 name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                metadata = [PDEBaseMetadataCtx => metadata], checks = checks
             )
             return sys, tspan
         end
@@ -164,16 +164,16 @@ function SciMLBase.discretize(
     return try
         simpsys = mtkcompile(sys)
         if tspan === nothing
-            add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
+            add_metadata!(getmetadata(sys, PDEBaseMetadataCtx, nothing), sys)
             # MTK v11 requires symbolic map for initial guess
-            unknowns_list = ModelingToolkit.unknowns(simpsys)
+            unknowns_list = get_unknowns(simpsys)
             u0_guess = Dict(u => 1.0 for u in unknowns_list)
             return prob = NonlinearProblem(
                 simpsys, u0_guess;
                 discretization.kwargs..., kwargs...
             )
         else
-            mol_metadata = getmetadata(simpsys, ProblemTypeCtx, nothing)
+            mol_metadata = getmetadata(simpsys, PDEBaseMetadataCtx, nothing)
             add_metadata!(mol_metadata, sys)
             prob = ODEProblem(
                 simpsys, nothing, tspan;
@@ -206,31 +206,27 @@ function error_analysis(sys::System, e)
     t = get_iv(sys)
     println("The system of equations is:")
     println(eqs)
-    return if e isa ModelingToolkit.ExtraVariablesSystemException
-        rs = [Differential(t)(state) => state for state in unknowns]
-        extraunknowns = [state for state in unknowns]
-        extraeqs = [eq for eq in eqs]
-        numderivs = 0
-        for r in rs
-            for eq in extraeqs
-                if subsmatch(eq.lhs, r) | subsmatch(eq.rhs, r)
-                    extraunknowns = vec(setdiff(extraunknowns, [r.second]))
-                    extraeqs = vec(setdiff(extraeqs, [eq]))
-                    numderivs += 1
-                    break
-                end
+    rs = [Differential(t)(state) => state for state in unknowns]
+    extraunknowns = [state for state in unknowns]
+    extraeqs = [eq for eq in eqs]
+    numderivs = 0
+    for r in rs
+        for eq in extraeqs
+            if subsmatch(eq.lhs, r) | subsmatch(eq.rhs, r)
+                extraunknowns = vec(setdiff(extraunknowns, [r.second]))
+                extraeqs = vec(setdiff(extraeqs, [eq]))
+                numderivs += 1
+                break
             end
         end
-        println()
-        println("There are $(length(unknowns)) variables and $(length(eqs)) equations.\n")
-        println("There are $numderivs time derivatives.\n")
-        println("The variables without time derivatives are:")
-        println(extraunknowns)
-        println()
-        println("The equations without time derivatives are:")
-        println(extraeqs)
-        rethrow(e)
-    else
-        rethrow(e)
     end
+    println()
+    println("There are $(length(unknowns)) variables and $(length(eqs)) equations.\n")
+    println("There are $numderivs time derivatives.\n")
+    println("The variables without time derivatives are:")
+    println(extraunknowns)
+    println()
+    println("The equations without time derivatives are:")
+    println(extraeqs)
+    rethrow(e)
 end

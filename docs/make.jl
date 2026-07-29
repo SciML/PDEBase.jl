@@ -13,8 +13,8 @@ makedocs(
     sitename = "PDEBase.jl",
     authors = "Alex Jones, Chris Rackauckas et al.",
     clean = true,
-    doctest = false,
-    warnonly = [:missing_docs],
+    doctest = true,
+    checkdocs = :exports,
     modules = [PDEBase],
     format = Documenter.HTML(
         analytics = "UA-90474609-3",

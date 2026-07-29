@@ -1,20 +1,22 @@
 module PDEBase
-using SciMLBase
-using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata
-
-using ModelingToolkit
-
-using ModelingToolkit: get_unknowns, ProblemTypeCtx, get_ps, get_bcs, get_dvs,
-    get_eqs, get_iv,
-    get_domain, get_ivs, get_systems, get_connector_type,
-    get_metadata, get_gui_metadata
-
-using Symbolics, SymbolicUtils
-using Symbolics: unwrap, setname, rename
-using SymbolicUtils: operation, arguments, Chain, Prewalk, maketerm, metadata,
-    iscall, getmetadata, unwrap_const, substitute
+import DomainSets
+using IntervalSets: var".."
+import ModelingToolkitBase
+import PrecompileTools
+import SciMLBase
+import Symbolics
+import SymbolicUtils
+using ModelingToolkitBase: PDESystem, System, get_bcs, get_connector_type, get_domain,
+    get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
+    get_systems, get_unknowns, mtkcompile
+using PrecompileTools: @compile_workload, @setup_workload
+using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
+    ODEFunction, ODEProblem
+import SciMLPublic: @public
+using Symbolics: @variables, Differential, Equation, Num, unwrap
+using SymbolicUtils: arguments, getmetadata, iscall, operation, substitute, unwrap_const
 using SymbolicIndexingInterface: is_time_dependent
-using DomainSets
+using TermInterface: maketerm, metadata
 
 """
     AbstractEquationSystemDiscretization <: AbstractDiscretization
@@ -72,6 +74,8 @@ conditions are discretized.
 """
 abstract type AbstractDiscretizationState end
 
+struct PDEBaseMetadataCtx end
+
 include("symbolic_utils.jl")
 include("utils.jl")
 include("variable_map.jl")
@@ -100,5 +104,12 @@ export count_differentials, differential_order, has_derivatives, find_derivative
 export VariableMap
 export ivs, all_ivs, depvar, depvars, indvars, x2i
 export PeriodicMap
+
+# Versioned extension points for PDE discretization packages. These remain
+# qualified so that ordinary applications do not accidentally depend on them.
+@public interface_errors, check_boundarymap, should_transform, transform_pde_system!,
+    construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
+    construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
+    generate_metadata, generate_system, get_discvars, get_eqvar, add_metadata!
 
 end # module PDEBase

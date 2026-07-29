@@ -1,6 +1,13 @@
-# PDESystem Interface
+# [Developer Extension API](@id developer-extension-api)
 
-PDEBase.jl provides a set of interface functions that discretization packages must implement to convert a `ModelingToolkit.PDESystem` into a discretized system (typically an `ODESystem` or `OptimizationSystem`).
+PDEBase.jl provides the versioned interface that discretization packages implement to convert a `ModelingToolkit.PDESystem` into a discretized system (typically an `ODESystem` or `OptimizationSystem`).
+
+!!! warning "Developer API, not ordinary user API"
+
+    These qualified hooks are for PDE discretizer authors. They are documented
+    and versioned so extension packages can depend on them, but applications
+    should use a discretizer such as MethodOfLines.jl rather than call or
+    extend this protocol directly.
 
 ## Key Assumptions about PDESystem
 

@@ -2,7 +2,7 @@ pages = [
     "Home" => "index.md",
     "Getting Started" => "getting_started.md",
     "Interface" => [
-        "PDESystem Interface" => "interface.md",
+        "Developer Extension API" => "interface.md",
         "Discretization Workflow" => "workflow.md",
     ],
     "Types" => [

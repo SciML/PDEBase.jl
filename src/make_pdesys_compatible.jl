@@ -26,20 +26,36 @@ function _replace_ops(term, op_map)
     return term
 end
 
+function _replace_indexed_array_variables(term, replacements)
+    term = safe_unwrap(term)
+    iscall(term) || return term
+
+    op = operation(term)
+    args = arguments(term)
+    if op === getindex
+        array = first(args)
+        if iscall(array)
+            replacement = get(replacements, operation(array), nothing)
+            replacement === nothing || return replacement(arguments(array)...)
+        end
+    end
+
+    new_args = _replace_indexed_array_variables.(args, Ref(replacements))
+    return all(isequal.(args, new_args)) ? term : maketerm(typeof(term), op, new_args, metadata(term))
+end
+
 function chain_flatten_array_variables(dvs)
-    rs = []
+    replacements = Dict()
     for dv in dvs
         dv = safe_unwrap(dv)
         if isequal(operation(dv), getindex)
             name = operation(arguments(dv)[1])
-            args = arguments(arguments(dv)[1])
             idxs = arguments(dv)[2:end]
             fullname = Symbol(string(name) * "_" * string(idxs))
-            newop = (@variables $fullname(..))[1]
-            push!(rs, @rule getindex($(name)(~~a), idxs...) => newop(~a...))
+            replacements[name] = Symbolics.variable(fullname; T = SymbolicUtils.symtype(name))
         end
     end
-    return isempty(rs) ? identity : Prewalk(Chain(rs))
+    return isempty(replacements) ? identity : term -> _replace_indexed_array_variables(term, replacements)
 end
 
 function apply_lhs_rhs(f, eqs)
