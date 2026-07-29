@@ -14,7 +14,9 @@ using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, Nonline
     ODEFunction, ODEProblem
 import SciMLPublic: @public
 using Symbolics: @variables, Differential, Equation, Num, unwrap
-using SymbolicUtils: arguments, getmetadata, iscall, operation, substitute, unwrap_const
+using SymbolicUtils: @rule, arguments, getmetadata, iscall, operation, substitute,
+    unwrap_const
+using SymbolicUtils.Rewriters: Chain, Prewalk
 using SymbolicIndexingInterface: is_time_dependent
 using TermInterface: maketerm, metadata
 
