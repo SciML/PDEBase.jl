@@ -126,7 +126,7 @@ function generate_system(
             eqs = map(_normalize_nonlinear_eq, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [PDEBaseMetadataCtx => metadata], checks = checks
+                metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, nothing
         else
@@ -138,7 +138,7 @@ function generate_system(
                 initialization_eqs = init_eqs,
                 guesses = guesses,
                 name = name,
-                metadata = [PDEBaseMetadataCtx => metadata], checks = checks
+                metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, tspan
         end
@@ -164,7 +164,7 @@ function SciMLBase.discretize(
     return try
         simpsys = mtkcompile(sys)
         if tspan === nothing
-            add_metadata!(getmetadata(sys, PDEBaseMetadataCtx, nothing), sys)
+            add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
             # MTK v11 requires symbolic map for initial guess
             unknowns_list = get_unknowns(simpsys)
             u0_guess = Dict(u => 1.0 for u in unknowns_list)
@@ -173,7 +173,7 @@ function SciMLBase.discretize(
                 discretization.kwargs..., kwargs...
             )
         else
-            mol_metadata = getmetadata(simpsys, PDEBaseMetadataCtx, nothing)
+            mol_metadata = getmetadata(simpsys, ProblemTypeCtx, nothing)
             add_metadata!(mol_metadata, sys)
             prob = ODEProblem(
                 simpsys, nothing, tspan;
