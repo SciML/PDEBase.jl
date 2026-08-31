@@ -104,6 +104,18 @@ end
     )
     @test PREFLIGHT_SYSTEM[] === nothing
 
+    differentiated_boundary_input = PDESystem(
+        [Dt(state(t, x)) ~ 0],
+        [state(0, x) ~ 0, state(t, 0) ~ Dt(forcing(t, 0))],
+        domains,
+        [t, x],
+        [state(t, x), forcing(t, x)];
+        name = :invalid_boundary_input_derivative
+    )
+    @test_throws "cannot be differentiated" SciMLBase.symbolic_discretize(
+        differentiated_boundary_input, PreflightDiscretization(t)
+    )
+
     timeless_input = PDESystem(
         [Dt(state(t, x)) ~ forcing(x)],
         [state(0, x) ~ 0],
