@@ -16,19 +16,22 @@ API for discretizer authors, not an application-level solver API.
 
 The generic pipeline calls the hooks in this order:
 
-1. `VariableMap(pdesys, discretization)` normalizes symbolic variables and
+1. `interface_errors(pdesys, discretization)` validates the original system
+   before any normalization can rebuild symbolic fields or discard metadata.
+2. `VariableMap(pdesys, discretization)` normalizes symbolic variables and
    domains.
-2. `interface_errors` rejects unsupported systems before work is allocated.
-3. `parse_bcs` creates the boundary map, then `check_boundarymap` validates it.
-4. `should_transform` optionally enables `transform_pde_system!`.
-5. `construct_disc_state`, `construct_discrete_space`, and
+3. `interface_errors(pdesys, v, discretization)` performs checks that require
+   the normalized variable map.
+4. `parse_bcs` creates the boundary map, then `check_boundarymap` validates it.
+5. `should_transform` optionally enables `transform_pde_system!`.
+6. `construct_disc_state`, `construct_discrete_space`, and
    `construct_var_equation_mapping` create the discretizer state.
-6. `construct_differential_discretizer` precomputes derivative data.
-7. For each PDE, `get_eqvar` selects its discrete variable and
+7. `construct_differential_discretizer` precomputes derivative data.
+8. For each PDE, `get_eqvar` selects its discrete variable and
    `discretize_equation!` updates the state in place.
-8. `generate_ic_defaults` creates discrete initial values.
-9. `generate_metadata` stores data needed by the generated problem and solution.
-10. `generate_system` constructs the final symbolic system.
+9. `generate_ic_defaults` creates discrete initial values.
+10. `generate_metadata` stores data needed by the generated problem and solution.
+11. `generate_system` constructs the final symbolic system.
 
 The default methods are intentionally conservative no-ops. A production
 discretizer must override the hooks that construct its space, map, derivative
@@ -53,6 +56,28 @@ The `PDESystem` supplied to the protocol is expected to satisfy these rules:
 `VariableMap` excludes time from `indvars(v)` but retains it in `all_ivs(v)` and
 in each dependent variable's argument signature. A discretizer should use the
 accessors rather than infer dimension order from a field layout.
+
+## Field Roles
+
+Equation-system discretizations preserve scalar PDE fields marked with
+`input = true` or `output = true`. Role fields must be real-valued and depend on
+the discretization's continuous time variable. Inputs cannot be differentiated
+with respect to time. A downstream discretizer may impose additional
+strategy-specific restrictions in the two-argument `interface_errors` hook.
+
+A discrete role cell is active when it occurs in a generated interior or
+boundary equation. Active roles follow dependent-variable declaration order
+and then `vec` order within each discrete field. Input metadata takes precedence
+over output metadata. Inactive input cells are omitted from the generated
+system; inactive output cells remain ordinary unknowns but are not tagged as
+outputs.
+
+An active input remains an unknown in the unscheduled `System`. PDEBase passes
+the role explicitly to `mtkcompile`, which promotes the input to a parameter.
+Available time-zero input profiles become parameter defaults; they do not
+represent continuously evaluated functions. Symbolic discretization permits a
+missing input profile, but the default numerical `discretize` path requires a
+value for every active input cell.
 
 ## Abstract Types
 
