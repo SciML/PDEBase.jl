@@ -8,7 +8,7 @@ import Symbolics
 import SymbolicUtils
 using ModelingToolkitBase: PDESystem, ProblemTypeCtx, System, get_bcs, get_connector_type,
     get_domain, get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
-    get_systems, get_unknowns, mtkcompile
+    get_systems, get_unknowns, inputs, mtkcompile, outputs
 using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
     ODEFunction, ODEProblem

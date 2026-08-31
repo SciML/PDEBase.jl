@@ -6,11 +6,83 @@ function cardinalize_eqs!(pdesys)
     return
 end
 
+function _role_expressions(pdesys)
+    return (get_eqs(pdesys), get_bcs(pdesys))
+end
+
+_field_operation(field) = iscall(field) ? operation(field) : field
+
+function _contains_time_derivative(expr, field_op, t, under_time_derivative = false)
+    if expr isa Equation
+        return _contains_time_derivative(expr.lhs, field_op, t, under_time_derivative) ||
+            _contains_time_derivative(expr.rhs, field_op, t, under_time_derivative)
+    elseif expr isa Pair
+        return _contains_time_derivative(expr.first, field_op, t, under_time_derivative) ||
+            _contains_time_derivative(expr.second, field_op, t, under_time_derivative)
+    elseif expr isa PreSplitComplexBC
+        return _contains_time_derivative(
+            expr.real_eq, field_op, t, under_time_derivative
+        ) || _contains_time_derivative(expr.imag_eq, field_op, t, under_time_derivative)
+    elseif expr isa AbstractArray
+        return any(
+            x -> _contains_time_derivative(x, field_op, t, under_time_derivative), expr
+        )
+    end
+
+    expr = safe_unwrap(expr)
+    iscall(expr) || return false
+    op = operation(expr)
+    under_time_derivative |= op isa Differential && isequal(op.x, t)
+    under_time_derivative && isequal(op, field_op) && return true
+    return any(
+        x -> _contains_time_derivative(x, field_op, t, under_time_derivative),
+        arguments(expr)
+    )
+end
+
+_validate_field_roles(pdesys, discretization::AbstractDiscretization) = nothing
+
+function _validate_field_roles(pdesys, discretization::AbstractEquationSystemDiscretization)
+    input_fields = inputs(pdesys)
+    output_fields = outputs(pdesys)
+    isempty(input_fields) && isempty(output_fields) && return nothing
+
+    t = safe_unwrap(get_time(discretization))
+    t === nothing && throw(
+        ArgumentError("PDE field roles require a time-dependent discretization")
+    )
+    expressions = _role_expressions(pdesys)
+
+    for field in Iterators.flatten((input_fields, output_fields))
+        field = safe_unwrap(field)
+        iscall(field) || throw(
+            ArgumentError("PDE field role $field must be declared with its independent variables")
+        )
+        SymbolicUtils.symtype(field) <: Real || throw(
+            ArgumentError("PDE field role $field must be real and scalar-valued")
+        )
+        any(isequal(t), arguments(field)) || throw(
+            ArgumentError("PDE field role $field must depend on time $t")
+        )
+    end
+
+    for field in input_fields
+        field = safe_unwrap(field)
+        field_op = _field_operation(field)
+        any(expr -> _contains_time_derivative(expr, field_op, t), expressions) && throw(
+            ArgumentError("PDE input field $field cannot be differentiated with respect to time $t")
+        )
+    end
+    return nothing
+end
+
 function SciMLBase.symbolic_discretize(
         pdesys::PDESystem,
         discretization::Union{AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization};
         checks = true
     )
+    _validate_field_roles(pdesys, discretization)
+    interface_errors(pdesys, discretization)
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
     cardinalize_eqs!(pdesys)
