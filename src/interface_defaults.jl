@@ -3,6 +3,22 @@
 ############################################################################################
 
 """
+    interface_errors(sys::PDESystem, disc::AbstractDiscretization)
+
+Check whether `disc` supports the original, unmodified `PDESystem`.
+
+This preflight runs before PDEBase transforms the system or constructs a
+[`VariableMap`](@ref). Discretization packages should extend it when their
+support decision depends on field metadata or another property that may not
+survive normalization. Return `nothing` when the system is supported; otherwise
+throw an informative exception.
+
+The three-argument [`interface_errors`](@ref) method remains available for
+checks that require a `VariableMap`.
+"""
+interface_errors(sys::PDESystem, disc::AbstractDiscretization) = nothing
+
+"""
     interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization)
 
 Check whether `disc` supports the structure of `sys` represented by `v`.

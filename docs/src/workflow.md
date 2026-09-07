@@ -6,15 +6,28 @@ This page describes the complete workflow of `symbolic_discretize`, the main ent
 
 The `symbolic_discretize` function orchestrates the entire discretization process through several distinct phases:
 
-1. **Preprocessing** - Handle complex numbers and array variables
-2. **Parsing** - Extract and organize variable information
-3. **Validation** - Check system compatibility with the discretization
-4. **Transformation** (optional) - Modify the system for compatibility
-5. **Discretization Setup** - Build discrete space and operators
-6. **Equation Processing** - Convert PDEs to discrete equations
-7. **Finalization** - Generate the output system
+1. **Preflight** - Validate the original system and its field metadata
+2. **Preprocessing** - Handle complex numbers and array variables
+3. **Parsing** - Extract and organize variable information
+4. **Validation** - Check normalized system compatibility
+5. **Transformation** (optional) - Modify the system for compatibility
+6. **Discretization Setup** - Build discrete space and operators
+7. **Equation Processing** - Convert PDEs to discrete equations
+8. **Finalization** - Generate the output system
 
 ## Detailed Workflow
+
+### Phase 0: Preflight
+
+```julia
+interface_errors(pdesys, discretization)
+```
+
+PDEBase first validates the generic contract for input and output fields, then
+calls the discretizer's two-argument preflight hook. Both see the original
+`PDESystem`, before transformations can rebuild field operations or lose
+metadata. Checks that require a `VariableMap` remain in the later
+three-argument hook.
 
 ### Phase 1: Preprocessing
 

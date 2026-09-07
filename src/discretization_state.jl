@@ -75,6 +75,68 @@ function _discrete_initialization(eqs, t, u0)
     return init_eqs, guesses
 end
 
+_role_cells(cells::AbstractArray) = vec(cells)
+_role_cells(cell) = (cell,)
+
+function _field_discvars(discvars, field)
+    field_op = _field_operation(safe_unwrap(field))
+    matches = filter(keys(discvars)) do key
+        isequal(_field_operation(safe_unwrap(key)), field_op)
+    end
+    isempty(matches) && return ()
+    length(matches) == 1 || throw(
+        ArgumentError("PDE field role $field has multiple discrete variable mappings")
+    )
+    return _role_cells(discvars[only(matches)])
+end
+
+function _active_equation_cells(eqs, t)
+    active = Set{Any}()
+    for eq in eqs
+        scalarized = Symbolics.scalarize(eq)
+        scalar_eqs = scalarized isa AbstractArray ? vec(scalarized) : (scalarized,)
+        for scalar_eq in scalar_eqs, var in Symbolics.get_variables(scalar_eq)
+            var, _ = _time_derivative_order(var, t)
+            for cell in _expand_differential_var(var)
+                push!(active, safe_unwrap(cell))
+            end
+        end
+    end
+    return active
+end
+
+function _discrete_field_roles(pdesys, discvars, alleqs, t)
+    input_cells = mapreduce(vcat, inputs(pdesys); init = Any[]) do field
+        collect(safe_unwrap.(_field_discvars(discvars, field)))
+    end
+    output_cells = mapreduce(vcat, outputs(pdesys); init = Any[]) do field
+        collect(safe_unwrap.(_field_discvars(discvars, field)))
+    end
+    active_cells = _active_equation_cells(alleqs, safe_unwrap(t))
+    active_inputs = filter(in(active_cells), input_cells)
+    active_outputs = filter(in(active_cells), output_cells)
+    return (; input_cells, output_cells, active_inputs, active_outputs)
+end
+
+function _partition_role_defaults(u0, roles, t)
+    all_inputs = Set(roles.input_cells)
+    active_inputs = Set(roles.active_inputs)
+    state_defaults = Pair{Any, Any}[]
+    input_defaults = Dict{Any, Any}()
+
+    for (key, value) in u0
+        original_key = safe_unwrap(key)
+        base_key, _ = _time_derivative_order(original_key, safe_unwrap(t))
+        if base_key in all_inputs
+            base_key in active_inputs &&
+                (input_defaults[base_key] = _discrete_ic_value(value))
+        else
+            push!(state_defaults, original_key => value)
+        end
+    end
+    return state_defaults, input_defaults
+end
+
 # Normalize an equation to `0 ~ ...` form for NonlinearSystem construction. Array
 # (slice-form) equations cannot equate an array with a scalar zero, so subtract via
 # broadcast and equate with a zero array of matching size.
@@ -103,6 +165,21 @@ function generate_system(
     alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 
     sys_defaults = Dict{Any, Any}(pdesys.initial_conditions)
+    input_cells = Any[]
+    output_cells = Any[]
+    has_roles = !isempty(inputs(pdesys)) || !isempty(outputs(pdesys))
+    if has_roles
+        roles = _discrete_field_roles(pdesys, discvars, alleqs, t)
+        input_cells = roles.active_inputs
+        output_cells = roles.active_outputs
+        inactive_input_cells = setdiff(Set(roles.input_cells), Set(input_cells))
+        filter!(!in(inactive_input_cells), alldepvarsdisc)
+        u0, input_defaults = _partition_role_defaults(u0, roles, t)
+        merge!(sys_defaults, input_defaults)
+    end
+    role_kwargs = has_roles ?
+        (; inputs = input_cells, outputs = output_cells, discover_from_metadata = false) : (;)
+
     init_eqs = Equation[]
     guesses = Dict{Any, Any}()
     if t !== nothing && !isempty(u0)
@@ -126,7 +203,7 @@ function generate_system(
             eqs = map(_normalize_nonlinear_eq, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                metadata = [ProblemTypeCtx => metadata], checks = checks, role_kwargs...
             )
             return sys, nothing
         else
@@ -138,7 +215,7 @@ function generate_system(
                 initialization_eqs = init_eqs,
                 guesses = guesses,
                 name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                metadata = [ProblemTypeCtx => metadata], checks = checks, role_kwargs...
             )
             return sys, tspan
         end
@@ -155,14 +232,29 @@ function generate_system(
     end
 end
 
+function _require_input_defaults(sys)
+    defaults = initial_conditions(sys)
+    missing_inputs = filter(inputs(sys)) do input
+        !haskey(defaults, input) || defaults[input] === nothing || ismissing(defaults[input])
+    end
+    isempty(missing_inputs) && return nothing
+    throw(
+        ArgumentError(
+            "Missing values for active PDE input cells: $(join(string.(missing_inputs), ", "))"
+        )
+    )
+end
+
 function SciMLBase.discretize(
         pdesys::PDESystem,
         discretization::AbstractEquationSystemDiscretization;
         analytic = nothing, checks = true, kwargs...
     )
     sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; checks = checks)
+    _require_input_defaults(sys)
     return try
-        simpsys = mtkcompile(sys)
+        simpsys = isempty(inputs(sys)) && isempty(outputs(sys)) ? mtkcompile(sys) :
+            mtkcompile(sys; inputs = inputs(sys), outputs = outputs(sys))
         if tspan === nothing
             add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
             # MTK v11 requires symbolic map for initial guess

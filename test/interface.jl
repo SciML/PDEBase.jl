@@ -4,6 +4,17 @@ using ModelingToolkit
 using Test
 
 struct PlainDiscretization <: SciMLBase.AbstractDiscretization end
+struct PreflightDiscretization <: PDEBase.AbstractEquationSystemDiscretization
+    time::Any
+end
+const PREFLIGHT_SYSTEM = Ref{Any}(nothing)
+
+PDEBase.get_time(disc::PreflightDiscretization) = disc.time
+function PDEBase.interface_errors(sys::PDESystem, ::PreflightDiscretization)
+    PREFLIGHT_SYSTEM[] = sys
+    throw(ArgumentError("preflight sentinel"))
+end
+
 struct TestSpace <: PDEBase.AbstractDiscreteSpace end
 struct TestMapping <: PDEBase.AbstractVarEqMapping end
 struct TestDerivativeData <: PDEBase.AbstractDifferentialDiscretizer end
@@ -37,6 +48,7 @@ end
     metadata = TestMetadata(Ref{Any}(nothing))
 
     @test PDEBase.interface_errors(pdesys, v, plain) === nothing
+    @test PDEBase.interface_errors(pdesys, plain) === nothing
     @test PDEBase.check_boundarymap(Dict(), v, plain) === nothing
     @test PDEBase.should_transform(pdesys, plain, Dict()) === false
     @test PDEBase.transform_pde_system!(v, Dict(), pdesys, plain) === nothing
@@ -55,6 +67,79 @@ end
     @test PDEBase.get_eqvar(mapping, eq) === nothing
     @test PDEBase.add_metadata!(metadata, :symbolic_system) === :symbolic_system
     @test metadata.metadata[] === :symbolic_system
+end
+
+@testset "Original-system preflight" begin
+    @parameters t x
+    @variables state(..)
+    @variables forcing(..) [input = true]
+    Dt = Differential(t)
+    domains = [t ∈ (0, 1), x ∈ (0, 1)]
+    pdesys = PDESystem(
+        [Dt(state(t, x)) ~ forcing(t, x)],
+        [state(0, x) ~ 0, forcing(0, x) ~ 1],
+        domains,
+        [t, x],
+        [state(t, x), forcing(t, x)];
+        name = :preflight_test
+    )
+
+    PREFLIGHT_SYSTEM[] = nothing
+    @test_throws "preflight sentinel" SciMLBase.symbolic_discretize(
+        pdesys, PreflightDiscretization(t)
+    )
+    @test PREFLIGHT_SYSTEM[] === pdesys
+
+    differentiated_input = PDESystem(
+        [Dt(state(t, x)) ~ Dt(forcing(t, x))],
+        [state(0, x) ~ 0],
+        domains,
+        [t, x],
+        [state(t, x), forcing(t, x)];
+        name = :invalid_input_derivative
+    )
+    PREFLIGHT_SYSTEM[] = nothing
+    @test_throws "cannot be differentiated" SciMLBase.symbolic_discretize(
+        differentiated_input, PreflightDiscretization(t)
+    )
+    @test PREFLIGHT_SYSTEM[] === nothing
+
+    differentiated_boundary_input = PDESystem(
+        [Dt(state(t, x)) ~ 0],
+        [state(0, x) ~ 0, state(t, 0) ~ Dt(forcing(t, 0))],
+        domains,
+        [t, x],
+        [state(t, x), forcing(t, x)];
+        name = :invalid_boundary_input_derivative
+    )
+    @test_throws "cannot be differentiated" SciMLBase.symbolic_discretize(
+        differentiated_boundary_input, PreflightDiscretization(t)
+    )
+
+    timeless_input = PDESystem(
+        [Dt(state(t, x)) ~ forcing(x)],
+        [state(0, x) ~ 0],
+        domains,
+        [t, x],
+        [state(t, x), forcing(x)];
+        name = :timeless_input
+    )
+    @test_throws "must depend on time" SciMLBase.symbolic_discretize(
+        timeless_input, PreflightDiscretization(t)
+    )
+
+    @variables array_input(..)[1:2] [input = true]
+    array_input_system = PDESystem(
+        [Dt(state(t, x)) ~ sum(array_input(t, x))],
+        [state(0, x) ~ 0],
+        domains,
+        [t, x],
+        [state(t, x), array_input(t, x)];
+        name = :array_input
+    )
+    @test_throws "real and scalar-valued" SciMLBase.symbolic_discretize(
+        array_input_system, PreflightDiscretization(t)
+    )
 end
 
 struct MockDiscretization <: PDEBase.AbstractEquationSystemDiscretization
