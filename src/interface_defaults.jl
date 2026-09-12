@@ -165,6 +165,29 @@ PDEBase.construct_discrete_space(v, ::MyDiscretization) = MySpace(collect(0:0.1:
 construct_discrete_space(v::VariableMap, disc::AbstractDiscretization) = nothing
 
 """
+    construct_discrete_space(v::VariableMap, pdesys::PDESystem, disc::AbstractOptimizationSystemDiscretization)
+
+Create the space on which an optimization-system discretization evaluates its residuals.
+Unlike the grid of an equation-system discretization it may depend on the boundary
+conditions of `pdesys` (for example to keep interior collocation points off the
+boundaries), so the system is passed along with the variable map. The default forwards to
+`construct_discrete_space(v, disc)`.
+
+# Arguments
+- `v::VariableMap`: The variable map constructed from `pdesys`.
+- `pdesys::PDESystem`: The normalized PDE system being discretized.
+- `disc::AbstractOptimizationSystemDiscretization`: The discretization being applied.
+
+# Returns
+- The discrete space passed as `s` to the remaining hooks.
+"""
+function construct_discrete_space(
+        v::VariableMap, pdesys::PDESystem, disc::AbstractOptimizationSystemDiscretization
+    )
+    return construct_discrete_space(v, disc)
+end
+
+"""
     construct_var_equation_mapping(pdeeqs, bmap, s::AbstractDiscreteSpace, disc::AbstractDiscretization)
 
 Construct the mapping from each PDE to the discrete variable it determines.
@@ -248,6 +271,32 @@ function discretize_equation!(
         eqvar, bcmap, depvars, s::AbstractDiscreteSpace,
         derivweights::AbstractDifferentialDiscretizer, indexmap,
         discretization::AbstractDiscretization
+    )
+    return nothing
+end
+
+"""
+    discretize_equation!(disc_state, eq::Equation, kind::Symbol, s, derivweights, disc::AbstractOptimizationSystemDiscretization)
+
+Lower one equation of the `PDESystem` for an optimization-system discretization and
+record the result in `disc_state`. `kind` is `:pde` for the equations and `:bc` for the
+boundary conditions; each is lowered on its own residual domain, so boundary conditions
+are not required to lie on a boundary of the domain.
+
+# Arguments
+- `disc_state`: The mutable state created by `construct_disc_state`.
+- `eq::Equation`: The equation, cardinalized to `lhs - rhs ~ 0`.
+- `kind::Symbol`: `:pde` or `:bc`.
+- `s`: The discrete space created by `construct_discrete_space`.
+- `derivweights`: The value returned by `construct_differential_discretizer`.
+- `disc::AbstractOptimizationSystemDiscretization`: The discretization being applied.
+
+# Returns
+- `nothing`: The state is mutated in place.
+"""
+function discretize_equation!(
+        disc_state, eq::Equation, kind::Symbol, s, derivweights,
+        disc::AbstractOptimizationSystemDiscretization
     )
     return nothing
 end

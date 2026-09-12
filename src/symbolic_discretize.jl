@@ -7,9 +7,7 @@ function cardinalize_eqs!(pdesys)
 end
 
 function SciMLBase.symbolic_discretize(
-        pdesys::PDESystem,
-        discretization::Union{AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization};
-        checks = true
+        pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
     )
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
@@ -101,4 +99,62 @@ function SciMLBase.symbolic_discretize(
     metadata = generate_metadata(s, discretization, pdesys, boundarymap, complexmap, u0)
 
     return generate_system(disc_state, s, u0, tspan, metadata, discretization; checks = checks)
+end
+
+"""
+    symbolic_discretize(pdesys::PDESystem, discretization::AbstractOptimizationSystemDiscretization; checks = true)
+
+Driver for discretizations that lower a `PDESystem` into an optimization system, such as
+mesh-free methods that fit trial functions to the equations. Every equation and boundary
+condition is lowered independently on its own residual domain: there is no notion of an
+equation variable, boundary conditions are not required to lie on a boundary of the
+domain, and no boundary map is parsed.
+
+The hook sequence is
+
+1. `handle_complex`, `cardinalize_eqs!` and `make_pdesys_compatible` normalize the system;
+2. `VariableMap` and `interface_errors` analyze the variables;
+3. `construct_disc_state(discretization)` creates the mutable discretization state;
+4. `construct_discrete_space(v, pdesys, discretization)` creates the space the residuals
+   are evaluated on;
+5. `construct_differential_discretizer(pdesys, s, discretization, orders)` chooses how
+   derivatives are lowered;
+6. `discretize_equation!(disc_state, eq, kind, s, derivweights, discretization)` is
+   called for every PDE (`kind = :pde`) and then every boundary condition (`kind = :bc`);
+7. `generate_metadata(s, discretization, pdesys, nothing, complexmap, [])` and
+   `generate_system(disc_state, s, nothing, nothing, metadata, discretization; checks)`
+   assemble the result, which `generate_system` returns as is.
+"""
+function SciMLBase.symbolic_discretize(
+        pdesys::PDESystem, discretization::AbstractOptimizationSystemDiscretization;
+        checks = true
+    )
+    pdesys, complexmap = handle_complex(pdesys)
+    cardinalize_eqs!(pdesys)
+    pdesys, replaced_vars = make_pdesys_compatible(pdesys)
+
+    v = VariableMap(pdesys, discretization, replaced_vars = replaced_vars)
+    interface_errors(pdesys, v, discretization)
+
+    pdeeqs = get_eqs(pdesys)
+    bcs = get_bcs(pdesys)
+
+    disc_state = construct_disc_state(discretization)
+    s = construct_discrete_space(v, pdesys, discretization)
+    orders = Dict(
+        map(all_ivs(v)) do x
+            x => collect(union(d_orders(x, pdeeqs), d_orders(x, bcs)))
+        end
+    )
+    derivweights = construct_differential_discretizer(pdesys, s, discretization, orders)
+
+    for pde in pdeeqs
+        discretize_equation!(disc_state, pde, :pde, s, derivweights, discretization)
+    end
+    for bc in bcs
+        discretize_equation!(disc_state, bc, :bc, s, derivweights, discretization)
+    end
+
+    metadata = generate_metadata(s, discretization, pdesys, nothing, complexmap, [])
+    return generate_system(disc_state, s, nothing, nothing, metadata, discretization; checks)
 end
