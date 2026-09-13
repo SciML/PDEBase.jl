@@ -144,6 +144,43 @@ PDEBase.get_eqvar
 PDEBase.add_metadata!
 ```
 
+## Solution Interface
+
+`solve` on the problem returned by `discretize` gives the user a solution expressed in the
+`PDESystem`'s own variables, and every discretizer exposes it the same way (see the
+[ModelingToolkit `PDESystem` page](https://docs.sciml.ai/ModelingToolkit/stable/API/PDESystem/)
+for the user-facing description):
+
+  - `sol[u(t, x)]`: the dependent variable on the discretization (or evaluation) grid,
+    one axis per argument of `u`;
+  - `sol[x]`: the grid of the independent variable `x`;
+  - `sol(t, x; dv = u(t, x))`: evaluation at arbitrary numbers or ranges, interpolating
+    or evaluating as the method allows; without `dv`, the values of every dependent
+    variable;
+  - `sol.original_sol`: the solution of the discretized problem itself.
+
+The wrappers are SciMLBase's `PDETimeSeriesSolution` (systems with a time variable) and
+`PDENoTimeSolution`. Their fields hold `ivs`, `dvs`, `ivdomain` (the grid of each
+independent variable) and `u` (a map from each dependent variable to its values on that
+grid), plus `original_sol` and the discretizer's metadata in `disc_data`. To provide the
+interface, a discretizer:
+
+ 1. attaches its metadata, a subtype of `SciMLBase.AbstractDiscretizationMetadata{Val(hasTime)}`
+    (a SciMLBase type), to the generated `System` through
+    ModelingToolkit's `ProblemTypeCtx` metadata, so the discretized problem carries it as
+    its `problem_type` and `solve` hands it to `SciMLBase.wrap_sol`;
+ 2. defines `SciMLBase.PDETimeSeriesSolution(sol, metadata::D)` or
+    `SciMLBase.PDENoTimeSolution(sol, metadata::D)` for its metadata type `D`, filling the
+    fields above from the trained or integrated `sol`;
+ 3. extends `Base.getindex(sol::PDENoTimeSolution{T, N, S, D}, sym::Num)` (and the
+    time-series counterpart) to map dependent variables to `sol.u[sym]` and independent
+    variables to their `ivdomain` entry, and the call
+    `(sol::PDENoTimeSolution{T, N, S, D})(args...; dv = nothing)` for evaluation at
+    arbitrary points, dispatching on its own `D` so that discretizers do not collide.
+
+MethodOfLines.jl (`MOLMetadata`) and NeuralPDE.jl (`PINNMetadata`) are the reference
+implementations.
+
 ## Minimal Implementation
 
 The following skeleton shows the intended generic dispatch. A real package must
