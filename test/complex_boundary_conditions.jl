@@ -59,6 +59,62 @@ using Test
         )
     end
 
+    @testset "Nested real boundary conditions stay independent" begin
+        @variables u(..)
+        system = PDESystem(
+            [Dt(u(t, x)) ~ Dxx(u(t, x))],
+            [u(0, x) ~ sin(x), [u(t, 0) ~ 0, u(t, 1) ~ 0]],
+            domain, [t, x], [u(t, x)]; name = :nested_real_bc_test
+        )
+        normalized, complexmap = PDEBase.handle_complex(system)
+        @test complexmap === nothing
+        @test isequal(PDEBase.get_dvs(normalized), [u(t, x)])
+        @test same_equations(PDEBase.get_bcs(normalized), [
+            u(0, x) ~ sin(x), u(t, 0) ~ 0, u(t, 1) ~ 0,
+        ])
+    end
+
+    @testset "Grouped two-field boundary conditions stay independent" begin
+        @variables χ(..) Reχ(..) Imχ(..)
+        system = PDESystem(
+            [im * Dt(ψ(t, x)) ~ Dxx(χ(t, x)), im * Dt(χ(t, x)) ~ Dxx(ψ(t, x))],
+            [[ψ(t, 0) ~ 0, χ(t, 0) ~ 0], [ψ(t, 1) ~ 0, χ(t, 1) ~ 0]],
+            domain, [t, x], [ψ(t, x), χ(t, x)]; name = :grouped_two_field_bc_test
+        )
+        normalized, _ = PDEBase.handle_complex(system)
+        expected = [
+            Reψ(t, 0) ~ 0, Imψ(t, 0) ~ 0, Reχ(t, 0) ~ 0, Imχ(t, 0) ~ 0,
+            Reψ(t, 1) ~ 0, Imψ(t, 1) ~ 0, Reχ(t, 1) ~ 0, Imχ(t, 1) ~ 0,
+        ]
+        @test same_equations(PDEBase.get_bcs(normalized), expected)
+    end
+
+    @testset "Real nonlinear equations split after a complex BC" begin
+        system = split(
+            [Dt(ψ(t, x)) ~ Dxx(ψ(t, x)) + ψ(t, x)^2],
+            [ψ(t, 0) ~ 0, Dx(ψ(t, 1)) + im * ψ(t, 1) ~ 0]
+        )
+        expected = [
+            Dt(Reψ(t, x)) ~ Dxx(Reψ(t, x)) + Reψ(t, x)^2 - Imψ(t, x)^2,
+            Dt(Imψ(t, x)) ~ Dxx(Imψ(t, x)) + 2 * Reψ(t, x) * Imψ(t, x),
+        ]
+        @test same_equations(ModelingToolkit.equations(system), expected)
+    end
+
+    @testset "Non-holomorphic BC reconstruction is rejected" begin
+        @test_throws ArgumentError split(
+            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+            [ψ(t, 0) ~ 0, Dx(ψ(t, 1)) ~ im * conj(ψ(t, 1))]
+        )
+    end
+
+    @testset "Truncated complex literal on the left is rejected" begin
+        @test_throws ArgumentError split(
+            [Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+            [im ~ ψ(t, 0), ψ(t, 1) ~ 0]
+        )
+    end
+
     @testset "Equation forms retain exact real boundary splits" begin
         equations = [
             im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x)) + 0.0 * ψ(t, x),
