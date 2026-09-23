@@ -91,31 +91,32 @@ function _split_complex_components(term)
     op = operation(term)
     args = arguments(term)
     if op === (+)
-        re, im = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args))
         for arg in Iterators.drop(args, 1)
             argre, argim = _split_complex_components(arg)
-            re += argre
-            im += argim
+            real_part += argre
+            imag_part += argim
         end
-        return re, im
+        return real_part, imag_part
     elseif op === (-)
-        re, im = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args))
         if length(args) == 1
-            return -re, -im
+            return -real_part, -imag_part
         end
         for arg in Iterators.drop(args, 1)
             argre, argim = _split_complex_components(arg)
-            re -= argre
-            im -= argim
+            real_part -= argre
+            imag_part -= argim
         end
-        return re, im
+        return real_part, imag_part
     elseif op === (*)
-        re, im = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args))
         for arg in Iterators.drop(args, 1)
             argre, argim = _split_complex_components(arg)
-            re, im = re * argre - im * argim, re * argim + im * argre
+            real_part, imag_part = real_part * argre - imag_part * argim,
+                real_part * argim + imag_part * argre
         end
-        return re, im
+        return real_part, imag_part
     elseif op === (/)
         are, aim = _split_complex_components(args[1])
         b_realpart, bim = _split_complex_components(args[2])
@@ -141,13 +142,6 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
     lhsre, lhsim = _split_complex_components(lhs)
     rhsre, rhsim = _split_complex_components(rhs)
     return [lhsre ~ rhsre, lhsim ~ rhsim]
-end
-
-struct ComplexEq
-    reeq1::Any
-    imeq1::Any
-    reeq2::Any
-    imeq2::Any
 end
 
 function split_complex_bc(eq, redvmaps, imdvmaps)
