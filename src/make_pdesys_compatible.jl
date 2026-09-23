@@ -83,49 +83,74 @@ function make_pdesys_compatible(pdesys::PDESystem)
         replaced_vars
 end
 
-function _split_complex_components(term)
-    term = unwrap_const(safe_unwrap(term))
+function _split_complex_components(term, preserve_differentials = false)
+    term = safe_unwrap(term)
+    if preserve_differentials && iscall(term) && operation(term) isa Differential
+        op = operation(term)
+        arg = first(arguments(term))
+        constant_arg = safe_unwrap(unwrap_const(arg))
+        if constant_arg isa Number
+            return 0, 0
+        end
+        try
+            Symbolics.value(constant_arg) isa Number && return 0, 0
+        catch
+        end
+        re, im = _split_complex_components(arg, preserve_differentials)
+        return op(re), op(im)
+    end
+    term = unwrap_const(term)
     term isa Number && return real(term), imag(term)
     iscall(term) || return term, 0
 
     op = operation(term)
     args = arguments(term)
     if op === (+)
-        re, im = _split_complex_components(first(args))
+        re, im = _split_complex_components(first(args), preserve_differentials)
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
+            argre, argim = _split_complex_components(arg, preserve_differentials)
             re += argre
             im += argim
         end
         return re, im
     elseif op === (-)
-        re, im = _split_complex_components(first(args))
+        re, im = _split_complex_components(first(args), preserve_differentials)
         if length(args) == 1
             return -re, -im
         end
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
+            argre, argim = _split_complex_components(arg, preserve_differentials)
             re -= argre
             im -= argim
         end
         return re, im
     elseif op === (*)
-        re, im = _split_complex_components(first(args))
+        re, im = _split_complex_components(first(args), preserve_differentials)
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
+            argre, argim = _split_complex_components(arg, preserve_differentials)
             re, im = re * argre - im * argim, re * argim + im * argre
         end
         return re, im
     elseif op === (/)
-        are, aim = _split_complex_components(args[1])
-        b_realpart, bim = _split_complex_components(args[2])
+        are, aim = _split_complex_components(args[1], preserve_differentials)
+        b_realpart, bim = _split_complex_components(args[2], preserve_differentials)
         denom = b_realpart^2 + bim^2
         return (are * b_realpart + aim * bim) / denom, (aim * b_realpart - are * bim) / denom
     end
     return real(term), imag(term)
 end
 
-function split_complex_eq(eq, redvmaps, imdvmaps)
+function _is_false_constant(term)
+    term = safe_unwrap(term)
+    term === false && return true
+    try
+        return Symbolics.value(term) === false
+    catch
+        return false
+    end
+end
+
+function split_complex_eq(eq, redvmaps, imdvmaps; expand_derivatives = true)
     lhs, rhs = if eq isa AbstractVector
         real_eq, imag_eq = eq
         real_eq.lhs + im * imag_eq.lhs, real_eq.rhs + im * imag_eq.rhs
@@ -136,10 +161,15 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
         op => ((args...) -> redop(args...) + im * imdvmaps[op](args...))
             for (op, redop) in redvmaps
     )
-    lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
-    rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
-    lhsre, lhsim = _split_complex_components(lhs)
-    rhsre, rhsim = _split_complex_components(rhs)
+    if expand_derivatives
+        lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
+        rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
+    else
+        lhs = Symbolics.expand(_replace_ops(lhs, complexmap))
+        rhs = Symbolics.expand(_replace_ops(rhs, complexmap))
+    end
+    lhsre, lhsim = _split_complex_components(lhs, !expand_derivatives)
+    rhsre, rhsim = _split_complex_components(rhs, !expand_derivatives)
     return [lhsre ~ rhsre, lhsim ~ rhsim]
 end
 
@@ -152,12 +182,10 @@ end
 
 function split_complex_bc(eq, redvmaps, imdvmaps)
     # Handle pre-split complex BCs from Symbolics v7
-    # These are already split into real/imag parts, just need variable renaming
     if eq isa PreSplitComplexBC
-        # eq.real_eq becomes the Reψ equation, eq.imag_eq becomes the Imψ equation
-        real_renamed = _replace_ops(eq.real_eq.lhs, redvmaps) ~ _replace_ops(eq.real_eq.rhs, redvmaps)
-        imag_renamed = _replace_ops(eq.imag_eq.lhs, imdvmaps) ~ _replace_ops(eq.imag_eq.rhs, imdvmaps)
-        return [real_renamed, imag_renamed]
+        complex_eq = (eq.real_eq.lhs + im * eq.imag_eq.lhs) ~
+            (eq.real_eq.rhs + im * eq.imag_eq.rhs)
+        return split_complex_eq(complex_eq, redvmaps, imdvmaps; expand_derivatives = false)
     end
 
     # For Pair type (initial conditions), handle specially
@@ -180,6 +208,8 @@ function split_complex_bc(eq, redvmaps, imdvmaps)
     return split_complex_eq(eq, redvmaps, imdvmaps)
 end
 
+hascomplex(::PreSplitComplexBC) = true
+
 function handle_complex(pdesys)
     eqs = get_eqs(pdesys)
     bcs = get_bcs(pdesys)
@@ -187,6 +217,15 @@ function handle_complex(pdesys)
     # Flatten first before processing
     eqs_flat = _flatten_eqs(eqs)
     bcs_flat = _flatten_bcs(bcs)
+
+    if any(bc -> bc isa Equation && _is_false_constant(bc.rhs), bcs_flat)
+        throw(
+            ArgumentError(
+                "A boundary condition reduced to `false` before complex splitting. " *
+                    "This commonly happens when a real dependent variable is given a complex boundary value."
+            )
+        )
+    end
 
     eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat) || any(eq -> eq isa AbstractVector, eqs)
     bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
@@ -231,7 +270,12 @@ function handle_complex(pdesys)
             # In MTK v11, we expect equations to come in pairs (real, imag)
             # Map them directly to Reψ and Imψ equations
             n_eqs = length(eqs_flat)
-            if n_eqs % 2 == 0
+            if bcs_have_complex
+                eqs = vcat(
+                    [_replace_ops(eq.lhs, redvmaps_dict) ~ _replace_ops(eq.rhs, redvmaps_dict) for eq in eqs_flat],
+                    [_replace_ops(eq.lhs, imdvmaps_dict) ~ _replace_ops(eq.rhs, imdvmaps_dict) for eq in eqs_flat]
+                )
+            elseif n_eqs % 2 == 0
                 # Assume first half are "real part" equations, second half are "imag part"
                 # Just replace ψ with Reψ in first half and Imψ in second half
                 half = n_eqs ÷ 2

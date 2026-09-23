@@ -173,23 +173,11 @@ function _flatten_bcs(bcs)
         if bc isa Equation || bc isa Pair
             push!(result, bc)
         elseif bc isa AbstractVector
-            # Handle auto-split complex BCs from Symbolics v7
-            # When a BC like `ψ(t, 0) ~ exp(im*...)` is split, it becomes:
-            # [ψ(t, 0) ~ cos(...), 0 ~ sin(...)]
-            # Keep the pair together as a PreSplitComplexBC so handle_complex can process it correctly
+            # Nested equation pairs are Symbolics' real and imaginary parts of one BC.
             flattened = _flatten_bcs(bc)
             if length(flattened) == 2 && all(x -> x isa Equation, flattened)
                 eq1, eq2 = flattened
-                # Check if second equation has a zero-like LHS (incorrectly split imaginary part)
-                lhs2 = safe_unwrap(eq2.lhs)
-                if _is_zero_like(lhs2) && iscall(safe_unwrap(eq1.lhs))
-                    # This is a pre-split complex BC - keep as a pair for proper handling
-                    eq2_fixed = eq1.lhs ~ eq2.rhs
-                    push!(result, PreSplitComplexBC(eq1, eq2_fixed))
-                else
-                    # Not a pre-split BC, just append
-                    append!(result, flattened)
-                end
+                push!(result, PreSplitComplexBC(eq1, eq2))
             else
                 append!(result, flattened)
             end
@@ -202,23 +190,4 @@ end
 struct PreSplitComplexBC
     real_eq::Equation
     imag_eq::Equation
-end
-
-# Helper to check if a symbolic expression is zero-like
-function _is_zero_like(x)
-    x = safe_unwrap(x)
-    if x isa Number
-        return x == 0
-    end
-    # Check if it's a call expression (function application) - those aren't zero
-    if iscall(x)
-        return false
-    end
-    # For symbolic constants, use Symbolics.value to extract the numeric value
-    try
-        val = Symbolics.value(x)
-        return val isa Number && iszero(val)
-    catch
-        return false
-    end
 end
