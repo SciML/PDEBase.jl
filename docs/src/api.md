@@ -47,6 +47,7 @@ PDEBase.all_ivs
 PDEBase.depvar
 PDEBase.depvars
 PDEBase.indvars
+PDEBase.replaced_vars
 PDEBase.x2i
 ```
 

@@ -100,6 +100,13 @@ Returns all dependent variables.
 depvars(v)  # Returns [u(t,x,y), v(t,x,y), ...]
 ```
 
+### `replaced_vars(v::VariableMap)`
+
+Returns the dictionary created when array-valued dependent variables are flattened.
+Each key is a normalized scalar variable and its value is the corresponding original
+indexed variable. Discretizer solution wrappers can reverse this correspondence to
+support user queries written with the original array variable.
+
 ### `indvars(v::VariableMap)`
 
 Returns spatial independent variables (excludes time).

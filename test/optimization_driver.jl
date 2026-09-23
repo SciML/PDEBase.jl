@@ -10,6 +10,7 @@ struct ResidualSpace <: PDEBase.AbstractDiscreteSpace
     varmap::PDEBase.VariableMap
     nbcs::Int
 end
+
 mutable struct ResidualState <: PDEBase.AbstractDiscretizationState
     residuals::Vector{Any}
 end
@@ -77,4 +78,17 @@ end
     @test PDEBase.discretize_equation!(
         nothing, eq, :pde, nothing, nothing, BareDiscretization()
     ) === nothing
+end
+
+@testset "Optimization-system replaced variable map" begin
+    @parameters x
+    @variables u(..)[1:2]
+    eqs = [u(x)[1] ~ u(x)[2]]
+    bcs = [u(0)[1] ~ 0, u(1)[2] ~ 1]
+    pdesys = PDESystem(eqs, bcs, [x ∈ (0, 1)], [x], [u(x)]; name = :array_system)
+    result = symbolic_discretize(pdesys, ResidualDiscretization())
+
+    replacements = PDEBase.replaced_vars(result.space.varmap)
+    @test length(replacements) == 2
+    @test Set(values(replacements)) == Set([u(x)[1], u(x)[2]])
 end
