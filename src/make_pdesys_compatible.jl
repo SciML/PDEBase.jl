@@ -26,10 +26,37 @@ function _replace_ops(term, op_map)
     return term
 end
 
+_dependent_variable_term(dv) = safe_unwrap(dv)
+_dependent_variable_term(dv::Complex{Num}) = only(arguments(unwrap(real(dv))))
+
+function _rename_complex_typed_components(term, redvmaps, imdvmaps)
+    term isa Num && return _rename_complex_typed_components(unwrap(term), redvmaps, imdvmaps)
+    if term isa Complex{Num}
+        return complex(
+            _rename_complex_typed_components(real(term), redvmaps, imdvmaps),
+            _rename_complex_typed_components(imag(term), redvmaps, imdvmaps)
+        )
+    end
+    iscall(term) || return term
+
+    op = operation(term)
+    args = arguments(term)
+    if (op === real || op === imag) && length(args) == 1 && iscall(only(args))
+        dv = only(args)
+        dvmap = op === real ? redvmaps : imdvmaps
+        if haskey(dvmap, operation(dv))
+            return dvmap[operation(dv)](arguments(dv)...)
+        end
+    end
+    new_args = [_rename_complex_typed_components(arg, redvmaps, imdvmaps) for arg in args]
+    return all(isequal.(args, new_args)) ? term :
+        maketerm(typeof(term), op, new_args, metadata(term))
+end
+
 function chain_flatten_array_variables(dvs)
     rs = []
     for dv in dvs
-        dv = safe_unwrap(dv)
+        dv = _dependent_variable_term(dv)
         if isequal(operation(dv), getindex)
             name = operation(arguments(dv)[1])
             idxs = arguments(dv)[2:end]
@@ -43,7 +70,9 @@ end
 
 function apply_lhs_rhs(f, eqs)
     return map(eqs) do eq
-        if eq isa Pair
+        if eq isa AbstractVector
+            apply_lhs_rhs(f, eq)
+        elseif eq isa Pair
             # Handle initial conditions specified as Pairs (u(0,x) => value)
             f(eq.first) => f(eq.second)
         else
@@ -63,7 +92,7 @@ function make_pdesys_compatible(pdesys::PDESystem)
     ch = chain_flatten_array_variables(dvs)
     safe_ch(x) = safe_unwrap(x) |> ch
     baddvs = filter(dvs) do u
-        isequal(operation(safe_unwrap(u)), getindex)
+        isequal(operation(_dependent_variable_term(u)), getindex)
     end
     replaced_vars = map(baddvs) do u
         safe_ch(u) => u
@@ -83,49 +112,126 @@ function make_pdesys_compatible(pdesys::PDESystem)
         replaced_vars
 end
 
-function _split_complex_components(term)
-    term = unwrap_const(safe_unwrap(term))
+function _split_complex_components(term, preserve_differentials = false)
+    term = safe_unwrap(term)
+    if preserve_differentials && iscall(term) && operation(term) isa Differential
+        op = operation(term)
+        arg = first(arguments(term))
+        constant_arg = safe_unwrap(unwrap_const(arg))
+        if constant_arg isa Number
+            return 0, 0
+        end
+        try
+            Symbolics.value(constant_arg) isa Number && return 0, 0
+        catch
+        end
+        re, im = _split_complex_components(arg, preserve_differentials)
+        return op(re), op(im)
+    end
+    term = unwrap_const(term)
     term isa Number && return real(term), imag(term)
     iscall(term) || return term, 0
 
     op = operation(term)
     args = arguments(term)
     if op === (+)
-        re, im = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args), preserve_differentials)
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
-            re += argre
-            im += argim
+            argre, argim = _split_complex_components(arg, preserve_differentials)
+            real_part += argre
+            imag_part += argim
         end
-        return re, im
+        return real_part, imag_part
     elseif op === (-)
-        re, im = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args), preserve_differentials)
         if length(args) == 1
-            return -re, -im
+            return -real_part, -imag_part
         end
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
-            re -= argre
-            im -= argim
+            argre, argim = _split_complex_components(arg, preserve_differentials)
+            real_part -= argre
+            imag_part -= argim
         end
-        return re, im
+        return real_part, imag_part
     elseif op === (*)
-        re, im = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args), preserve_differentials)
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
-            re, im = re * argre - im * argim, re * argim + im * argre
+            argre, argim = _split_complex_components(arg, preserve_differentials)
+            real_part, imag_part = real_part * argre - imag_part * argim,
+                real_part * argim + imag_part * argre
         end
-        return re, im
+        return real_part, imag_part
     elseif op === (/)
-        are, aim = _split_complex_components(args[1])
-        b_realpart, bim = _split_complex_components(args[2])
+        are, aim = _split_complex_components(args[1], preserve_differentials)
+        b_realpart, bim = _split_complex_components(args[2], preserve_differentials)
         denom = b_realpart^2 + bim^2
         return (are * b_realpart + aim * bim) / denom, (aim * b_realpart - are * bim) / denom
     end
     return real(term), imag(term)
 end
 
-function split_complex_eq(eq, redvmaps, imdvmaps)
+function _is_false_constant(term)
+    term = unwrap_const(safe_unwrap(term))
+    term === false && return true
+    return false
+end
+
+function _dependent_variable_instances!(found, term, dependent_operations)
+    term = safe_unwrap(term)
+    if iscall(term)
+        any(op -> isequal(operation(term), op), dependent_operations) && push!(found, term)
+        foreach(arg -> _dependent_variable_instances!(found, arg, dependent_operations), arguments(term))
+    end
+    return found
+end
+
+function _same_dependent_variable_instances(eq1, eq2, dependent_operations)
+    instances(eq) = unique(
+        vcat(
+            _dependent_variable_instances!(Any[], eq.lhs, dependent_operations),
+            _dependent_variable_instances!(Any[], eq.rhs, dependent_operations)
+        )
+    )
+    first_instances, second_instances = instances(eq1), instances(eq2)
+    return !isempty(first_instances) && length(first_instances) == length(second_instances) &&
+        all(x -> any(y -> isequal(x, y), second_instances), first_instances)
+end
+
+_is_zero_constant(term) = isequal(unwrap_const(safe_unwrap(term)), 0)
+
+# Symbolics rewrites a complex `lhs ~ rhs` over real-typed variables to
+# `[real(lhs) ~ real(rhs), imag(lhs) ~ imag(rhs)]`. Users can write the same
+# nested shape to group real boundary conditions per boundary point, so a pair
+# is only a definite pre-split signature when one side is `0 ~ expr` over an
+# expression without dependent variables: such an equation constrains no
+# unknown and is never a usable real boundary condition.
+function _is_presplit_bc_candidate(eq1, eq2, dependent_operations, complex_evidence)
+    first_instances = _dependent_variable_instances!(Any[], eq1.lhs, dependent_operations)
+    append!(first_instances, _dependent_variable_instances!(Any[], eq1.rhs, dependent_operations))
+    second_instances = _dependent_variable_instances!(Any[], eq2.lhs, dependent_operations)
+    append!(second_instances, _dependent_variable_instances!(Any[], eq2.rhs, dependent_operations))
+    (isempty(second_instances) && _is_zero_constant(eq2.lhs) && !_is_zero_constant(eq2.rhs)) && return true
+    (isempty(first_instances) && _is_zero_constant(eq1.lhs) && !_is_zero_constant(eq1.rhs)) && return true
+    complex_evidence || return false
+    _same_dependent_variable_instances(eq1, eq2, dependent_operations) && return true
+    return (isempty(first_instances) && _is_zero_constant(eq1.lhs) && !isempty(second_instances)) ||
+        (isempty(second_instances) && _is_zero_constant(eq2.lhs) && !isempty(first_instances))
+end
+
+function _ambiguous_presplit_bc(bcs, dependent_operations, complex_evidence)
+    for bc in bcs
+        if bc isa AbstractVector
+            if length(bc) == 2 && all(eq -> eq isa Equation, bc) &&
+                    _is_presplit_bc_candidate(bc[1], bc[2], dependent_operations, complex_evidence)
+                return true
+            end
+            _ambiguous_presplit_bc(bc, dependent_operations, complex_evidence) && return true
+        end
+    end
+    return false
+end
+
+function split_complex_eq(eq, redvmaps, imdvmaps; expand_derivatives = true)
     lhs, rhs = if eq isa AbstractVector
         real_eq, imag_eq = eq
         real_eq.lhs + im * imag_eq.lhs, real_eq.rhs + im * imag_eq.rhs
@@ -136,30 +242,19 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
         op => ((args...) -> redop(args...) + im * imdvmaps[op](args...))
             for (op, redop) in redvmaps
     )
-    lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
-    rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
-    lhsre, lhsim = _split_complex_components(lhs)
-    rhsre, rhsim = _split_complex_components(rhs)
+    if expand_derivatives
+        lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
+        rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
+    else
+        lhs = Symbolics.expand(_replace_ops(lhs, complexmap))
+        rhs = Symbolics.expand(_replace_ops(rhs, complexmap))
+    end
+    lhsre, lhsim = _split_complex_components(lhs, !expand_derivatives)
+    rhsre, rhsim = _split_complex_components(rhs, !expand_derivatives)
     return [lhsre ~ rhsre, lhsim ~ rhsim]
 end
 
-struct ComplexEq
-    reeq1::Any
-    imeq1::Any
-    reeq2::Any
-    imeq2::Any
-end
-
 function split_complex_bc(eq, redvmaps, imdvmaps)
-    # Handle pre-split complex BCs from Symbolics v7
-    # These are already split into real/imag parts, just need variable renaming
-    if eq isa PreSplitComplexBC
-        # eq.real_eq becomes the Reψ equation, eq.imag_eq becomes the Imψ equation
-        real_renamed = _replace_ops(eq.real_eq.lhs, redvmaps) ~ _replace_ops(eq.real_eq.rhs, redvmaps)
-        imag_renamed = _replace_ops(eq.imag_eq.lhs, imdvmaps) ~ _replace_ops(eq.imag_eq.rhs, imdvmaps)
-        return [real_renamed, imag_renamed]
-    end
-
     # For Pair type (initial conditions), handle specially
     if eq isa Pair
         rhs = split_complex(unwrap(eq.second))
@@ -183,19 +278,47 @@ end
 function handle_complex(pdesys)
     eqs = get_eqs(pdesys)
     bcs = get_bcs(pdesys)
+    dvs = get_dvs(pdesys)
+    # A real field promoted to Complex{Num} has no symbolic real(...) wrapper.
+    complex_typed = map(dvs) do dv
+        dv isa Complex{Num} && iscall(unwrap(real(dv))) &&
+            operation(unwrap(real(dv))) === real
+    end
+    if any(complex_typed) && !all(complex_typed)
+        throw(ArgumentError("Complex-typed and real dependent variables cannot be mixed in handle_complex"))
+    end
+    typed_dvs = !isempty(dvs) && all(complex_typed)
     # In MTK v11, complex equations may already be nested Vector{Equation}
     # Flatten first before processing
     eqs_flat = _flatten_eqs(eqs)
-    bcs_flat = _flatten_bcs(bcs)
-
+    dependent_operations = map(dv -> operation(_dependent_variable_term(dv)), get_dvs(pdesys))
     eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat) || any(eq -> eq isa AbstractVector, eqs)
+    bcs_flat = _flatten_bcs(bcs)
     bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
+    if !typed_dvs && _ambiguous_presplit_bc(bcs, dependent_operations, eqs_have_complex || bcs_have_complex)
+        throw(
+            ArgumentError(
+                "Symbolics has pre-split a complex boundary condition before PDEBase can verify its meaning. " *
+                    "Declare the dependent variable as `::Complex` to preserve complex boundary expressions."
+            )
+        )
+    end
+
+    if !typed_dvs && any(bc -> bc isa Equation && (_is_false_constant(bc.lhs) || _is_false_constant(bc.rhs)), bcs_flat)
+        throw(
+            ArgumentError(
+                "A boundary condition reduced to `false` before PDEBase could inspect its complex value. " *
+                    "Symbolics may truncate complex constants in `~`; declare the dependent variable as `::Complex`."
+            )
+        )
+    end
 
     # Check both equations and BCs for complex values
-    if eqs_have_complex || bcs_have_complex
+    if eqs_have_complex || bcs_have_complex || typed_dvs
         dvmaps = map(get_dvs(pdesys)) do dv
-            args = arguments(safe_unwrap(dv))
-            dv = operation(safe_unwrap(dv))
+            dv = _dependent_variable_term(dv)
+            args = arguments(dv)
+            dv = operation(dv)
             resym = Symbol("Re" * string(dv))
             imsym = Symbol("Im" * string(dv))
             redv = first(@variables $resym(..)::Real)
@@ -220,7 +343,23 @@ function handle_complex(pdesys)
         redvmaps_dict = Dict(redvmaps)
         imdvmaps_dict = Dict(imdvmaps)
 
-        if eqs_have_complex
+        if typed_dvs
+            rename(term) = _rename_complex_typed_components(term, redvmaps_dict, imdvmaps_dict)
+            eqs = [rename(eq.lhs) ~ rename(eq.rhs) for eq in eqs_flat]
+            bcs = mapreduce(vcat, bcs_flat) do bc
+                if bc isa Pair
+                    dv = _dependent_variable_term(bc.first)
+                    op = operation(dv)
+                    args = arguments(dv)
+                    [
+                        redvmaps_dict[op](args...) ~ rename(real(bc.second)),
+                        imdvmaps_dict[op](args...) ~ rename(imag(bc.second)),
+                    ]
+                else
+                    [rename(bc.lhs) ~ rename(bc.rhs)]
+                end
+            end
+        elseif eqs_have_complex || bcs_have_complex
             # Equations have complex values - split them into real/imaginary parts
             eqs = mapreduce(vcat, eqs) do eq
                 split_complex_eq(eq, redvmaps_dict, imdvmaps_dict)
@@ -245,12 +384,14 @@ function handle_complex(pdesys)
             end
         end
 
-        bcs = mapreduce(vcat, bcs_flat) do eq
-            split_complex_bc(eq, redvmaps_dict, imdvmaps_dict)
+        if !typed_dvs
+            bcs = mapreduce(vcat, bcs_flat) do eq
+                split_complex_bc(eq, redvmaps_dict, imdvmaps_dict)
+            end
         end
 
         dvs = mapreduce(vcat, get_dvs(pdesys)) do dv
-            dv = safe_unwrap(dv)
+            dv = _dependent_variable_term(dv)
             redv = redvmaps_dict[operation(dv)](arguments(dv)...)
             imdv = imdvmaps_dict[operation(dv)](arguments(dv)...)
             [redv, imdv]
