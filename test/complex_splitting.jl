@@ -53,6 +53,21 @@ using Test
     )
 end
 
+@testset "Mixed complex-typed and untyped dependent variables" begin
+    @parameters t x
+    @variables ψ(..)::Complex u(..)
+    Dt = Differential(t)
+    z = ψ(t, x)
+    v = u(t, x)
+    pdesys = PDESystem(
+        [im * Dt(z) ~ conj(z) * v, Dt(v) ~ abs2(z)],
+        [ψ(0, x) => 1.0, u(0, x) => 0.0, ψ(t, 0) ~ 0, u(t, 0) ~ 0],
+        [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [z, v]; name = :mixed_typed_test
+    )
+
+    @test_throws "Complex-typed and real dependent variables cannot be mixed" PDEBase.handle_complex(pdesys)
+end
+
 @testset "Complex-typed dependent variable splitting" begin
     @parameters t x
     @variables ψ(..)::Complex Reψ(..) Imψ(..)
@@ -65,6 +80,10 @@ end
     same_equation(actual, expected) = isequal(
         Symbolics.value(Symbolics.simplify(residual(actual) - residual(expected))), 0
     )
+    stage_orders = (
+        (PDEBase.handle_complex, PDEBase.make_pdesys_compatible),
+        (PDEBase.make_pdesys_compatible, PDEBase.handle_complex),
+    )
 
     for (nonlinearity, expected_nonlinearity) in (
             (z * conj(z) * z, (a^2 + b^2) * (a + im * b)),
@@ -75,23 +94,25 @@ end
             [ψ(0, x) => 1 + 2im, ψ(t, 0) ~ 3 + 4im],
             [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [z]; name = :typed_complex_test
         )
-        compatible, _ = PDEBase.make_pdesys_compatible(pdesys)
-        split, _ = PDEBase.handle_complex(compatible)
-        equations = ModelingToolkit.equations(split)
         expected = [
             -Dt(b) ~ real(expected_nonlinearity),
             Dt(a) ~ imag(expected_nonlinearity),
         ]
-        @test length(equations) == 2
-        @test all(same_equation(equations[i], expected[i]) for i in eachindex(expected))
-        @test length(PDEBase.get_dvs(split)) == 2
-        bcs = PDEBase._flatten_bcs(PDEBase.get_bcs(split))
         expected_bcs = [
             Reψ(0, x) ~ 1, Imψ(0, x) ~ 2,
             Reψ(t, 0) ~ 3, Imψ(t, 0) ~ 4,
         ]
-        @test length(bcs) == length(expected_bcs)
-        @test all(any(same_equation(bc, expected_bc) for bc in bcs) for expected_bc in expected_bcs)
+        for (first_stage, second_stage) in stage_orders
+            intermediate, _ = first_stage(pdesys)
+            split, _ = second_stage(intermediate)
+            equations = ModelingToolkit.equations(split)
+            @test length(equations) == 2
+            @test all(same_equation(equations[i], expected[i]) for i in eachindex(expected))
+            @test length(PDEBase.get_dvs(split)) == 2
+            bcs = PDEBase._flatten_bcs(PDEBase.get_bcs(split))
+            @test length(bcs) == length(expected_bcs)
+            @test all(any(same_equation(bc, expected_bc) for bc in bcs) for expected_bc in expected_bcs)
+        end
     end
 
     pdesys = PDESystem(
@@ -99,10 +120,12 @@ end
         [ψ(t, 0) ~ 0], [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [z];
         name = :typed_complex_components_test
     )
-    compatible, _ = PDEBase.make_pdesys_compatible(pdesys)
-    split, _ = PDEBase.handle_complex(compatible)
-    equations = ModelingToolkit.equations(split)
     expected = [Dt(a) ~ 2a + a^2 + b^2, Dt(b) ~ 0]
-    @test length(equations) == 2
-    @test all(same_equation(equations[i], expected[i]) for i in eachindex(expected))
+    for (first_stage, second_stage) in stage_orders
+        intermediate, _ = first_stage(pdesys)
+        split, _ = second_stage(intermediate)
+        equations = ModelingToolkit.equations(split)
+        @test length(equations) == 2
+        @test all(same_equation(equations[i], expected[i]) for i in eachindex(expected))
+    end
 end
