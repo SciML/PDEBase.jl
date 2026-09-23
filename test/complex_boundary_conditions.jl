@@ -75,9 +75,11 @@ using Test
         normalized, complexmap = PDEBase.handle_complex(system)
         @test complexmap === nothing
         @test isequal(PDEBase.get_dvs(normalized), [u(t, x)])
-        @test same_equations(PDEBase.get_bcs(normalized), [
-            u(0, x) ~ sin(x), u(t, 0) ~ 0, u(t, 1) ~ 0,
-        ])
+        @test same_equations(
+            PDEBase.get_bcs(normalized), [
+                u(0, x) ~ sin(x), u(t, 0) ~ 0, u(t, 1) ~ 0,
+            ]
+        )
     end
 
     @testset "Grouped two-field boundary conditions stay independent" begin

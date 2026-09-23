@@ -186,10 +186,12 @@ function _dependent_variable_instances!(found, term, dependent_operations)
 end
 
 function _same_dependent_variable_instances(eq1, eq2, dependent_operations)
-    instances(eq) = unique(vcat(
-        _dependent_variable_instances!(Any[], eq.lhs, dependent_operations),
-        _dependent_variable_instances!(Any[], eq.rhs, dependent_operations)
-    ))
+    instances(eq) = unique(
+        vcat(
+            _dependent_variable_instances!(Any[], eq.lhs, dependent_operations),
+            _dependent_variable_instances!(Any[], eq.rhs, dependent_operations)
+        )
+    )
     first_instances, second_instances = instances(eq1), instances(eq2)
     return !isempty(first_instances) && length(first_instances) == length(second_instances) &&
         all(x -> any(y -> isequal(x, y), second_instances), first_instances)
@@ -274,10 +276,12 @@ function handle_complex(pdesys)
     dependent_operations = map(dv -> operation(_dependent_variable_term(dv)), get_dvs(pdesys))
     eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat) || any(eq -> eq isa AbstractVector, eqs)
     if !typed_dvs && _ambiguous_presplit_bc(bcs, dependent_operations)
-        throw(ArgumentError(
-            "Symbolics has pre-split a complex boundary condition before PDEBase can verify its meaning. " *
-                "Declare the dependent variable as `::Complex` to preserve complex boundary expressions."
-        ))
+        throw(
+            ArgumentError(
+                "Symbolics has pre-split a complex boundary condition before PDEBase can verify its meaning. " *
+                    "Declare the dependent variable as `::Complex` to preserve complex boundary expressions."
+            )
+        )
     end
     bcs_flat = _flatten_bcs(bcs)
 
