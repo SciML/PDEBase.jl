@@ -52,3 +52,57 @@ using Test
             for i in eachindex(expected_bc)
     )
 end
+
+@testset "Complex-typed dependent variable splitting" begin
+    @parameters t x
+    @variables ψ(..)::Complex Reψ(..) Imψ(..)
+    Dt = Differential(t)
+    z = ψ(t, x)
+    a = Reψ(t, x)
+    b = Imψ(t, x)
+
+    residual(eq) = Symbolics.simplify(eq.lhs - eq.rhs)
+    same_equation(actual, expected) = isequal(
+        Symbolics.value(Symbolics.simplify(residual(actual) - residual(expected))), 0
+    )
+
+    for (nonlinearity, expected_nonlinearity) in (
+            (z * conj(z) * z, (a^2 + b^2) * (a + im * b)),
+            (abs2(z) * z, (a^2 + b^2) * (a + im * b)),
+        )
+        pdesys = PDESystem(
+            [im * Dt(z) ~ nonlinearity],
+            [ψ(0, x) => 1 + 2im, ψ(t, 0) ~ 3 + 4im],
+            [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [z]; name = :typed_complex_test
+        )
+        compatible, _ = PDEBase.make_pdesys_compatible(pdesys)
+        split, _ = PDEBase.handle_complex(compatible)
+        equations = ModelingToolkit.equations(split)
+        expected = [
+            -Dt(b) ~ real(expected_nonlinearity),
+            Dt(a) ~ imag(expected_nonlinearity),
+        ]
+        @test length(equations) == 2
+        @test all(same_equation(equations[i], expected[i]) for i in eachindex(expected))
+        @test length(PDEBase.get_dvs(split)) == 2
+        bcs = PDEBase._flatten_bcs(PDEBase.get_bcs(split))
+        expected_bcs = [
+            Reψ(0, x) ~ 1, Imψ(0, x) ~ 2,
+            Reψ(t, 0) ~ 3, Imψ(t, 0) ~ 4,
+        ]
+        @test length(bcs) == length(expected_bcs)
+        @test all(any(same_equation(bc, expected_bc) for bc in bcs) for expected_bc in expected_bcs)
+    end
+
+    pdesys = PDESystem(
+        [Dt(z) ~ conj(z) + real(z) + im * imag(z) + abs2(z)],
+        [ψ(t, 0) ~ 0], [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [z];
+        name = :typed_complex_components_test
+    )
+    compatible, _ = PDEBase.make_pdesys_compatible(pdesys)
+    split, _ = PDEBase.handle_complex(compatible)
+    equations = ModelingToolkit.equations(split)
+    expected = [Dt(a) ~ 2a + a^2 + b^2, Dt(b) ~ 0]
+    @test length(equations) == 2
+    @test all(same_equation(equations[i], expected[i]) for i in eachindex(expected))
+end
