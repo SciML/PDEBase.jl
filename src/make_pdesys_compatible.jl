@@ -126,21 +126,21 @@ function _split_complex_components(term)
 end
 
 function split_complex_eq(eq, redvmaps, imdvmaps)
-    residual = if eq isa AbstractVector
+    lhs, rhs = if eq isa AbstractVector
         real_eq, imag_eq = eq
-        (real_eq.lhs - real_eq.rhs) + im * (imag_eq.lhs - imag_eq.rhs)
+        real_eq.lhs + im * imag_eq.lhs, real_eq.rhs + im * imag_eq.rhs
     else
-        eq.lhs - eq.rhs
+        eq.lhs, eq.rhs
     end
     complexmap = Dict(
         op => ((args...) -> redop(args...) + im * imdvmaps[op](args...))
             for (op, redop) in redvmaps
     )
-    residual = _replace_ops(residual, complexmap)
-    residual = Symbolics.expand_derivatives(residual)
-    residual = Symbolics.expand(residual)
-    re, imagpart = _split_complex_components(residual)
-    return [re ~ 0, imagpart ~ 0]
+    lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
+    rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
+    lhsre, lhsim = _split_complex_components(lhs)
+    rhsre, rhsim = _split_complex_components(rhs)
+    return [lhsre ~ rhsre, lhsim ~ rhsim]
 end
 
 struct ComplexEq
