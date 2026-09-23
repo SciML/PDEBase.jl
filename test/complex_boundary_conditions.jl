@@ -7,6 +7,7 @@ using Test
 @testset "Complex boundary condition splitting" begin
     @parameters t x
     @variables ψ(..) Reψ(..) Imψ(..)
+    @variables ψc(..)::Complex Reψc(..) Imψc(..)
     Dt = Differential(t)
     Dx = Differential(x)
     Dxx = Dx^2
@@ -14,6 +15,11 @@ using Test
 
     function split(equations, bcs)
         pdesys = PDESystem(equations, bcs, domain, [t, x], [ψ(t, x)]; name = :complex_bc_test)
+        return PDEBase.handle_complex(pdesys)[1]
+    end
+
+    function split_typed(equations, bcs)
+        pdesys = PDESystem(equations, bcs, domain, [t, x], [ψc(t, x)]; name = :typed_complex_bc_test)
         return PDEBase.handle_complex(pdesys)[1]
     end
 
@@ -25,29 +31,29 @@ using Test
     end
 
     @testset "Complex Neumann condition" begin
-        system = split(
-            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-            [ψ(t, 0) ~ 0, Dx(ψ(t, 1)) ~ im * ψ(t, 1)]
+        system = split_typed(
+            [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+            [ψc(t, 0) ~ 0, Dx(ψc(t, 1)) ~ im * ψc(t, 1)]
         )
         expected = [
-            Reψ(t, 0) ~ 0,
-            Imψ(t, 0) ~ 0,
-            Dx(Reψ(t, 1)) ~ -Imψ(t, 1),
-            Dx(Imψ(t, 1)) ~ Reψ(t, 1),
+            Reψc(t, 0) ~ 0,
+            Imψc(t, 0) ~ 0,
+            Dx(Reψc(t, 1)) ~ -Imψc(t, 1),
+            Dx(Imψc(t, 1)) ~ Reψc(t, 1),
         ]
         @test same_equations(PDEBase.get_bcs(system), expected)
     end
 
     @testset "Complex Robin condition" begin
-        system = split(
-            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-            [ψ(t, 0) ~ 0, Dx(ψ(t, 1)) + im * ψ(t, 1) ~ 0]
+        system = split_typed(
+            [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+            [ψc(t, 0) ~ 0, Dx(ψc(t, 1)) + im * ψc(t, 1) ~ 0]
         )
         expected = [
-            Reψ(t, 0) ~ 0,
-            Imψ(t, 0) ~ 0,
-            Dx(Reψ(t, 1)) ~ Imψ(t, 1),
-            Dx(Imψ(t, 1)) ~ -Reψ(t, 1),
+            Reψc(t, 0) ~ 0,
+            Imψc(t, 0) ~ 0,
+            Dx(Reψc(t, 1)) ~ Imψc(t, 1),
+            Dx(Imψc(t, 1)) ~ -Reψc(t, 1),
         ]
         @test same_equations(PDEBase.get_bcs(system), expected)
     end
@@ -90,13 +96,13 @@ using Test
     end
 
     @testset "Real nonlinear equations split after a complex BC" begin
-        system = split(
-            [Dt(ψ(t, x)) ~ Dxx(ψ(t, x)) + ψ(t, x)^2],
-            [ψ(t, 0) ~ 0, Dx(ψ(t, 1)) + im * ψ(t, 1) ~ 0]
+        system = split_typed(
+            [Dt(ψc(t, x)) ~ Dxx(ψc(t, x)) + ψc(t, x)^2],
+            [ψc(t, 0) ~ 0, Dx(ψc(t, 1)) + im * ψc(t, 1) ~ 0]
         )
         expected = [
-            Dt(Reψ(t, x)) ~ Dxx(Reψ(t, x)) + Reψ(t, x)^2 - Imψ(t, x)^2,
-            Dt(Imψ(t, x)) ~ Dxx(Imψ(t, x)) + 2 * Reψ(t, x) * Imψ(t, x),
+            Dt(Reψc(t, x)) ~ Dxx(Reψc(t, x)) + Reψc(t, x)^2 - Imψc(t, x)^2,
+            Dt(Imψc(t, x)) ~ Dxx(Imψc(t, x)) + 2 * Reψc(t, x) * Imψc(t, x),
         ]
         @test same_equations(ModelingToolkit.equations(system), expected)
     end
@@ -136,17 +142,17 @@ using Test
 
     @testset "Complex initial and boundary values split exactly" begin
         exp0 = SymbolicUtils.term(exp, 0)
-        system = split(
-            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-            [ψ(0, x) => exp(im * x), ψ(t, 0) ~ exp(im * t), ψ(t, 1) ~ (1 + im) * t]
+        system = split_typed(
+            [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+            [ψc(0, x) => exp(im * x), ψc(t, 0) ~ exp(im * t), ψc(t, 1) ~ (1 + im) * t]
         )
         expected = [
-            Reψ(0, x) ~ exp0 * cos(x),
-            Imψ(0, x) ~ exp0 * sin(x),
-            Reψ(t, 0) ~ exp0 * cos(t),
-            Imψ(t, 0) ~ exp0 * sin(t),
-            Reψ(t, 1) ~ t,
-            Imψ(t, 1) ~ t,
+            Reψc(0, x) ~ exp0 * cos(x),
+            Imψc(0, x) ~ exp0 * sin(x),
+            Reψc(t, 0) ~ exp0 * cos(t),
+            Imψc(t, 0) ~ exp0 * sin(t),
+            Reψc(t, 1) ~ t,
+            Imψc(t, 1) ~ t,
         ]
         @test same_equations(PDEBase.get_bcs(system), expected)
     end

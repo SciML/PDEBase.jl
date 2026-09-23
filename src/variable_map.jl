@@ -173,21 +173,8 @@ function _flatten_bcs(bcs)
         if bc isa Equation || bc isa Pair
             push!(result, bc)
         elseif bc isa AbstractVector
-            # Nested equation pairs are Symbolics' real and imaginary parts of one BC.
-            flattened = _flatten_bcs(bc)
-            if length(flattened) == 2 && all(x -> x isa Equation, flattened)
-                eq1, eq2 = flattened
-                push!(result, PreSplitComplexBC(eq1, eq2))
-            else
-                append!(result, flattened)
-            end
+            append!(result, _flatten_bcs(bc))
         end
     end
     return result
-end
-
-# Wrapper type to identify pre-split complex boundary conditions
-struct PreSplitComplexBC
-    real_eq::Equation
-    imag_eq::Equation
 end

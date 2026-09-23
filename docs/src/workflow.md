@@ -26,6 +26,12 @@ pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 
 **`handle_complex`**: Splits complex-valued equations into real and imaginary parts.
 
+Declare complex dependent fields with `@variables ψ(..)::Complex` before building the
+`PDESystem`. Symbolics then keeps `conj(ψ(t, x))`, `real(ψ(t, x))`, and
+`imag(ψ(t, x))` symbolic, so `handle_complex` can split their equations into
+real and imaginary fields. An untyped field is treated as real while Symbolics
+constructs the equations, which can simplify those expressions too early.
+
 **`cardinalize_eqs!`**: Normalizes equations to the form `lhs - rhs ~ 0`.
 
 **`make_pdesys_compatible`**: Handles array-valued variables, expanding them into scalar equations.
