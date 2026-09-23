@@ -206,7 +206,16 @@ end
 function handle_complex(pdesys)
     eqs = get_eqs(pdesys)
     bcs = get_bcs(pdesys)
-    typed_dvs = all(dv -> dv isa Complex{Num}, get_dvs(pdesys)) && !isempty(get_dvs(pdesys))
+    dvs = get_dvs(pdesys)
+    # A real field promoted to Complex{Num} has no symbolic real(...) wrapper.
+    complex_typed = map(dvs) do dv
+        dv isa Complex{Num} && iscall(unwrap(real(dv))) &&
+            operation(unwrap(real(dv))) === real
+    end
+    if any(complex_typed) && !all(complex_typed)
+        throw(ArgumentError("Complex-typed and real dependent variables cannot be mixed in handle_complex"))
+    end
+    typed_dvs = !isempty(dvs) && all(complex_typed)
     # In MTK v11, complex equations may already be nested Vector{Equation}
     # Flatten first before processing
     eqs_flat = _flatten_eqs(eqs)

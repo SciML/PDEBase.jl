@@ -31,6 +31,8 @@ Declare complex dependent fields with `@variables ψ(..)::Complex` before buildi
 `imag(ψ(t, x))` symbolic, so `handle_complex` can split their equations into
 real and imaginary fields. An untyped field is treated as real while Symbolics
 constructs the equations, which can simplify those expressions too early.
+Currently, a `PDESystem` cannot mix complex-typed fields with real or untyped
+dependent variables; `handle_complex` raises an error for that combination.
 
 **`cardinalize_eqs!`**: Normalizes equations to the form `lhs - rhs ~ 0`.
 
