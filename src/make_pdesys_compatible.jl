@@ -83,24 +83,64 @@ function make_pdesys_compatible(pdesys::PDESystem)
         replaced_vars
 end
 
-function split_complex_eq(eq, redvmaps, imdvmaps)
-    eq = split_complex(eq)
-    if eq isa Vector
-        eq1 = eq[1]
-        eq2 = eq[2]
-        reeq1 = _replace_ops(eq1.lhs, redvmaps) ~ _replace_ops(eq1.rhs, redvmaps)
-        imeq2 = _replace_ops(eq2.lhs, imdvmaps) ~ _replace_ops(eq2.rhs, imdvmaps)
-        reeq2 = _replace_ops(eq2.lhs, redvmaps) ~ _replace_ops(eq2.rhs, redvmaps)
-        imeq1 = _replace_ops(eq1.lhs, imdvmaps) ~ _replace_ops(eq1.rhs, imdvmaps)
-        return [
-            reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
-            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs,
-        ]
-    else
-        eq1 = _replace_ops(eq.lhs, redvmaps) ~ _replace_ops(eq.rhs, redvmaps)
-        eq2 = _replace_ops(eq.lhs, imdvmaps) ~ _replace_ops(eq.rhs, imdvmaps)
-        return [eq1, eq2]
+function _split_complex_components(term)
+    term = unwrap_const(safe_unwrap(term))
+    term isa Number && return real(term), imag(term)
+    iscall(term) || return term, 0
+
+    op = operation(term)
+    args = arguments(term)
+    if op === (+)
+        re, im = _split_complex_components(first(args))
+        for arg in Iterators.drop(args, 1)
+            argre, argim = _split_complex_components(arg)
+            re += argre
+            im += argim
+        end
+        return re, im
+    elseif op === (-)
+        re, im = _split_complex_components(first(args))
+        if length(args) == 1
+            return -re, -im
+        end
+        for arg in Iterators.drop(args, 1)
+            argre, argim = _split_complex_components(arg)
+            re -= argre
+            im -= argim
+        end
+        return re, im
+    elseif op === (*)
+        re, im = _split_complex_components(first(args))
+        for arg in Iterators.drop(args, 1)
+            argre, argim = _split_complex_components(arg)
+            re, im = re * argre - im * argim, re * argim + im * argre
+        end
+        return re, im
+    elseif op === (/)
+        are, aim = _split_complex_components(args[1])
+        b_realpart, bim = _split_complex_components(args[2])
+        denom = b_realpart^2 + bim^2
+        return (are * b_realpart + aim * bim) / denom, (aim * b_realpart - are * bim) / denom
     end
+    return real(term), imag(term)
+end
+
+function split_complex_eq(eq, redvmaps, imdvmaps)
+    residual = if eq isa AbstractVector
+        real_eq, imag_eq = eq
+        (real_eq.lhs - real_eq.rhs) + im * (imag_eq.lhs - imag_eq.rhs)
+    else
+        eq.lhs - eq.rhs
+    end
+    complexmap = Dict(
+        op => ((args...) -> redop(args...) + im * imdvmaps[op](args...))
+            for (op, redop) in redvmaps
+    )
+    residual = _replace_ops(residual, complexmap)
+    residual = Symbolics.expand_derivatives(residual)
+    residual = Symbolics.expand(residual)
+    re, imagpart = _split_complex_components(residual)
+    return [re ~ 0, imagpart ~ 0]
 end
 
 struct ComplexEq
@@ -137,24 +177,7 @@ function split_complex_bc(eq, redvmaps, imdvmaps)
         return [eq1, eq2]
     end
 
-    # Complex BC: split into real and imaginary parts
-    eq_split = split_complex(eq)
-    if eq_split isa Vector
-        eq1 = eq_split[1]
-        eq2 = eq_split[2]
-        reeq1 = _replace_ops(eq1.lhs, redvmaps) ~ _replace_ops(eq1.rhs, redvmaps)
-        imeq2 = _replace_ops(eq2.lhs, imdvmaps) ~ _replace_ops(eq2.rhs, imdvmaps)
-        reeq2 = _replace_ops(eq2.lhs, redvmaps) ~ _replace_ops(eq2.rhs, redvmaps)
-        imeq1 = _replace_ops(eq1.lhs, imdvmaps) ~ _replace_ops(eq1.rhs, imdvmaps)
-        return [
-            reeq1.lhs - imeq2.lhs ~ reeq1.rhs - imeq2.rhs,
-            reeq2.lhs + imeq1.lhs ~ reeq2.rhs + imeq1.rhs,
-        ]
-    else
-        eq1 = _replace_ops(eq.lhs, redvmaps) ~ _replace_ops(eq.rhs, redvmaps)
-        eq2 = _replace_ops(eq.lhs, imdvmaps) ~ _replace_ops(eq.rhs, imdvmaps)
-        return [eq1, eq2]
-    end
+    return split_complex_eq(eq, redvmaps, imdvmaps)
 end
 
 function handle_complex(pdesys)
@@ -165,7 +188,7 @@ function handle_complex(pdesys)
     eqs_flat = _flatten_eqs(eqs)
     bcs_flat = _flatten_bcs(bcs)
 
-    eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat)
+    eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat) || any(eq -> eq isa AbstractVector, eqs)
     bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
 
     # Check both equations and BCs for complex values
@@ -175,8 +198,8 @@ function handle_complex(pdesys)
             dv = operation(safe_unwrap(dv))
             resym = Symbol("Re" * string(dv))
             imsym = Symbol("Im" * string(dv))
-            redv = first(@variables $resym(..))
-            imdv = first(@variables $imsym(..))
+            redv = first(@variables $resym(..)::Real)
+            imdv = first(@variables $imsym(..)::Real)
             redv = operation(unwrap(redv(args...)))
             imdv = operation(unwrap(imdv(args...)))
             (dv => redv, dv => imdv)
@@ -199,7 +222,7 @@ function handle_complex(pdesys)
 
         if eqs_have_complex
             # Equations have complex values - split them into real/imaginary parts
-            eqs = mapreduce(vcat, eqs_flat) do eq
+            eqs = mapreduce(vcat, eqs) do eq
                 split_complex_eq(eq, redvmaps_dict, imdvmaps_dict)
             end
         else
