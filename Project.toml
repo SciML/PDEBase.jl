@@ -1,6 +1,6 @@
 name = "PDEBase"
 uuid = "a7812802-0625-4b9e-961c-d332478797e5"
-version = "0.1.36"
+version = "0.1.37"
 authors = ["xtalax <alex.lemony@gmail.com>"]
 
 [deps]
@@ -20,7 +20,7 @@ AllocCheck = "0.2"
 BenchmarkTools = "1"
 DomainSets = "0.7, 0.8"
 IntervalSets = "0.7"
-ModelingToolkitBase = "1.69"
+ModelingToolkitBase = "1.72"
 ModelingToolkit = "11.26.7"
 PrecompileTools = "1.2.1"
 SciMLBase = "3.1"

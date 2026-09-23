@@ -432,6 +432,30 @@ may return an empty collection.
 """
 get_discvars(s::AbstractDiscreteSpace) = []
 
+"""
+    get_system_unknowns(s::AbstractDiscreteSpace)
+
+Return the unknowns of the system `generate_system` builds from `s`, as a vector of
+symbolic variables.
+
+The default flattens [`get_discvars`](@ref) into its scalar entries, one unknown per
+discrete variable. A discretizer that represents each dependent variable as one
+array-valued symbolic, such as `u(t)[1:n]`, can override this to return those arrays
+so that the system has one unknown per dependent variable. The scalar entries of
+`get_discvars` then index into these arrays and remain what the discretized
+equations, boundary conditions and initial conditions are written in terms of.
+
+# Arguments
+- `s::AbstractDiscreteSpace`: The discrete space.
+
+# Returns
+- A vector of symbolic unknowns.
+"""
+function get_system_unknowns(s::AbstractDiscreteSpace)
+    discvars = get_discvars(s)
+    return vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
+end
+
 ############################################################################################
 # Default interface functions for `AbstractVarEqMapping`
 ############################################################################################

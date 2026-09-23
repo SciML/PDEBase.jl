@@ -140,6 +140,7 @@ These accessors keep downstream packages independent of concrete field names:
 ```@docs
 PDEBase.get_time
 PDEBase.get_discvars
+PDEBase.get_system_unknowns
 PDEBase.get_eqvar
 PDEBase.add_metadata!
 ```

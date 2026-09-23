@@ -95,12 +95,11 @@ function generate_system(
         disc::AbstractEquationSystemDiscretization;
         checks = true
     )
-    discvars = get_discvars(s)
     t = get_time(disc)
     name = getfield(metadata.pdesys, :name)
     pdesys = metadata.pdesys
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
-    alldepvarsdisc = vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
+    alldepvarsdisc = get_system_unknowns(s)
 
     sys_defaults = Dict{Any, Any}(pdesys.initial_conditions)
     init_eqs = Equation[]
