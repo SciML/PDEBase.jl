@@ -199,24 +199,33 @@ end
 
 _is_zero_constant(term) = isequal(unwrap_const(safe_unwrap(term)), 0)
 
-function _is_presplit_bc_candidate(eq1, eq2, dependent_operations)
+# Symbolics rewrites a complex `lhs ~ rhs` over real-typed variables to
+# `[real(lhs) ~ real(rhs), imag(lhs) ~ imag(rhs)]`. Users can write the same
+# nested shape to group real boundary conditions per boundary point, so a pair
+# is only a definite pre-split signature when one side is `0 ~ expr` over an
+# expression without dependent variables: such an equation constrains no
+# unknown and is never a usable real boundary condition.
+function _is_presplit_bc_candidate(eq1, eq2, dependent_operations, complex_evidence)
     first_instances = _dependent_variable_instances!(Any[], eq1.lhs, dependent_operations)
     append!(first_instances, _dependent_variable_instances!(Any[], eq1.rhs, dependent_operations))
     second_instances = _dependent_variable_instances!(Any[], eq2.lhs, dependent_operations)
     append!(second_instances, _dependent_variable_instances!(Any[], eq2.rhs, dependent_operations))
+    (isempty(second_instances) && _is_zero_constant(eq2.lhs) && !_is_zero_constant(eq2.rhs)) && return true
+    (isempty(first_instances) && _is_zero_constant(eq1.lhs) && !_is_zero_constant(eq1.rhs)) && return true
+    complex_evidence || return false
     _same_dependent_variable_instances(eq1, eq2, dependent_operations) && return true
     return (isempty(first_instances) && _is_zero_constant(eq1.lhs) && !isempty(second_instances)) ||
         (isempty(second_instances) && _is_zero_constant(eq2.lhs) && !isempty(first_instances))
 end
 
-function _ambiguous_presplit_bc(bcs, dependent_operations)
+function _ambiguous_presplit_bc(bcs, dependent_operations, complex_evidence)
     for bc in bcs
         if bc isa AbstractVector
             if length(bc) == 2 && all(eq -> eq isa Equation, bc) &&
-                    _is_presplit_bc_candidate(bc[1], bc[2], dependent_operations)
+                    _is_presplit_bc_candidate(bc[1], bc[2], dependent_operations, complex_evidence)
                 return true
             end
-            _ambiguous_presplit_bc(bc, dependent_operations) && return true
+            _ambiguous_presplit_bc(bc, dependent_operations, complex_evidence) && return true
         end
     end
     return false
@@ -284,7 +293,9 @@ function handle_complex(pdesys)
     eqs_flat = _flatten_eqs(eqs)
     dependent_operations = map(dv -> operation(_dependent_variable_term(dv)), get_dvs(pdesys))
     eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat) || any(eq -> eq isa AbstractVector, eqs)
-    if !typed_dvs && _ambiguous_presplit_bc(bcs, dependent_operations)
+    bcs_flat = _flatten_bcs(bcs)
+    bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
+    if !typed_dvs && _ambiguous_presplit_bc(bcs, dependent_operations, eqs_have_complex || bcs_have_complex)
         throw(
             ArgumentError(
                 "Symbolics has pre-split a complex boundary condition before PDEBase can verify its meaning. " *
@@ -292,9 +303,8 @@ function handle_complex(pdesys)
             )
         )
     end
-    bcs_flat = _flatten_bcs(bcs)
 
-    if any(bc -> bc isa Equation && (_is_false_constant(bc.lhs) || _is_false_constant(bc.rhs)), bcs_flat)
+    if !typed_dvs && any(bc -> bc isa Equation && (_is_false_constant(bc.lhs) || _is_false_constant(bc.rhs)), bcs_flat)
         throw(
             ArgumentError(
                 "A boundary condition reduced to `false` before PDEBase could inspect its complex value. " *
@@ -302,8 +312,6 @@ function handle_complex(pdesys)
             )
         )
     end
-
-    bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
 
     # Check both equations and BCs for complex values
     if eqs_have_complex || bcs_have_complex || typed_dvs

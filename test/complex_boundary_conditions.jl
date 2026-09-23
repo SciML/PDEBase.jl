@@ -65,6 +65,45 @@ using Test
         )
     end
 
+    @testset "Untyped pre-split complex Dirichlet condition is rejected" begin
+        @test_throws ArgumentError split(
+            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+            [ψ(t, 0) ~ cos(t) + im * sin(t), ψ(t, 1) ~ 0]
+        )
+        @test_throws ArgumentError split(
+            [Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+            [ψ(t, 0) ~ cos(t) + im * sin(t), ψ(t, 1) ~ 0]
+        )
+    end
+
+    @testset "Typed complex Dirichlet conditions split exactly" begin
+        system = split_typed(
+            [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+            [ψc(t, 0) ~ cos(t) + im * sin(t), ψc(t, 1) ~ 0]
+        )
+        expected = [
+            Reψc(t, 0) ~ cos(t),
+            Imψc(t, 0) ~ sin(t),
+            Reψc(t, 1) ~ 0,
+            Imψc(t, 1) ~ 0,
+        ]
+        @test same_equations(PDEBase.get_bcs(system), expected)
+    end
+
+    @testset "Typed imaginary literal boundary condition splits exactly" begin
+        system = split_typed(
+            [Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+            [ψc(t, 0) ~ im, ψc(t, 1) ~ 0]
+        )
+        expected = [
+            Reψc(t, 0) ~ 0,
+            Imψc(t, 0) ~ 1,
+            Reψc(t, 1) ~ 0,
+            Imψc(t, 1) ~ 0,
+        ]
+        @test same_equations(PDEBase.get_bcs(system), expected)
+    end
+
     @testset "Nested real boundary conditions stay independent" begin
         @variables u(..)
         system = PDESystem(
@@ -95,6 +134,53 @@ using Test
             Reψ(t, 1) ~ 0, Imψ(t, 1) ~ 0, Reχ(t, 1) ~ 0, Imχ(t, 1) ~ 0,
         ]
         @test same_equations(PDEBase.get_bcs(normalized), expected)
+    end
+
+    @testset "Grouped clamped beam boundary conditions stay real" begin
+        @variables u(..)
+        beam = [Dt(Dt(u(t, x))) ~ -Dx(Dx(Dx(Dx(u(t, x)))))]
+        system = PDESystem(
+            beam,
+            [
+                u(0, x) ~ sin(x), Dt(u(0, x)) ~ 0,
+                [u(t, 0) ~ 0, Dx(u(t, 0)) ~ 0],
+                [u(t, 1) ~ 0, Dx(u(t, 1)) ~ 0],
+            ],
+            domain, [t, x], [u(t, x)]; name = :grouped_beam_bc_test
+        )
+        normalized, complexmap = PDEBase.handle_complex(system)
+        @test complexmap === nothing
+        @test isequal(PDEBase.get_dvs(normalized), [u(t, x)])
+        @test same_equations(
+            PDEBase.get_bcs(normalized), [
+                u(0, x) ~ sin(x), Dt(u(0, x)) ~ 0,
+                u(t, 0) ~ 0, Dx(u(t, 0)) ~ 0,
+                u(t, 1) ~ 0, Dx(u(t, 1)) ~ 0,
+            ]
+        )
+    end
+
+    @testset "Grouped interface boundary conditions stay real" begin
+        @variables u(..) v(..)
+        system = PDESystem(
+            [Dt(u(t, x)) ~ Dxx(u(t, x)), Dt(v(t, x)) ~ Dxx(v(t, x))],
+            [
+                u(0, x) ~ 0, v(0, x) ~ 0,
+                [u(t, 0) ~ v(t, 0), Dx(u(t, 0)) ~ Dx(v(t, 0))],
+                u(t, 1) ~ 1, v(t, 1) ~ 0,
+            ],
+            domain, [t, x], [u(t, x), v(t, x)]; name = :grouped_interface_bc_test
+        )
+        normalized, complexmap = PDEBase.handle_complex(system)
+        @test complexmap === nothing
+        @test isequal(PDEBase.get_dvs(normalized), [u(t, x), v(t, x)])
+        @test same_equations(
+            PDEBase.get_bcs(normalized), [
+                u(0, x) ~ 0, v(0, x) ~ 0,
+                u(t, 0) ~ v(t, 0), Dx(u(t, 0)) ~ Dx(v(t, 0)),
+                u(t, 1) ~ 1, v(t, 1) ~ 0,
+            ]
+        )
     end
 
     @testset "Real nonlinear equations split after a complex BC" begin
