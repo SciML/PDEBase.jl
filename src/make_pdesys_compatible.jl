@@ -26,10 +26,37 @@ function _replace_ops(term, op_map)
     return term
 end
 
+_dependent_variable_term(dv) = safe_unwrap(dv)
+_dependent_variable_term(dv::Complex{Num}) = only(arguments(unwrap(real(dv))))
+
+function _rename_complex_typed_components(term, redvmaps, imdvmaps)
+    term isa Num && return _rename_complex_typed_components(unwrap(term), redvmaps, imdvmaps)
+    if term isa Complex{Num}
+        return complex(
+            _rename_complex_typed_components(real(term), redvmaps, imdvmaps),
+            _rename_complex_typed_components(imag(term), redvmaps, imdvmaps)
+        )
+    end
+    iscall(term) || return term
+
+    op = operation(term)
+    args = arguments(term)
+    if (op === real || op === imag) && length(args) == 1 && iscall(only(args))
+        dv = only(args)
+        dvmap = op === real ? redvmaps : imdvmaps
+        if haskey(dvmap, operation(dv))
+            return dvmap[operation(dv)](arguments(dv)...)
+        end
+    end
+    new_args = [_rename_complex_typed_components(arg, redvmaps, imdvmaps) for arg in args]
+    return all(isequal.(args, new_args)) ? term :
+        maketerm(typeof(term), op, new_args, metadata(term))
+end
+
 function chain_flatten_array_variables(dvs)
     rs = []
     for dv in dvs
-        dv = safe_unwrap(dv)
+        dv = _dependent_variable_term(dv)
         if isequal(operation(dv), getindex)
             name = operation(arguments(dv)[1])
             idxs = arguments(dv)[2:end]
@@ -43,7 +70,9 @@ end
 
 function apply_lhs_rhs(f, eqs)
     return map(eqs) do eq
-        if eq isa Pair
+        if eq isa AbstractVector
+            apply_lhs_rhs(f, eq)
+        elseif eq isa Pair
             # Handle initial conditions specified as Pairs (u(0,x) => value)
             f(eq.first) => f(eq.second)
         else
@@ -63,7 +92,7 @@ function make_pdesys_compatible(pdesys::PDESystem)
     ch = chain_flatten_array_variables(dvs)
     safe_ch(x) = safe_unwrap(x) |> ch
     baddvs = filter(dvs) do u
-        isequal(operation(safe_unwrap(u)), getindex)
+        isequal(operation(_dependent_variable_term(u)), getindex)
     end
     replaced_vars = map(baddvs) do u
         safe_ch(u) => u
@@ -177,6 +206,16 @@ end
 function handle_complex(pdesys)
     eqs = get_eqs(pdesys)
     bcs = get_bcs(pdesys)
+    dvs = get_dvs(pdesys)
+    # A real field promoted to Complex{Num} has no symbolic real(...) wrapper.
+    complex_typed = map(dvs) do dv
+        dv isa Complex{Num} && iscall(unwrap(real(dv))) &&
+            operation(unwrap(real(dv))) === real
+    end
+    if any(complex_typed) && !all(complex_typed)
+        throw(ArgumentError("Complex-typed and real dependent variables cannot be mixed in handle_complex"))
+    end
+    typed_dvs = !isempty(dvs) && all(complex_typed)
     # In MTK v11, complex equations may already be nested Vector{Equation}
     # Flatten first before processing
     eqs_flat = _flatten_eqs(eqs)
@@ -186,10 +225,11 @@ function handle_complex(pdesys)
     bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
 
     # Check both equations and BCs for complex values
-    if eqs_have_complex || bcs_have_complex
+    if eqs_have_complex || bcs_have_complex || typed_dvs
         dvmaps = map(get_dvs(pdesys)) do dv
-            args = arguments(safe_unwrap(dv))
-            dv = operation(safe_unwrap(dv))
+            dv = _dependent_variable_term(dv)
+            args = arguments(dv)
+            dv = operation(dv)
             resym = Symbol("Re" * string(dv))
             imsym = Symbol("Im" * string(dv))
             redv = first(@variables $resym(..)::Real)
@@ -214,7 +254,23 @@ function handle_complex(pdesys)
         redvmaps_dict = Dict(redvmaps)
         imdvmaps_dict = Dict(imdvmaps)
 
-        if eqs_have_complex
+        if typed_dvs
+            rename(term) = _rename_complex_typed_components(term, redvmaps_dict, imdvmaps_dict)
+            eqs = [rename(eq.lhs) ~ rename(eq.rhs) for eq in eqs_flat]
+            bcs = mapreduce(vcat, bcs_flat) do bc
+                if bc isa Pair
+                    dv = _dependent_variable_term(bc.first)
+                    op = operation(dv)
+                    args = arguments(dv)
+                    [
+                        redvmaps_dict[op](args...) ~ rename(real(bc.second)),
+                        imdvmaps_dict[op](args...) ~ rename(imag(bc.second)),
+                    ]
+                else
+                    [rename(bc.lhs) ~ rename(bc.rhs)]
+                end
+            end
+        elseif eqs_have_complex
             # Equations have complex values - split them into real/imaginary parts
             eqs = mapreduce(vcat, eqs) do eq
                 split_complex_eq(eq, redvmaps_dict, imdvmaps_dict)
@@ -239,12 +295,14 @@ function handle_complex(pdesys)
             end
         end
 
-        bcs = mapreduce(vcat, bcs_flat) do eq
-            split_complex_bc(eq, redvmaps_dict, imdvmaps_dict)
+        if !typed_dvs
+            bcs = mapreduce(vcat, bcs_flat) do eq
+                split_complex_bc(eq, redvmaps_dict, imdvmaps_dict)
+            end
         end
 
         dvs = mapreduce(vcat, get_dvs(pdesys)) do dv
-            dv = safe_unwrap(dv)
+            dv = _dependent_variable_term(dv)
             redv = redvmaps_dict[operation(dv)](arguments(dv)...)
             imdv = imdvmaps_dict[operation(dv)](arguments(dv)...)
             [redv, imdv]
