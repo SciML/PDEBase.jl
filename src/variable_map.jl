@@ -132,6 +132,16 @@ Return the dependent variables tracked by `v`.
 depvars(v::VariableMap) = v.ū
 
 """
+    replaced_vars(v::VariableMap)
+
+Return the variable replacements made while normalizing array-valued dependent
+variables. The dictionary maps each flattened scalar variable to its original
+indexed variable, allowing discretizers to translate solution queries between
+the normalized and user-facing forms.
+"""
+replaced_vars(v::VariableMap) = v.replaced_vars
+
+"""
     indvars(v::VariableMap)
 
 Return the spatial independent variables tracked by `v`, excluding time.

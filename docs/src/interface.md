@@ -173,11 +173,20 @@ interface, a discretizer:
  2. defines `SciMLBase.PDETimeSeriesSolution(sol, metadata::D)` or
     `SciMLBase.PDENoTimeSolution(sol, metadata::D)` for its metadata type `D`, filling the
     fields above from the trained or integrated `sol`;
- 3. extends `Base.getindex(sol::PDENoTimeSolution{T, N, S, D}, sym::Num)` (and the
+3. extends `Base.getindex(sol::PDENoTimeSolution{T, N, S, D}, sym::Num)` (and the
     time-series counterpart) to map dependent variables to `sol.u[sym]` and independent
     variables to their `ivdomain` entry, and the call
     `(sol::PDENoTimeSolution{T, N, S, D})(args...; dv = nothing)` for evaluation at
     arbitrary points, dispatching on its own `D` so that discretizers do not collide.
+
+`make_pdesys_compatible` flattens array-valued dependent variables before discretization.
+Use `replaced_vars(v::VariableMap)` to translate between each generated scalar variable
+and the original indexed variable. Its dictionary maps flattened scalar variables to
+user-facing indexed variables; a solution wrapper can reverse these pairs when serving
+`sol[u[1](x)]` queries, and match all indexed entries of `u(x)` to return the full vector.
+For a scalar query, find the pair whose value is the queried indexed variable and use its
+key to access the discretizer's flattened solution data. For an array-valued query, use
+all matching pairs in the array's index order.
 
 MethodOfLines.jl (`MOLMetadata`) and NeuralPDE.jl (`PINNMetadata`) are the reference
 implementations.
