@@ -9,6 +9,7 @@ end
 function SciMLBase.symbolic_discretize(
         pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
     )
+    interface_errors(pdesys, discretization)
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
     cardinalize_eqs!(pdesys)

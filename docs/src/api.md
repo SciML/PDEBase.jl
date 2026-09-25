@@ -169,6 +169,7 @@ For detailed documentation of interface functions, see [Developer Extension API]
 | `get_time` | Get time variable |
 | `get_discvars` | Get discrete variables |
 | `get_system_unknowns` | Get the unknowns of the generated system |
+| `get_system_inputs` | Get external inputs of the generated system |
 | `get_eqvar` | Get equation variable |
 | `add_metadata!` | Add to metadata |
 

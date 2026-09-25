@@ -14,21 +14,22 @@ API for discretizer authors, not an application-level solver API.
 
 ## Contract
 
-The generic pipeline calls the hooks in this order:
+The equation-system pipeline calls the hooks in this order:
 
-1. `VariableMap(pdesys, discretization)` normalizes symbolic variables and
-   domains.
-2. `interface_errors` rejects unsupported systems before work is allocated.
-3. `parse_bcs` creates the boundary map, then `check_boundarymap` validates it.
-4. `should_transform` optionally enables `transform_pde_system!`.
-5. `construct_disc_state`, `construct_discrete_space`, and
+1. `interface_errors(pdesys, discretization)` checks the original system before
+   normalization can rebuild symbolic variables.
+2. PDEBase normalizes the system and constructs its `VariableMap`.
+3. `interface_errors(pdesys, v, discretization)` performs checks that need the map.
+4. `parse_bcs` creates the boundary map, then `check_boundarymap` validates it.
+5. `should_transform` optionally enables `transform_pde_system!`.
+6. `construct_disc_state`, `construct_discrete_space`, and
    `construct_var_equation_mapping` create the discretizer state.
-6. `construct_differential_discretizer` precomputes derivative data.
-7. For each PDE, `get_eqvar` selects its discrete variable and
+7. `construct_differential_discretizer` precomputes derivative data.
+8. For each PDE, `get_eqvar` selects its discrete variable and
    `discretize_equation!` updates the state in place.
-8. `generate_ic_defaults` creates discrete initial values.
-9. `generate_metadata` stores data needed by the generated problem and solution.
-10. `generate_system` constructs the final symbolic system.
+9. `generate_ic_defaults` creates discrete initial values.
+10. `generate_metadata` stores data needed by the generated problem and solution.
+11. `generate_system` constructs the final symbolic system.
 
 The default methods are intentionally conservative no-ops. A production
 discretizer must override the hooks that construct its space, map, derivative
@@ -141,6 +142,7 @@ These accessors keep downstream packages independent of concrete field names:
 PDEBase.get_time
 PDEBase.get_discvars
 PDEBase.get_system_unknowns
+PDEBase.get_system_inputs
 PDEBase.get_eqvar
 PDEBase.add_metadata!
 ```

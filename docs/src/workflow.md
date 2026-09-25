@@ -55,10 +55,11 @@ See [VariableMap](@ref variablemap) for details.
 ### Phase 3: Validation
 
 ```julia
+interface_errors(pdesys, discretization) # before normalization
 interface_errors(pdesys, v, discretization)
 ```
 
-Checks for fundamental incompatibilities between the PDESystem and the discretization method. Discretization packages should override this to catch unsupported features early.
+Checks for fundamental incompatibilities between the PDESystem and the discretization method. Use the two-argument preflight for metadata that normalization may not preserve, and the three-argument hook for checks that need a `VariableMap`.
 
 ### Phase 4: Boundary Parsing
 
@@ -257,7 +258,7 @@ PDEBase provides several utility functions for working with symbolic expressions
 
 The workflow includes several validation points:
 
-1. **`interface_errors`** - Catch unsupported PDESystem features
+1. **`interface_errors`** - Check the original system, then its normalized variable map
 2. **`check_boundarymap`** - Validate boundary conditions
 3. **Assertions during parsing** - Ensure boundary conditions are on domain boundaries
 

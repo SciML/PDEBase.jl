@@ -25,6 +25,22 @@ end
 
 _discrete_ic_value(v) = unwrap_const(safe_unwrap(v))
 
+function _partition_input_defaults(u0, input_cells)
+    input_set = Set(safe_unwrap.(input_cells))
+    state_defaults = Pair{Any, Any}[]
+    input_defaults = Dict{Any, Any}()
+    for (key, value) in u0
+        key = safe_unwrap(key)
+        value = _discrete_ic_value(value)
+        if key in input_set
+            input_defaults[key] = value
+        else
+            push!(state_defaults, key => value)
+        end
+    end
+    return state_defaults, input_defaults
+end
+
 function _time_derivative_order(x, t)
     x = unwrap(x)
     iscall(x) || return x, 0
@@ -99,9 +115,18 @@ function generate_system(
     name = getfield(metadata.pdesys, :name)
     pdesys = metadata.pdesys
     alleqs = vcat(disc_state.eqs, unique(disc_state.bceqs))
-    alldepvarsdisc = get_system_unknowns(s)
+    alldepvarsdisc = collect(get_system_unknowns(s))
+    system_inputs = unique(collect(safe_unwrap.(get_system_inputs(s))))
+    known_unknowns = Set(safe_unwrap.(alldepvarsdisc))
+    all(in(known_unknowns), system_inputs) || throw(
+        ArgumentError("get_system_inputs(s) must be a subset of get_system_unknowns(s)")
+    )
 
     sys_defaults = Dict{Any, Any}(pdesys.initial_conditions)
+    if !isempty(system_inputs)
+        u0, input_defaults = _partition_input_defaults(u0, system_inputs)
+        merge!(sys_defaults, input_defaults)
+    end
     init_eqs = Equation[]
     guesses = Dict{Any, Any}()
     if t !== nothing && !isempty(u0)
@@ -125,7 +150,7 @@ function generate_system(
             eqs = map(_normalize_nonlinear_eq, alleqs)
             sys = System(
                 eqs, alldepvarsdisc, ps, initial_conditions = sys_defaults, name = name,
-                metadata = [ProblemTypeCtx => metadata], checks = checks
+                inputs = system_inputs, metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, nothing
         else
@@ -138,6 +163,7 @@ function generate_system(
                 guesses = guesses,
                 tspan = tspan,
                 name = name,
+                inputs = system_inputs,
                 metadata = [ProblemTypeCtx => metadata], checks = checks
             )
             return sys, tspan

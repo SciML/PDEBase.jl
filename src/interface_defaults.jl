@@ -3,6 +3,21 @@
 ############################################################################################
 
 """
+    interface_errors(sys::PDESystem, disc::AbstractDiscretization)
+
+Check whether `disc` supports the original, unmodified `PDESystem`.
+
+This preflight runs before PDEBase transforms the system or constructs a
+[`VariableMap`](@ref). Extend it when a support decision depends on metadata or
+another property that may not survive normalization. Return `nothing` when the
+system is supported; otherwise throw an informative exception.
+
+The three-argument [`interface_errors`](@ref) method remains available for
+checks that require a `VariableMap`.
+"""
+interface_errors(sys::PDESystem, disc::AbstractDiscretization) = nothing
+
+"""
     interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization)
 
 Check whether `disc` supports the structure of `sys` represented by `v`.
@@ -455,6 +470,20 @@ function get_system_unknowns(s::AbstractDiscreteSpace)
     discvars = get_discvars(s)
     return vec(reduce(vcat, vec(unique(reduce(vcat, vec.(values(discvars)))))))
 end
+
+"""
+    get_system_inputs(s::AbstractDiscreteSpace)
+
+Return the scalar external inputs of the system `generate_system` builds from `s`.
+
+The default is empty. A discretizer that supports external PDE fields should return
+their discrete scalar variables in a stable order. Every input must also be returned by
+[`get_system_unknowns`](@ref). The variables are declared as inputs and excluded from
+state initialization. Any values returned by `generate_ic_defaults` for them become
+parameter defaults when the system is compiled. A discretizer with a specialized
+numerical construction path must pass these variables to `mtkcompile` explicitly.
+"""
+get_system_inputs(s::AbstractDiscreteSpace) = Any[]
 
 ############################################################################################
 # Default interface functions for `AbstractVarEqMapping`

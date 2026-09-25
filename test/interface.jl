@@ -14,6 +14,12 @@ struct TestMetadata <: SciMLBase.AbstractDiscretizationMetadata{false}
     metadata::Base.RefValue{Any}
 end
 
+struct PreflightDiscretization <: PDEBase.AbstractEquationSystemDiscretization end
+struct PreflightError <: Exception end
+
+PDEBase.interface_errors(::PDESystem, ::PreflightDiscretization) = throw(PreflightError())
+PDEBase.get_time(::PreflightDiscretization) = error("preflight did not run first")
+
 @testset "Default discretization interface" begin
     @parameters t x
     @variables u(..)
@@ -37,6 +43,7 @@ end
     metadata = TestMetadata(Ref{Any}(nothing))
 
     @test PDEBase.interface_errors(pdesys, v, plain) === nothing
+    @test PDEBase.interface_errors(pdesys, plain) === nothing
     @test PDEBase.check_boundarymap(Dict(), v, plain) === nothing
     @test PDEBase.should_transform(pdesys, plain, Dict()) === false
     @test PDEBase.transform_pde_system!(v, Dict(), pdesys, plain) === nothing
@@ -52,9 +59,24 @@ end
     @test PDEBase.generate_system(state, space, [], nothing, metadata, plain; checks = false) === nothing
     @test PDEBase.get_time(plain) === nothing
     @test isempty(PDEBase.get_discvars(space))
+    @test isempty(PDEBase.get_system_inputs(space))
     @test PDEBase.get_eqvar(mapping, eq) === nothing
     @test PDEBase.add_metadata!(metadata, :symbolic_system) === :symbolic_system
     @test metadata.metadata[] === :symbolic_system
+end
+
+@testset "Original-system preflight runs first" begin
+    @parameters t x
+    @variables u(..)
+    pdesys = PDESystem(
+        [Differential(t)(u(t, x)) ~ 0], Equation[],
+        [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [u(t, x)];
+        name = :pdebase_preflight_test
+    )
+
+    @test_throws PreflightError SciMLBase.symbolic_discretize(
+        pdesys, PreflightDiscretization()
+    )
 end
 
 struct MockDiscretization <: PDEBase.AbstractEquationSystemDiscretization
