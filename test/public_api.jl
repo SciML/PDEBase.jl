@@ -27,6 +27,7 @@ end
         :generate_system,
         :get_discvars,
         :get_system_unknowns,
+        :get_system_inputs,
         :get_eqvar,
         :add_metadata!,
     )
