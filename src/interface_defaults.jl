@@ -3,7 +3,7 @@
 ############################################################################################
 
 """
-    interface_errors(sys::PDESystem, disc::AbstractDiscretization)
+    interface_errors(sys::PDESystem, disc::AbstractEquationSystemDiscretization)
 
 Check whether `disc` supports the original, unmodified `PDESystem`.
 
@@ -15,7 +15,7 @@ system is supported; otherwise throw an informative exception.
 The three-argument [`interface_errors`](@ref) method remains available for
 checks that require a `VariableMap`.
 """
-interface_errors(sys::PDESystem, disc::AbstractDiscretization) = nothing
+interface_errors(sys::PDESystem, disc::AbstractEquationSystemDiscretization) = nothing
 
 """
     interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization)

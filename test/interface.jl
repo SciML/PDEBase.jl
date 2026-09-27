@@ -4,6 +4,7 @@ using ModelingToolkit
 using Test
 
 struct PlainDiscretization <: SciMLBase.AbstractDiscretization end
+struct DefaultPreflightDiscretization <: PDEBase.AbstractEquationSystemDiscretization end
 struct TestSpace <: PDEBase.AbstractDiscreteSpace end
 struct TestMapping <: PDEBase.AbstractVarEqMapping end
 struct TestDerivativeData <: PDEBase.AbstractDifferentialDiscretizer end
@@ -43,7 +44,7 @@ PDEBase.get_time(::PreflightDiscretization) = error("preflight did not run first
     metadata = TestMetadata(Ref{Any}(nothing))
 
     @test PDEBase.interface_errors(pdesys, v, plain) === nothing
-    @test PDEBase.interface_errors(pdesys, plain) === nothing
+    @test PDEBase.interface_errors(pdesys, DefaultPreflightDiscretization()) === nothing
     @test PDEBase.check_boundarymap(Dict(), v, plain) === nothing
     @test PDEBase.should_transform(pdesys, plain, Dict()) === false
     @test PDEBase.transform_pde_system!(v, Dict(), pdesys, plain) === nothing
