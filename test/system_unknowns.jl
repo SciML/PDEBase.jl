@@ -1,7 +1,7 @@
 using PDEBase
 using ModelingToolkit
 using ModelingToolkitBase: complete, guesses, initial_conditions, initialization_equations,
-    inputs, mtkcompile, parameters, unknowns
+    inputs, parameters, unknowns
 using SciMLBase
 using Symbolics
 using SymbolicUtils: unwrap_const
@@ -24,7 +24,15 @@ struct InputUnknownsSpace <: PDEBase.AbstractDiscreteSpace
 end
 struct UnknownsMetadata <: SciMLBase.AbstractDiscretizationMetadata{true}
     pdesys::Any
+    metadata::Base.RefValue{Any}
 end
+struct InputProblemDiscretization <: PDEBase.AbstractEquationSystemDiscretization
+    system::Any
+    tspan::Any
+    kwargs::NamedTuple
+end
+
+UnknownsMetadata(pdesys) = UnknownsMetadata(pdesys, Ref{Any}(nothing))
 
 PDEBase.get_time(disc::UnknownsDiscretization) = disc.time
 PDEBase.get_discvars(s::ScalarUnknownsSpace) = s.discvars
@@ -33,6 +41,11 @@ PDEBase.get_discvars(s::InputUnknownsSpace) = s.discvars
 PDEBase.get_system_unknowns(s::ArrayUnknownsSpace) = s.arrays
 PDEBase.get_system_unknowns(s::InputUnknownsSpace) = s.state_unknowns
 PDEBase.get_system_inputs(s::InputUnknownsSpace) = s.system_inputs
+function SciMLBase.symbolic_discretize(
+        ::PDESystem, disc::InputProblemDiscretization; checks = true
+    )
+    return disc.system, disc.tspan
+end
 
 @testset "get_system_unknowns chooses the unknowns of the generated system" begin
     @parameters t x
@@ -115,12 +128,14 @@ end
     @test length(initialization_equations(sys)) == 2
     @test all(!haskey(guesses(sys), unwrap(f)) for f in (f1, f2))
 
-    compiled = mtkcompile(sys; inputs = inputs(sys))
+    prob = discretize(
+        pdesys, InputProblemDiscretization(sys, (0.0, 1.0), (;))
+    )
+    compiled = prob.f.sys
     @test isequal(inputs(compiled), unwrap.([f1, f2]))
     @test all(f -> any(isequal(f), parameters(compiled)), unwrap.([f1, f2]))
     @test all(f -> !any(isequal(f), unknowns(compiled)), unwrap.([f1, f2]))
 
-    prob = ODEProblem(compiled, nothing, (0.0, 1.0))
     state_values = Dict(unknowns(compiled) .=> prob.u0)
     rates = Dict(unknowns(compiled) .=> prob.f(prob.u0, prob.p, 0.0))
     @test state_values[unwrap(a)] == 1.0

@@ -188,7 +188,7 @@ function SciMLBase.discretize(
     )
     sys, tspan = SciMLBase.symbolic_discretize(pdesys, discretization; checks = checks)
     return try
-        simpsys = mtkcompile(sys)
+        simpsys = mtkcompile(sys; inputs = inputs(sys))
         if tspan === nothing
             add_metadata!(getmetadata(sys, ProblemTypeCtx, nothing), sys)
             # MTK v11 requires symbolic map for initial guess
