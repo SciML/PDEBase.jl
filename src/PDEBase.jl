@@ -123,7 +123,7 @@ export count_differentials, differential_order, has_derivatives, find_derivative
     recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface,
     haslowerupper, has_interfaces, isupper
 export VariableMap
-export ivs, all_ivs, depvar, depvars, indvars, x2i
+export ivs, all_ivs, depvar, depvars, indvars, replaced_vars, x2i
 export PeriodicMap
 
 # Versioned extension points for PDE discretization packages. These remain

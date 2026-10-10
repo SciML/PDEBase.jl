@@ -11,6 +11,14 @@ function hasdocstring(mod::Module, name::Symbol)
     return haskey(Base.Docs.meta(mod), Base.Docs.Binding(mod, name))
 end
 
+@testset "VariableMap accessor public API" begin
+    @test isdefined(PDEBase, :replaced_vars)
+    @test hasdocstring(PDEBase, :replaced_vars)
+    if CAN_QUERY_PUBLIC
+        @test Base.ispublic(PDEBase, :replaced_vars)
+    end
+end
+
 @testset "Developer extension API" begin
     developer_api = (
         :interface_errors,

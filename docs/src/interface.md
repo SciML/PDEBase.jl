@@ -179,6 +179,15 @@ interface, a discretizer:
     `(sol::PDENoTimeSolution{T, N, S, D})(args...; dv = nothing)` for evaluation at
     arbitrary points, dispatching on its own `D` so that discretizers do not collide.
 
+`make_pdesys_compatible` flattens array-valued dependent variables before discretization.
+Use `replaced_vars(v::VariableMap)` to translate between each generated scalar variable
+and the original indexed variable. Its dictionary maps flattened scalar variables to
+user-facing indexed variables, and is empty when no array-valued dependent variables are
+present. A solution wrapper can reverse these pairs when serving scalar queries such as
+`sol[u(x)[1]]`. For an array-valued query such as `sol[u(x)]`, iterate the entries of the
+queried array (for example `collect(u(x))`) and look each component up in the map so the
+returned components follow the array's index order.
+
 MethodOfLines.jl (`MOLMetadata`) and NeuralPDE.jl (`PINNMetadata`) are the reference
 implementations.
 
