@@ -8,7 +8,7 @@ import Symbolics
 import SymbolicUtils
 using ModelingToolkitBase: PDESystem, ProblemTypeCtx, System, get_bcs, get_connector_type,
     get_domain, get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
-    get_systems, get_unknowns, mtkcompile
+    get_systems, get_unknowns, inputs, mtkcompile
 using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
     ODEFunction, ODEProblem
@@ -131,7 +131,7 @@ export PeriodicMap
 @public interface_errors, check_boundarymap, should_transform, transform_pde_system!,
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
-    generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
-    add_metadata!
+    generate_metadata, generate_system, get_discvars, get_system_inputs,
+    get_system_unknowns, get_eqvar, add_metadata!
 
 end # module PDEBase
