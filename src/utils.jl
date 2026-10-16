@@ -68,16 +68,12 @@ function d_orders(x, pdeeqs)
     # Handle both Equation (has lhs, rhs) and Pair (has first, second) types
     _get_rhs(pde) = pde isa Pair ? pde.second : pde.rhs
     _get_lhs(pde) = pde isa Pair ? pde.first : pde.lhs
-    return reverse(
-        sort(
-            collect(
-                union(
-                    (differential_order(_get_rhs(pde), safe_unwrap(x)) for pde in pdeeqs)...,
-                    (differential_order(_get_lhs(pde), safe_unwrap(x)) for pde in pdeeqs)...
-                )
-            )
-        )
-    )
+    orders = Set{Int}()
+    for pde in pdeeqs
+        union!(orders, differential_order(_get_rhs(pde), safe_unwrap(x)))
+        union!(orders, differential_order(_get_lhs(pde), safe_unwrap(x)))
+    end
+    return sort!(collect(orders); rev = true)
 end
 
 insert(args...) = insert!(args[1], args[2:end]...)
