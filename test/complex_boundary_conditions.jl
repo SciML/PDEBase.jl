@@ -218,6 +218,29 @@ using Test
         )
     end
 
+    @testset "Nested real groups with a leading `0 ~` member stay real" begin
+        @variables u(..)
+        for group in (
+                [0 ~ u(t, 0), u(t, 1) ~ 1],
+                [0 ~ u(t, 0), 1 ~ u(t, 1)],
+            )
+            system = PDESystem(
+                [Dt(u(t, x)) ~ Dxx(u(t, x))], [u(0, x) ~ 0, group],
+                domain, [t, x], [u(t, x)]; name = :leading_zero_real_group_test
+            )
+            normalized, complexmap = PDEBase.handle_complex(system)
+            @test complexmap === nothing
+            @test same_equations(PDEBase.get_bcs(normalized), [u(0, x) ~ 0; group])
+        end
+
+        # On a complex system the same shape is also the pre-split of
+        # `im*ψ(t, 1) ~ ψ(t, 0) + im`, so it is rejected.
+        @test_throws ArgumentError split(
+            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+            [ψ(0, x) ~ 0, [0 ~ ψ(t, 0), ψ(t, 1) ~ 1]]
+        )
+    end
+
     @testset "Untyped complex conditions on a real equation are rejected" begin
         real_pde = [Dt(ψ(t, x)) ~ Dxx(ψ(t, x))]
         for bcs in (

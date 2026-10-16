@@ -52,7 +52,11 @@ stays a real grouping. A condition with the field on the right, such as
 image of these pairs and is read the same way. Pairs that could equally be a real
 grouping, such as `0 ~` data that still mentions a dependent variable or a
 hand-written `real`/`imag` pair on a system containing complex values, are
-rejected with an `ArgumentError`.
+rejected with an `ArgumentError`. On a system with no complex values, nested
+pairs such as `[u(t, 0) ~ 0, Dx(u(t, 0)) ~ 0]` or `[0 ~ u(t, 0), u(t, 1) ~ 1]`
+stay real groupings. An untyped `im*Dx(ψ(t, 1)) ~ ψ(t, 1)` on such a system
+pre-splits to the same shape and is read as real, so declare `ψ(..)::Complex`
+for conditions like it.
 
 When the installed Symbolics provides `Symbolics.split_complex_equation`, an
 untyped field can also opt a single boundary condition into coupled

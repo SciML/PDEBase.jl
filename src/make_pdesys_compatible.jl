@@ -253,12 +253,16 @@ end
 
 _flip_equation(eq) = Equation(eq.rhs, eq.lhs)
 
+_constrains_unknown(eq, dependent_operations) =
+    !(_dv_free(eq.lhs, dependent_operations) && _dv_free(eq.rhs, dependent_operations))
+
 # A condition written with the field on the right, `exp(im*t) ~ ψ(t, 0)` or
 # `ψ(t, 0) - exp(im*t) ~ 0`, pre-splits to the mirror image `[a ~ L, b ~ 0]`
 # or `[a ~ 0, b ~ 0]` and is read the same way with its sides swapped; an
 # unmatched mirror is an ordinary real grouping such as `[u ~ 0, Dx(u) ~ 0]`.
-# Any other nested pair containing a `0 ~` member is rejected:
-# dependent-variable data behind the `0 ~` (the pre-split of e.g.
+# A `[0 ~ a, L ~ b]` pair whose members both constrain an unknown is left for
+# `_ambiguous_presplit_bc`. Any other nested pair containing a `0 ~` member is
+# rejected: dependent-variable data behind the `0 ~` (the pre-split of e.g.
 # `L ~ i*ψ(t, 0)`) couples the fields in a way this shape does not record.
 function _resolve_presplit_bc_pairs(bcs, dependent_operations)
     return map(bcs) do bc
@@ -271,7 +275,9 @@ function _resolve_presplit_bc_pairs(bcs, dependent_operations)
             rebuilt === nothing && !_is_zero_constant(eq1.lhs) && throw(_presplit_bc_error())
             return something(rebuilt, bc)
         elseif _is_zero_constant(eq1.lhs)
-            throw(_presplit_bc_error())
+            _constrains_unknown(eq1, dependent_operations) &&
+                _constrains_unknown(eq2, dependent_operations) || throw(_presplit_bc_error())
+            return bc
         elseif _is_zero_constant(eq2.rhs)
             rebuilt = _rebuild_presplit_pair(
                 _flip_equation(eq1), _flip_equation(eq2), dependent_operations
@@ -282,14 +288,17 @@ function _resolve_presplit_bc_pairs(bcs, dependent_operations)
     end
 end
 
-# Without a `0 ~` member a nested pair can equally be user grouping, so it is
-# only flagged when the system already shows complex values.
+# A same-point pair, or a `[0 ~ a, L ~ b]` pair (the pre-split of
+# `i*L ~ a + i b`), can equally be user grouping, so it is only flagged when
+# the system already shows complex values.
 function _ambiguous_presplit_bc(bcs, dependent_operations, complex_evidence)
     complex_evidence || return false
     for bc in bcs
         if bc isa AbstractVector
-            if length(bc) == 2 && all(eq -> eq isa Equation, bc) &&
-                    _same_dependent_variable_instances(bc[1], bc[2], dependent_operations)
+            if length(bc) == 2 && all(eq -> eq isa Equation, bc) && (
+                    _same_dependent_variable_instances(bc[1], bc[2], dependent_operations) ||
+                        _is_zero_constant(bc[1].lhs) && !_is_zero_constant(bc[2].lhs)
+                )
                 return true
             end
             _ambiguous_presplit_bc(bc, dependent_operations, complex_evidence) && return true
