@@ -33,6 +33,7 @@ function _replace_ops(term, op_map)
 end
 
 _dependent_variable_term(dv) = safe_unwrap(dv)
+_dependent_variable_term(dv::Symbolics.Arr) = unwrap(dv)
 _dependent_variable_term(dv::Complex{Num}) = only(arguments(unwrap(real(dv))))
 
 function _rename_complex_typed_components(term, redvmaps, imdvmaps)
@@ -212,11 +213,13 @@ end
 _dv_free(term, dependent_operations) =
     isempty(_dependent_variable_instances!(Any[], term, dependent_operations))
 
+const _MARKER_HINT = isdefined(Symbolics, :split_complex_equation) ?
+    " or build the condition with `Symbolics.split_complex_equation`" : ""
+
 _presplit_bc_error() = ArgumentError(
     "Symbolics has pre-split a complex boundary condition before PDEBase can verify its meaning, " *
         "or a `0 ~` condition was nested inside a boundary group. Declare the dependent " *
-        "variable as `::Complex` or build the condition with " *
-        "`Symbolics.split_complex_equation` to preserve complex boundary expressions; " *
+        "variable as `::Complex`" * _MARKER_HINT * " to preserve complex boundary expressions; " *
         "if these are real boundary conditions, pass them un-nested."
 )
 
@@ -232,35 +235,50 @@ _presplit_bc_error() = ArgumentError(
 # condition (`0 ~ ψ(t, 0) - exp(im*t)` pre-splits to `[0 ~ ψ - cos(t),
 # 0 ~ -sin(t)]`) when exactly one member is free of dependent variables —
 # as a real grouping such a member constrains no unknown — so it is rebuilt
-# as `0 ~ a + i b` and split downstream. Any other nested pair containing a
-# `0 ~` member is rejected: dependent-variable data behind the `0 ~` (the
-# pre-split of e.g. `L ~ i*ψ(t, 0)`) couples the fields in a way this shape
-# does not record.
+# as `0 ~ a + i b` and split downstream. Returns `nothing` when neither
+# reading applies.
+function _rebuild_presplit_pair(eq1, eq2, dependent_operations)
+    if _is_zero_constant(eq1.lhs)
+        free1 = _dv_free(eq1.rhs, dependent_operations)
+        free2 = _dv_free(eq2.rhs, dependent_operations)
+        free1 && free2 && throw(_presplit_bc_error())
+        return free1 ⊻ free2 ? Equation(0, eq1.rhs + im * eq2.rhs) : nothing
+    elseif _dv_application(eq1.lhs, dependent_operations) &&
+            _dv_free(eq1.rhs, dependent_operations) &&
+            _dv_free(eq2.rhs, dependent_operations)
+        return Equation(eq1.lhs, eq1.rhs + im * eq2.rhs)
+    end
+    return nothing
+end
+
+_flip_equation(eq) = Equation(eq.rhs, eq.lhs)
+
+# A condition written with the field on the right, `exp(im*t) ~ ψ(t, 0)` or
+# `ψ(t, 0) - exp(im*t) ~ 0`, pre-splits to the mirror image `[a ~ L, b ~ 0]`
+# or `[a ~ 0, b ~ 0]` and is read the same way with its sides swapped; an
+# unmatched mirror is an ordinary real grouping such as `[u ~ 0, Dx(u) ~ 0]`.
+# Any other nested pair containing a `0 ~` member is rejected:
+# dependent-variable data behind the `0 ~` (the pre-split of e.g.
+# `L ~ i*ψ(t, 0)`) couples the fields in a way this shape does not record.
 function _resolve_presplit_bc_pairs(bcs, dependent_operations)
     return map(bcs) do bc
         bc isa AbstractVector || return bc
-        if length(bc) == 2 && all(eq -> eq isa Equation, bc)
-            eq1, eq2 = bc
-            zero_lhs1 = _is_zero_constant(eq1.lhs)
-            zero_lhs2 = _is_zero_constant(eq2.lhs)
-            if zero_lhs1 && zero_lhs2
-                free1 = _dv_free(eq1.rhs, dependent_operations)
-                free2 = _dv_free(eq2.rhs, dependent_operations)
-                if free1 ⊻ free2
-                    return Equation(0, eq1.rhs + im * eq2.rhs)
-                end
-                free1 && free2 && throw(_presplit_bc_error())
-                return bc
-            elseif zero_lhs2 && _dv_application(eq1.lhs, dependent_operations) &&
-                    _dv_free(eq1.rhs, dependent_operations) &&
-                    _dv_free(eq2.rhs, dependent_operations)
-                return Equation(eq1.lhs, eq1.rhs + im * eq2.rhs)
-            elseif zero_lhs1 || zero_lhs2
-                throw(_presplit_bc_error())
-            end
-            return bc
+        length(bc) == 2 && all(eq -> eq isa Equation, bc) ||
+            return _resolve_presplit_bc_pairs(bc, dependent_operations)
+        eq1, eq2 = bc
+        if _is_zero_constant(eq2.lhs)
+            rebuilt = _rebuild_presplit_pair(eq1, eq2, dependent_operations)
+            rebuilt === nothing && !_is_zero_constant(eq1.lhs) && throw(_presplit_bc_error())
+            return something(rebuilt, bc)
+        elseif _is_zero_constant(eq1.lhs)
+            throw(_presplit_bc_error())
+        elseif _is_zero_constant(eq2.rhs)
+            rebuilt = _rebuild_presplit_pair(
+                _flip_equation(eq1), _flip_equation(eq2), dependent_operations
+            )
+            return rebuilt === nothing ? bc : _flip_equation(rebuilt)
         end
-        return _resolve_presplit_bc_pairs(bc, dependent_operations)
+        return bc
     end
 end
 
@@ -284,7 +302,9 @@ end
 # splitting one complex `~` and keeps the original equation, so restoring it
 # routes the condition through the coupled split instead of the ambiguous-pair
 # checks that a hand-written or plain `~` pair still receives.
-_restore_marked_complex_eq(eq::Symbolics.SplitComplexEquation) = eq.original
+@static if isdefined(Symbolics, :SplitComplexEquation)
+    _restore_marked_complex_eq(eq::Symbolics.SplitComplexEquation) = eq.original
+end
 _restore_marked_complex_eq(bcs::AbstractVector) = map(_restore_marked_complex_eq, bcs)
 _restore_marked_complex_eq(bc) = bc
 

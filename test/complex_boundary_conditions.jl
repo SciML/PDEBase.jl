@@ -137,6 +137,46 @@ using Test
         )
     end
 
+    @testset "Untyped complex conditions with the field on the right split exactly" begin
+        # `exp(im*t) ~ ψ(t, 0)` pre-splits to `[cos(t) ~ ψ(t, 0), sin(t) ~ 0]`,
+        # the mirror image of the field-on-the-left pair.
+        exp0 = SymbolicUtils.term(exp, 0)
+        equations = [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))]
+        system = split(equations, [exp(im * t) ~ ψ(t, 0), ψ(t, 1) ~ 0])
+        @test same_equations(
+            PDEBase.get_bcs(system), [
+                exp0 * cos(t) ~ Reψ(t, 0),
+                exp0 * sin(t) ~ Imψ(t, 0),
+                Reψ(t, 1) ~ 0,
+                Imψ(t, 1) ~ 0,
+            ]
+        )
+
+        system = split(equations, [ψ(t, 0) ~ 0, exp(im * t) ~ Dx(ψ(t, 1))])
+        @test same_equations(
+            PDEBase.get_bcs(system), [
+                Reψ(t, 0) ~ 0,
+                Imψ(t, 0) ~ 0,
+                exp0 * cos(t) ~ Dx(Reψ(t, 1)),
+                exp0 * sin(t) ~ Dx(Imψ(t, 1)),
+            ]
+        )
+
+        system = split(equations, [ψ(t, 0) - exp(im * t) ~ 0, ψ(t, 1) ~ 0])
+        @test same_equations(
+            PDEBase.get_bcs(system), [
+                Reψ(t, 0) - exp0 * cos(t) ~ 0,
+                Imψ(t, 0) - exp0 * sin(t) ~ 0,
+                Reψ(t, 1) ~ 0,
+                Imψ(t, 1) ~ 0,
+            ]
+        )
+
+        @test_throws ArgumentError split(
+            equations, [[sin(t) ~ 0, cos(t) ~ 0], ψ(t, 1) ~ 0]
+        )
+    end
+
     @testset "Pre-split pair with dependent-variable data is rejected" begin
         # `Dx(ψ(t, 1)) ~ im*ψ(t, 1)` pre-splits to `[Dx(ψ) ~ 0, 0 ~ ψ]`: the
         # `0 ~` side carries a dependent variable, so no unique reconstruction
@@ -228,69 +268,71 @@ using Test
         @test same_equations(PDEBase.get_bcs(system), expected)
     end
 
-    @testset "Marked complex boundary conditions preserve coupling" begin
-        marked = Symbolics.split_complex_equation(
-            ψ(t, 0), cos(t) + im * sin(t)
-        )
-        @test marked isa Symbolics.SplitComplexEquation
+    if isdefined(Symbolics, :split_complex_equation)
+        @testset "Marked complex boundary conditions preserve coupling" begin
+            marked = Symbolics.split_complex_equation(
+                ψ(t, 0), cos(t) + im * sin(t)
+            )
+            @test marked isa Symbolics.SplitComplexEquation
 
-        system = split(
-            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-            [marked, ψ(t, 1) ~ 0]
-        )
-        expected = [
-            Reψ(t, 0) ~ cos(t),
-            Imψ(t, 0) ~ sin(t),
-            Reψ(t, 1) ~ 0,
-            Imψ(t, 1) ~ 0,
-        ]
-        @test same_equations(PDEBase.get_bcs(system), expected)
-
-        marked_neumann = Symbolics.split_complex_equation(
-            Dx(ψ(t, 1)), im * ψ(t, 1)
-        )
-        @test marked_neumann isa Symbolics.SplitComplexEquation
-        system = split(
-            [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-            [ψ(t, 0) ~ 0, marked_neumann]
-        )
-        expected = [
-            Reψ(t, 0) ~ 0,
-            Imψ(t, 0) ~ 0,
-            Dx(Reψ(t, 1)) ~ -Imψ(t, 1),
-            Dx(Imψ(t, 1)) ~ Reψ(t, 1),
-        ]
-        @test same_equations(PDEBase.get_bcs(system), expected)
-
-        system = split(
-            [Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-            [marked, ψ(t, 1) ~ 0]
-        )
-        @test same_equations(
-            PDEBase.get_bcs(system), [
+            system = split(
+                [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+                [marked, ψ(t, 1) ~ 0]
+            )
+            expected = [
                 Reψ(t, 0) ~ cos(t),
                 Imψ(t, 0) ~ sin(t),
                 Reψ(t, 1) ~ 0,
                 Imψ(t, 1) ~ 0,
             ]
-        )
+            @test same_equations(PDEBase.get_bcs(system), expected)
 
-        marked_typed = Symbolics.split_complex_equation(
-            ψc(t, 0), cos(t) + im * sin(t)
-        )
-        @test marked_typed isa Symbolics.SplitComplexEquation
-        system = split_typed(
-            [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
-            [marked_typed, ψc(t, 1) ~ 0]
-        )
-        @test same_equations(
-            PDEBase.get_bcs(system), [
-                Reψc(t, 0) ~ cos(t),
-                Imψc(t, 0) ~ sin(t),
-                Reψc(t, 1) ~ 0,
-                Imψc(t, 1) ~ 0,
+            marked_neumann = Symbolics.split_complex_equation(
+                Dx(ψ(t, 1)), im * ψ(t, 1)
+            )
+            @test marked_neumann isa Symbolics.SplitComplexEquation
+            system = split(
+                [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+                [ψ(t, 0) ~ 0, marked_neumann]
+            )
+            expected = [
+                Reψ(t, 0) ~ 0,
+                Imψ(t, 0) ~ 0,
+                Dx(Reψ(t, 1)) ~ -Imψ(t, 1),
+                Dx(Imψ(t, 1)) ~ Reψ(t, 1),
             ]
-        )
+            @test same_equations(PDEBase.get_bcs(system), expected)
+
+            system = split(
+                [Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+                [marked, ψ(t, 1) ~ 0]
+            )
+            @test same_equations(
+                PDEBase.get_bcs(system), [
+                    Reψ(t, 0) ~ cos(t),
+                    Imψ(t, 0) ~ sin(t),
+                    Reψ(t, 1) ~ 0,
+                    Imψ(t, 1) ~ 0,
+                ]
+            )
+
+            marked_typed = Symbolics.split_complex_equation(
+                ψc(t, 0), cos(t) + im * sin(t)
+            )
+            @test marked_typed isa Symbolics.SplitComplexEquation
+            system = split_typed(
+                [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+                [marked_typed, ψc(t, 1) ~ 0]
+            )
+            @test same_equations(
+                PDEBase.get_bcs(system), [
+                    Reψc(t, 0) ~ cos(t),
+                    Imψc(t, 0) ~ sin(t),
+                    Reψc(t, 1) ~ 0,
+                    Imψc(t, 1) ~ 0,
+                ]
+            )
+        end
     end
 
     @testset "Hand-written real/imag pair reads as its complex equivalent" begin

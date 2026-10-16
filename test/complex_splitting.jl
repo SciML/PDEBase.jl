@@ -36,10 +36,9 @@ using Test
     )
     @test length(PDEBase.get_bcs(split)) == 8
 
-    # Symbolics 7.42 pre-splits `ψ(t, 0) ~ cos(t) + im*sin(t)` on `~`; the
-    # marker's `original` is the unsplit equation this check feeds to
-    # split_complex_bc.
-    complex_bc = Symbolics.split_complex_equation(ψ(t, 0), cos(t) + im * sin(t)).original
+    # `~` pre-splits a complex right-hand side on an untyped field; the
+    # `Equation` constructor keeps the unsplit condition.
+    complex_bc = Equation(unwrap(ψ(t, 0)), unwrap(cos(t) + im * sin(t)))
     redvmaps = Dict(operation(unwrap(ψ(t, 0))) => operation(unwrap(Reψ(t, 0))))
     imdvmaps = Dict(operation(unwrap(ψ(t, 0))) => operation(unwrap(Imψ(t, 0))))
     split_bc = PDEBase.split_complex_bc(complex_bc, redvmaps, imdvmaps)

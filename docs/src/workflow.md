@@ -47,16 +47,16 @@ applies to a residual-form condition `0 ~ f(ψ)` such as
 `0 ~ ψ(t, 0) - exp(im*t)`, which pre-splits to a `[0 ~ a, 0 ~ b]` pair: when
 exactly one member is free of dependent variables the pair is read as
 `0 ~ a + i b`, while a pair whose members both mention a dependent variable
-stays a real grouping. Write complex conditions with the field on the left,
-as `ψ(t, 0) ~ exp(im*t)` or the `0 ~` residual form — a reversed
-`exp(im*t) ~ ψ(t, 0)` pre-splits to a shape that cannot be reconstructed and
-splits incorrectly without an error. Pairs that could equally be a real
+stays a real grouping. A condition with the field on the right, such as
+`exp(im*t) ~ ψ(t, 0)` or `ψ(t, 0) - exp(im*t) ~ 0`, pre-splits to the mirror
+image of these pairs and is read the same way. Pairs that could equally be a real
 grouping, such as `0 ~` data that still mentions a dependent variable or a
 hand-written `real`/`imag` pair on a system containing complex values, are
 rejected with an `ArgumentError`.
 
-An untyped field can also opt a single boundary condition into coupled
-splitting by building it with `Symbolics.split_complex_equation`, which marks
+When the installed Symbolics provides `Symbolics.split_complex_equation`, an
+untyped field can also opt a single boundary condition into coupled
+splitting by building it with that function, which marks
 the pair as a complex split (`Symbolics.SplitComplexEquation`) and keeps the
 original equation. The marker is only valid for conditions that are
 holomorphic — polynomial or analytic — in the field: `conj`, `real`, `imag`,
