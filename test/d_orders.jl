@@ -18,4 +18,13 @@ using Test
         @test isempty(orders)
         @test collect(union(d_orders(x, [Dx(Dx(u(x))) ~ 0]), orders)) == [2]
     end
+
+    @testset "Num-wrapped Pair boundary conditions" begin
+        @variables w(..)
+        Dt = Differential(t)
+        bcs = [w(0, x) => sin(x), Dt(w(0, x)) => 0, Dx(w(t, 0)) => 0, w(t, 1) ~ 0]
+        @test d_orders(x, bcs) == [1]
+        @test d_orders(t, bcs) == [1]
+        @test d_orders(x, [Dx(Dx(w(t, x))) => Dx(w(t, x))]) == [2, 1]
+    end
 end
