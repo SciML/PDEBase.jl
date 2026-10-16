@@ -1,6 +1,7 @@
 using PDEBase
 using SciMLBase
 using ModelingToolkit
+using Symbolics
 using Test
 
 # A minimal optimization-system discretization: every equation and boundary condition is
@@ -10,6 +11,7 @@ struct ResidualSpace <: PDEBase.AbstractDiscreteSpace
     varmap::PDEBase.VariableMap
     nbcs::Int
 end
+
 mutable struct ResidualState <: PDEBase.AbstractDiscretizationState
     residuals::Vector{Any}
 end
@@ -77,4 +79,29 @@ end
     @test PDEBase.discretize_equation!(
         nothing, eq, :pde, nothing, nothing, BareDiscretization()
     ) === nothing
+end
+
+@testset "Optimization-system replaced variable map" begin
+    @parameters x
+    @variables u(..)[1:2]
+    eqs = [u(x)[1] ~ u(x)[2]]
+    bcs = [u(0)[1] ~ 0, u(1)[2] ~ 1]
+    pdesys = PDESystem(eqs, bcs, [x ∈ (0, 1)], [x], [u(x)]; name = :array_system)
+    result = symbolic_discretize(pdesys, ResidualDiscretization())
+
+    replacements = PDEBase.replaced_vars(result.space.varmap)
+    @test length(replacements) == 2
+    compat_sys, _ = PDEBase.make_pdesys_compatible(pdesys)
+    flat_eq = only(ModelingToolkit.get_eqs(compat_sys))
+    flat_lhs = Symbolics.unwrap(flat_eq.lhs)
+    flat_rhs = Symbolics.unwrap(flat_eq.rhs)
+    @test isequal(replacements[flat_lhs], u(x)[1])
+    @test isequal(replacements[flat_rhs], u(x)[2])
+
+    # Scalar-only systems leave an empty replacement map.
+    @parameters y
+    @variables w(..)
+    scalar_sys = PDESystem([w(y) ~ 0], [w(0) ~ 0], [y ∈ (0, 1)], [y], [w(y)]; name = :scalar)
+    scalar_result = symbolic_discretize(scalar_sys, ResidualDiscretization())
+    @test isempty(PDEBase.replaced_vars(scalar_result.space.varmap))
 end
