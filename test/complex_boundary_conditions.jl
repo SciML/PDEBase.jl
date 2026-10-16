@@ -191,6 +191,33 @@ using Test
         )
     end
 
+    @testset "Untyped Robin conditions with an imaginary coefficient are rejected" begin
+        # `ψ(t, 0) + im*Dx(ψ(t, 0)) ~ 0` pre-splits to exactly
+        # `[ψ(t, 0) ~ 0, Dx(ψ(t, 0)) ~ 0]`, and `im*Dx(ψ(t, 0)) ~ ψ(t, 0)` to
+        # `[0 ~ ψ(t, 0), Dx(ψ(t, 0)) ~ 0]`; read as groupings they would
+        # become clamped conditions.
+        equations = [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))]
+        for robin in (ψ(t, 0) + im * Dx(ψ(t, 0)) ~ 0, im * Dx(ψ(t, 0)) ~ ψ(t, 0))
+            @test_throws ArgumentError split(equations, [robin, ψ(t, 1) ~ 0])
+        end
+        for group in ([ψ(t, 0) ~ 0, Dx(ψ(t, 0)) ~ 0], [0 ~ ψ(t, 0), Dx(ψ(t, 0)) ~ 0])
+            @test_throws ArgumentError split(equations, [group, ψ(t, 1) ~ 0])
+        end
+
+        system = split_typed(
+            [im * Dt(ψc(t, x)) ~ Dxx(ψc(t, x))],
+            [ψc(t, 0) + im * Dx(ψc(t, 0)) ~ 0, ψc(t, 1) ~ 0]
+        )
+        @test same_equations(
+            PDEBase.get_bcs(system), [
+                Reψc(t, 0) - Dx(Imψc(t, 0)) ~ 0,
+                Imψc(t, 0) + Dx(Reψc(t, 0)) ~ 0,
+                Reψc(t, 1) ~ 0,
+                Imψc(t, 1) ~ 0,
+            ]
+        )
+    end
+
     @testset "Nested pair of `0 ~` boundary conditions stays real" begin
         @variables u(..)
         system = PDESystem(
