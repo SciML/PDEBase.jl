@@ -618,6 +618,6 @@ function split_complex(term)
     if hascomplex(term)
         return [real(term), imag(term)]
     else
-        return [term, term]
+        return [term, 0]
     end
 end

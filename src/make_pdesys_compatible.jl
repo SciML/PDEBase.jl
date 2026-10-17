@@ -112,50 +112,61 @@ function make_pdesys_compatible(pdesys::PDESystem)
         replaced_vars
 end
 
-function _split_complex_components(term)
-    term = unwrap_const(safe_unwrap(term))
+function _split_complex_components(term, preserve_differentials = false)
+    term = safe_unwrap(term)
+    if preserve_differentials && iscall(term) && operation(term) isa Differential
+        op = operation(term)
+        arg = first(arguments(term))
+        constant_arg = safe_unwrap(unwrap_const(arg))
+        if constant_arg isa Number
+            return 0, 0
+        end
+        re, im = _split_complex_components(arg, preserve_differentials)
+        return op(re), op(im)
+    end
+    term = unwrap_const(term)
     term isa Number && return real(term), imag(term)
     iscall(term) || return term, 0
 
     op = operation(term)
     args = arguments(term)
     if op === (+)
-        real_part, imag_part = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args), preserve_differentials)
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
+            argre, argim = _split_complex_components(arg, preserve_differentials)
             real_part += argre
             imag_part += argim
         end
         return real_part, imag_part
     elseif op === (-)
-        real_part, imag_part = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args), preserve_differentials)
         if length(args) == 1
             return -real_part, -imag_part
         end
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
+            argre, argim = _split_complex_components(arg, preserve_differentials)
             real_part -= argre
             imag_part -= argim
         end
         return real_part, imag_part
     elseif op === (*)
-        real_part, imag_part = _split_complex_components(first(args))
+        real_part, imag_part = _split_complex_components(first(args), preserve_differentials)
         for arg in Iterators.drop(args, 1)
-            argre, argim = _split_complex_components(arg)
+            argre, argim = _split_complex_components(arg, preserve_differentials)
             real_part, imag_part = real_part * argre - imag_part * argim,
                 real_part * argim + imag_part * argre
         end
         return real_part, imag_part
     elseif op === (/)
-        are, aim = _split_complex_components(args[1])
-        b_realpart, bim = _split_complex_components(args[2])
+        are, aim = _split_complex_components(args[1], preserve_differentials)
+        b_realpart, bim = _split_complex_components(args[2], preserve_differentials)
         denom = b_realpart^2 + bim^2
         return (are * b_realpart + aim * bim) / denom, (aim * b_realpart - are * bim) / denom
     end
     return real(term), imag(term)
 end
 
-function split_complex_eq(eq, redvmaps, imdvmaps)
+function split_complex_eq(eq, redvmaps, imdvmaps; expand_derivatives = true)
     lhs, rhs = if eq isa AbstractVector
         real_eq, imag_eq = eq
         real_eq.lhs + im * imag_eq.lhs, real_eq.rhs + im * imag_eq.rhs
@@ -166,10 +177,15 @@ function split_complex_eq(eq, redvmaps, imdvmaps)
         op => ((args...) -> redop(args...) + im * imdvmaps[op](args...))
             for (op, redop) in redvmaps
     )
-    lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
-    rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
-    lhsre, lhsim = _split_complex_components(lhs)
-    rhsre, rhsim = _split_complex_components(rhs)
+    if expand_derivatives
+        lhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(lhs, complexmap)))
+        rhs = Symbolics.expand(Symbolics.expand_derivatives(_replace_ops(rhs, complexmap)))
+    else
+        lhs = Symbolics.expand(_replace_ops(lhs, complexmap))
+        rhs = Symbolics.expand(_replace_ops(rhs, complexmap))
+    end
+    lhsre, lhsim = _split_complex_components(lhs, !expand_derivatives)
+    rhsre, rhsim = _split_complex_components(rhs, !expand_derivatives)
     return [lhsre ~ rhsre, lhsim ~ rhsim]
 end
 
@@ -183,24 +199,14 @@ function split_complex_bc(eq, redvmaps, imdvmaps)
         return [real_renamed, imag_renamed]
     end
 
-    # For Pair type (initial conditions), handle specially
-    if eq isa Pair
-        rhs = split_complex(unwrap(eq.second))
-        eq1 = _replace_ops(eq.first, redvmaps) ~ rhs[1]
-        eq2 = _replace_ops(eq.first, imdvmaps) ~ rhs[2]
-        return [eq1, eq2]
-    end
+    # For Pair type (initial conditions), treat the pair as an equation so the
+    # right-hand side is split through the complex map like an equation's rhs.
+    eq isa Pair && (eq = eq.first ~ eq.second)
 
-    # For Equation type, check if it actually has complex values
-    if !hascomplex(eq)
-        # Real BC: just duplicate with variable renaming
-        # e.g., ψ(t, 0) ~ 0  becomes  Reψ(t, 0) ~ 0  and  Imψ(t, 0) ~ 0
-        eq1 = _replace_ops(eq.lhs, redvmaps) ~ _replace_ops(eq.rhs, redvmaps)
-        eq2 = _replace_ops(eq.lhs, imdvmaps) ~ _replace_ops(eq.rhs, imdvmaps)
-        return [eq1, eq2]
-    end
-
-    return split_complex_eq(eq, redvmaps, imdvmaps)
+    # Boundary conditions are evaluated at points, where expand_derivatives
+    # reduces `Differential(x)(f(t, 1))` to 0 because the boundary argument
+    # does not contain x; preserve differentials instead of expanding them.
+    return split_complex_eq(eq, redvmaps, imdvmaps; expand_derivatives = false)
 end
 
 function handle_complex(pdesys)
