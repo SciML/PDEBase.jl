@@ -34,6 +34,13 @@ function PDEBase.discretize_equation!(
     push!(state.residuals, (kind, eq.lhs - eq.rhs, orders))
     return nothing
 end
+function PDEBase.discretize_equation!(
+        state::ResidualState, eq::Pair, kind::Symbol, s::ResidualSpace, orders,
+        ::ResidualDiscretization
+    )
+    push!(state.residuals, (kind, safe_unwrap(eq.first) - safe_unwrap(eq.second), orders))
+    return nothing
+end
 function PDEBase.generate_metadata(
         s::ResidualSpace, ::ResidualDiscretization, pdesys, boundarymap, complexmap, u0
     )
@@ -104,4 +111,29 @@ end
     scalar_sys = PDESystem([w(y) ~ 0], [w(0) ~ 0], [y ∈ (0, 1)], [y], [w(y)]; name = :scalar)
     scalar_result = symbolic_discretize(scalar_sys, ResidualDiscretization())
     @test isempty(PDEBase.replaced_vars(scalar_result.space.varmap))
+end
+
+@testset "Pair boundary condition derivative orders reach the driver" begin
+    @parameters x t
+    @variables w(..)
+    Dt = Differential(t)
+    Dx = Differential(x)
+    for n in 1:4, side in (:lhs, :rhs)
+        deriv = (Dx^n)(w(t, 0))
+        lhs, rhs = side == :lhs ? (deriv, 0) : (w(t, 1), deriv)
+        results = map((lhs => rhs, lhs ~ rhs)) do bc
+            pdesys = PDESystem(
+                [Dt(w(t, x)) ~ w(t, x)], [bc],
+                [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [w(t, x)]; name = :pair_bc
+            )
+            symbolic_discretize(pdesys, ResidualDiscretization())
+        end
+        for result in results
+            orders = result.residuals[1][3]
+            @test orders[x] == [n]
+            @test orders[t] == [1]
+            @test first.(result.residuals) == [:pde, :bc]
+        end
+        @test isequal(results[1].residuals, results[2].residuals)
+    end
 end

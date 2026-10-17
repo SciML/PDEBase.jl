@@ -66,8 +66,8 @@ d_orders(x, [Dx(Dx(u)) ~ 0]) == [2]
 """
 function d_orders(x, pdeeqs)
     # Handle both Equation (has lhs, rhs) and Pair (has first, second) types
-    _get_rhs(pde) = pde isa Pair ? pde.second : pde.rhs
-    _get_lhs(pde) = pde isa Pair ? pde.first : pde.lhs
+    _get_rhs(pde) = safe_unwrap(pde isa Pair ? pde.second : pde.rhs)
+    _get_lhs(pde) = safe_unwrap(pde isa Pair ? pde.first : pde.lhs)
     orders = Set{Int}()
     for pde in pdeeqs
         union!(orders, differential_order(_get_rhs(pde), safe_unwrap(x)))
