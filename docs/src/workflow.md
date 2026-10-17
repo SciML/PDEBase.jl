@@ -31,6 +31,41 @@ Declare complex dependent fields with `@variables ψ(..)::Complex` before buildi
 `imag(ψ(t, x))` symbolic, so `handle_complex` can split their equations into
 real and imaginary fields. An untyped field is treated as real while Symbolics
 constructs the equations, which can simplify those expressions too early.
+In particular, a numeric complex literal on an untyped field loses its
+imaginary part before PDEBase sees it: `ψ(t, 0) ~ 2im` becomes `ψ(t, 0) ~ 0`,
+and `ψ(t, 0) ~ 1 + 2im` becomes `ψ(t, 0) ~ 1`.
+`Symbolics.split_complex_equation` truncates the same way for purely numeric
+data, since it keeps only what `~` would have produced.
+
+A complex boundary condition written with a plain `~` on an untyped field is
+already split into a real and an imaginary equation when PDEBase sees it. When
+the resulting pair is unambiguous — `[L ~ a, 0 ~ b]` with `L` a dependent
+variable instance or a `Differential` of one and neither `a` nor `b`
+mentioning a dependent variable — `handle_complex` reads it as
+`L(ψ) ~ a + i b` and splits it into `L(Reψ) ~ a` and `L(Imψ) ~ b`. The same
+applies to a residual-form condition `0 ~ f(ψ)` such as
+`0 ~ ψ(t, 0) - exp(im*t)`, which pre-splits to a `[0 ~ a, 0 ~ b]` pair: when
+exactly one member is free of dependent variables the pair is read as
+`0 ~ a + i b`, while a pair whose members both mention a dependent variable
+stays a real grouping. A condition with the field on the right, such as
+`exp(im*t) ~ ψ(t, 0)` or `ψ(t, 0) - exp(im*t) ~ 0`, pre-splits to the mirror
+image of these pairs and is read the same way. Pairs that could equally be a real
+grouping, such as `0 ~` data that still mentions a dependent variable or a
+hand-written `real`/`imag` pair on a system containing complex values, are
+rejected with an `ArgumentError`. On a system with no complex values, nested
+pairs such as `[u(t, 0) ~ 0, Dx(u(t, 0)) ~ 0]` or `[0 ~ u(t, 0), u(t, 1) ~ 1]`
+stay real groupings. An untyped `im*Dx(ψ(t, 1)) ~ ψ(t, 1)` on such a system
+pre-splits to the same shape and is read as real, so declare `ψ(..)::Complex`
+for conditions like it.
+
+When the installed Symbolics provides `Symbolics.split_complex_equation`, an
+untyped field can also opt a single boundary condition into coupled
+splitting by building it with that function, which marks
+the pair as a complex split (`Symbolics.SplitComplexEquation`) and keeps the
+original equation. The marker is only valid for conditions that are
+holomorphic — polynomial or analytic — in the field: `conj`, `real`, `imag`,
+`abs` and `abs2` of an untyped field are simplified as real before the marker
+is built, so such conditions must be declared on a `::Complex` field.
 Currently, a `PDESystem` cannot mix complex-typed fields with real or untyped
 dependent variables; `handle_complex` raises an error for that combination.
 

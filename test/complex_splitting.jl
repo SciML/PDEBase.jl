@@ -36,13 +36,9 @@ using Test
     )
     @test length(PDEBase.get_bcs(split)) == 8
 
-    complex_bc_system = PDESystem(
-        [Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
-        [ψ(t, 0) ~ cos(t) + im * sin(t)],
-        [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [ψ(t, x)];
-        name = :complex_dirichlet_test
-    )
-    complex_bc = only(PDEBase._flatten_bcs(PDEBase.get_bcs(complex_bc_system)))
+    # `~` pre-splits a complex right-hand side on an untyped field; the
+    # `Equation` constructor keeps the unsplit condition.
+    complex_bc = Equation(unwrap(ψ(t, 0)), unwrap(cos(t) + im * sin(t)))
     redvmaps = Dict(operation(unwrap(ψ(t, 0))) => operation(unwrap(Reψ(t, 0))))
     imdvmaps = Dict(operation(unwrap(ψ(t, 0))) => operation(unwrap(Imψ(t, 0))))
     split_bc = PDEBase.split_complex_bc(complex_bc, redvmaps, imdvmaps)
