@@ -17,6 +17,10 @@ struct TimedDiscretization <: PDEBase.AbstractEquationSystemDiscretization
 end
 PDEBase.get_time(disc::TimedDiscretization) = disc.time
 
+struct ToyBareMesh end
+PDEBase.meshdim(::ToyBareMesh) = 2
+PDEBase.facetset_names(::ToyBareMesh) = ()
+
 struct ToyCurveMesh end
 PDEBase.meshdim(::ToyCurveMesh) = 3
 
@@ -85,6 +89,13 @@ end
     ∂Ω = DomainSets.boundary(Ω)
     @test ∂Ω isa DomainSets.UnionDomain
     @test isequal(collect(DomainSets.components(∂Ω)), pieces)
+
+    bare = MeshDomain(ToyBareMesh())
+    @test isempty(boundarypieces(bare))
+    ∂bare = DomainSets.boundary(bare)
+    @test ∂bare isa DomainSets.EmptySpace
+    @test eltype(∂bare) === eltype(bare)
+    @test [0.5, 0.5] ∉ ∂bare
 end
 
 @testset "bckind" begin
@@ -197,6 +208,39 @@ end
             [t, x, y, z], [w(t, x, y, z)]
         )
         @test_throws ArgumentError spatial_domain(VariableMap(split, disc))
+    end
+
+    @testset "time inside a tuple pairing" begin
+        @variables w(..)
+        @named spacetime = PDESystem(
+            [Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], [w(0, x) ~ 0],
+            [(t, x) ∈ Rectangle(0.0 .. 2.0, 10.0 .. 20.0)], [t, x], [w(t, x)]
+        )
+        v = VariableMap(spacetime, disc)
+        @test isequal(v.x̄, [x])
+        @test v.intervals[t] == (0.0, 2.0)
+        @test v.intervals[x] == (10.0, 20.0)
+        @test spatial_domain(v) == Interval(10.0, 20.0)
+
+        box = DomainSets.ProductDomain(0.0 .. 2.0, 10.0 .. 20.0, -1.0 .. 1.0)
+        @named spacetime2 = PDESystem(
+            [eq], [u(0, x, y) ~ 0], [(t, x, y) ∈ box], [t, x, y], [u(t, x, y)]
+        )
+        @test spatial_domain(VariableMap(spacetime2, disc)) ==
+            Rectangle(10.0 .. 20.0, -1.0 .. 1.0)
+
+        @named meshtime = PDESystem(
+            [Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], [w(0, x) ~ 0],
+            [(t, x) ∈ MeshDomain(ToySquareMesh())], [t, x], [w(t, x)]
+        )
+        err = try
+            spatial_domain(VariableMap(meshtime, disc))
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("MeshDomain", err.msg)
     end
 
     @testset "no spatial variables" begin

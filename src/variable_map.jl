@@ -160,19 +160,33 @@ VariableMap(pdesys) = VariableMap(pdesys, nothing)
 
 Return the domain of the spatial coordinates `indvars(v)`, or `nothing` when there are none.
 
-When one pairing declares every spatial coordinate, as `(x, y) ∈ Ω` or `x ∈ Interval(0, 1)`,
-its domain is returned as given. When each coordinate is declared by its own interval
-pairing, the result is the `DomainSets.ProductDomain` of those intervals in the order of
-`indvars(v)`. Throws an `ArgumentError` when the spatial coordinates are declared by more
-than one pairing and at least one of them is not an interval or interval product, for
-example a `MeshDomain` for `(x, y)` and an interval for `z`.
+When one pairing declares exactly the spatial coordinates, as `(x, y) ∈ Ω` or
+`x ∈ Interval(0, 1)`, its domain is returned as given. Otherwise, when every spatial
+coordinate has an interval (its own interval pairing, or its axis of a box pairing that also
+names time, as in `(t, x) ∈ Rectangle(...)`), the result is the interval of a single
+coordinate or the `DomainSets.ProductDomain` of the intervals in the order of `indvars(v)`.
+Throws an `ArgumentError` for a `MeshDomain` pairing that also names a non-spatial
+coordinate, and when the spatial coordinates are declared by more than one pairing and at
+least one of them is not an interval or interval product, for example a `MeshDomain` for
+`(x, y)` and an interval for `z`.
 """
 function spatial_domain(v::VariableMap)
     isempty(v.x̄) && return nothing
     pairings = unique(x -> objectid(v.domains[x]), v.x̄)
-    length(pairings) == 1 && return v.domains[only(pairings)].domain
+    if length(pairings) == 1
+        pairing = v.domains[only(pairings)]
+        coords = _pairing_coordinates(pairing)
+        (coords === nothing || length(coords) == length(v.x̄)) && return pairing.domain
+        pairing.domain isa MeshDomain && throw(
+            ArgumentError(
+                "the MeshDomain pairing $(pairing) also names coordinates that are not spatial " *
+                    "variables of the system (such as time); pair only the spatial coordinates with a MeshDomain"
+            )
+        )
+    end
     if all(x -> haskey(v.intervals, x), v.x̄)
-        return DomainSets.ProductDomain(map(x -> _axis_domain(v.domains[x], x), v.x̄)...)
+        axes = map(x -> _axis_domain(v.domains[x], x), v.x̄)
+        return length(axes) == 1 ? only(axes) : DomainSets.ProductDomain(axes...)
     end
     throw(
         ArgumentError(

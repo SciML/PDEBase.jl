@@ -129,7 +129,12 @@ function PDEBase.boundarypiece(d::MeshDomain, name::Symbol)
     return BoundaryPiece(d, name, nothing)
 end
 
-DomainSets.boundary(d::MeshDomain) = DomainSets.UnionDomain(boundarypieces(d))
+function DomainSets.boundary(d::MeshDomain)
+    pieces = boundarypieces(d)
+    # DomainSets rejects a `UnionDomain` of no components.
+    isempty(pieces) && return DomainSets.EmptySpace{eltype(d)}()
+    return DomainSets.UnionDomain(pieces)
+end
 
 """
     BCKind
