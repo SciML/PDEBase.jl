@@ -26,7 +26,8 @@ or an `Equation`) is supported. Supported are `Differential` in one of `ivs`,
 `NormalDerivative` applied to a trace, calls of dependent variables and other symbolic
 functions, `ifelse`, `getindex`, and any function Symbolics can differentiate in each of its non-`Bool`
 arguments (arithmetic, comparisons and logical operators included). A registered function
-without a derivative rule is accepted only while no state from `depvars` reaches it.
+without a derivative rule, or a symbolic function such as `k(..)` that is not a dependent
+variable, is accepted only while no state from `depvars` reaches it.
 Returns `nothing`.
 """
 function check_whitelist(ex, ivs, depvars)
@@ -42,7 +43,12 @@ function check_whitelist(ex, ivs, depvars)
         iscall(only(args)) && is_state(only(args), depvars) || unsupported(op)
     elseif op isa Function
         op === ifelse || op === getindex || has_derivative_rules(op, args, depvars) || unsupported(op)
-    elseif !(op isa SymbolicUtils.BasicSymbolic)
+    elseif op isa SymbolicUtils.BasicSymbolic
+        # A symbolic function such as `k(..)` has no derivative rule; it may only be a
+        # coefficient of the coordinates, never a law of the state.
+        any(u -> isequal(op, operation(unwrap(u))), depvars) ||
+            !any(a -> is_state(a, depvars), args) || unsupported(op)
+    else
         unsupported(op)
     end
     foreach(a -> check_whitelist(a, ivs, depvars), args)

@@ -64,6 +64,11 @@ end
         opaque(U) * Dx(U), ivs, dvs
     )
     @test check_whitelist(opaque(x) * Dx(U), ivs, dvs) === nothing
+    # The same holds for a symbolic function that is not a dependent variable.
+    @test_throws "operator k is not supported by the strong-form analysis" check_whitelist(
+        Dx(k(U) * Dx(U)), ivs, dvs
+    )
+    @test check_whitelist(k(x, y) * Dx(U) + U * Wf, ivs, dvs) === nothing
     # Indexed parameter arrays carry no state and keep their argument shapes.
     @variables a[1:2]
     @test check_whitelist(a[1] * U + a[2] * Dx(U), ivs, dvs) === nothing
