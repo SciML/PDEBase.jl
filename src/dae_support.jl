@@ -84,7 +84,7 @@ function differential_unknowns(sys, unks)
         unknown, idxs = _parent_and_indices(part)
         (idxs !== nothing && unknown in unks) || continue
         mask = get!(() -> falses(size(unknown)), out, unknown)
-        mask[_region(idxs)] .= true
+        mask[_region(idxs, unknown)] .= true
     end
     return out
 end
@@ -99,7 +99,7 @@ function _is_differential(x, diffvars, unks)
     unknown, idxs = _parent_and_indices(x)
     (idxs !== nothing && unknown in unks) || return nothing
     d = get(diffvars, unknown, false)
-    return d isa Bool ? d : all(view(d, _region(idxs)))
+    return d isa Bool ? d : all(view(d, _region(idxs, unknown)))
 end
 
 # An expression may mention an unknown, or an element or slice of one.
@@ -227,4 +227,9 @@ function _parent_and_indices(x)
     return safe_unwrap(args[1]), Tuple(unwrap_const(safe_unwrap(i)) for i in args[2:end])
 end
 
-_region(idxs) = CartesianIndices(map(i -> i isa Integer ? (i:i) : i, idxs))
+# The region of `unknown` that `idxs` covers; a colon spans its whole dimension.
+function _region(idxs, unknown)
+    return CartesianIndices(
+        map((i, n) -> i isa Integer ? (i:i) : i isa Colon ? Base.OneTo(n) : i, idxs, size(unknown))
+    )
+end

@@ -120,3 +120,23 @@ end
     @test op[uu] == [1.0, 2.0, 3.0, 4.0, 5.0]
     @test op[Differential(Symbolics.unwrap(τ))(uu)] == zeros(5)
 end
+
+@testset "array system with colon slices" begin
+    @independent_variables τ
+    @variables u(τ)[1:3, 1:5]
+    D = Differential(τ)
+    sys = complete(
+        System([D(u[:, 2:4]) ~ -u[:, 2:4]], τ, [u], []; name = :sys)
+    )
+    uu = Symbolics.unwrap(u)
+    unks = Set{Any}(Symbolics.unwrap.(unknowns(sys)))
+
+    diffvars = PDEBase.differential_unknowns(sys, unks)
+    expected = falses(3, 5)
+    expected[:, 2:4] .= true
+    @test diffvars[uu] == expected
+
+    differential = PDEBase._is_differential(Symbolics.unwrap(u[:, 3:4]), diffvars, unks)
+    @test differential === true
+    @test PDEBase._is_differential(Symbolics.unwrap(u[:, 1:2]), diffvars, unks) === false
+end
