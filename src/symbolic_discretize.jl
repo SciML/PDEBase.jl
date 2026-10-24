@@ -25,9 +25,9 @@ function SciMLBase.symbolic_discretize(
     # Extract tspan
     tspan = t !== nothing ? v.intervals[t] : nothing
     # Find the derivative orders in the bcs
-    bcorders = Dict(map(x -> x => d_orders(x, get_bcs(pdesys)), all_ivs(v)))
+    bcorders = Dict(map(x -> x => d_orders(x, get_bcs(pdesys), v), all_ivs(v)))
     # Create a map of each variable to their boundary conditions including initial conditions
-    boundarymap = parse_bcs(get_bcs(pdesys), v, bcorders)
+    boundarymap = parse_bcs(get_bcs(pdesys), v, bcorders, discretization)
     # Check that the boundary map is valid
     check_boundarymap(boundarymap, v, discretization)
 

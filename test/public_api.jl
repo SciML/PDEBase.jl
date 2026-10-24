@@ -49,6 +49,13 @@ end
     end
 end
 
+@testset "Boundary types" begin
+    for name in (:LowerBoundary, :UpperBoundary, :InterfaceBoundary, :HigherOrderInterfaceBoundary, :PieceBoundary)
+        @test hasdocstring(PDEBase, name)
+        @test Base.isexported(PDEBase, name)
+    end
+end
+
 @testset "Developer extension API" begin
     developer_api = (
         :lower_boundaries,
