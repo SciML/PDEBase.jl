@@ -48,9 +48,14 @@ remove(v::AbstractVector, a::Number) = filter(x -> !isequal(x, a), v)
 
 """
     d_orders(x, pdeeqs)
+    d_orders(x, pdeeqs, v::VariableMap)
 
 Return derivative orders with respect to independent variable `x` that appear
 in the PDE equations or boundary conditions `pdeeqs`.
+
+A [`NormalDerivative`](@ref) counts as order 1 when `x` is its [`BoundaryPiece`](@ref),
+and, given the variable map `v`, when its piece is the box face on which `x` is fixed.
+Without `v` it does not count for an independent variable.
 
 # Arguments
 - `x`: The independent variable to inspect.
@@ -64,14 +69,14 @@ in the PDE equations or boundary conditions `pdeeqs`.
 d_orders(x, [Dx(Dx(u)) ~ 0]) == [2]
 ```
 """
-function d_orders(x, pdeeqs)
+function d_orders(x, pdeeqs, v = nothing)
     # Handle both Equation (has lhs, rhs) and Pair (has first, second) types
     _get_rhs(pde) = safe_unwrap(pde isa Pair ? pde.second : pde.rhs)
     _get_lhs(pde) = safe_unwrap(pde isa Pair ? pde.first : pde.lhs)
     orders = Set{Int}()
     for pde in pdeeqs
-        union!(orders, differential_order(_get_rhs(pde), safe_unwrap(x)))
-        union!(orders, differential_order(_get_lhs(pde), safe_unwrap(x)))
+        union!(orders, differential_order(_get_rhs(pde), safe_unwrap(x), v))
+        union!(orders, differential_order(_get_lhs(pde), safe_unwrap(x), v))
     end
     return sort!(collect(orders); rev = true)
 end
