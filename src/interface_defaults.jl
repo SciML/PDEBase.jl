@@ -163,7 +163,7 @@ something other than the spatial independent variables.
 
 # Examples
 ```julia
-function PDEBase.split_ics_bcs(boundarymap, v, disc::MyDiscretization)
+function PDEBase.split_ics_bcs(boundarymap, v::VariableMap, disc::MyDiscretization)
     t = PDEBase.get_time(disc)
     ics = mapreduce(u -> boundarymap[u][t], vcat, keys(boundarymap))
     bcmap = Dict(u => filter(kv -> !isequal(first(kv), t), boundarymap[u])
