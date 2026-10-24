@@ -35,3 +35,18 @@ PDEBase.cellset_names
 PDEBase.contains_point
 PDEBase.backend_mesh
 ```
+
+## Boundary pieces and condition kinds
+
+`boundarypiece(Ω, name)` returns the facet set `name` of the mesh as a `BoundaryPiece`
+with no geometry, `boundarypieces(Ω)` returns one per facet set, and
+`DomainSets.boundary(Ω)` is their `UnionDomain`. `PDEBase.bckind` classifies a
+condition on traces by its syntax.
+
+```@docs
+PDEBase.BCKind
+PDEBase.Essential
+PDEBase.Natural
+PDEBase.Robin
+PDEBase.bckind
+```

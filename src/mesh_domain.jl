@@ -112,3 +112,87 @@ Return a [`Region`](@ref) for every cell set of the mesh of `d`, in the order of
 `cellset_names(d.mesh)`.
 """
 regions(d::MeshDomain) = [Region(d, name) for name in cellset_names(d.mesh)]
+
+# Qualified so that these stay methods of the upstream functions once DomainSets defines them.
+function PDEBase.boundarypieces(d::MeshDomain)
+    return [BoundaryPiece(d, name, nothing) for name in facetset_names(d.mesh)]
+end
+
+function PDEBase.boundarypiece(d::MeshDomain, name::Symbol)
+    names = facetset_names(d.mesh)
+    name in names || throw(
+        ArgumentError(
+            "mesh of type $(typeof(d.mesh)) has no facet set $(repr(name)); " *
+                "valid names are $(join(map(repr, collect(names)), ", "))"
+        )
+    )
+    return BoundaryPiece(d, name, nothing)
+end
+
+DomainSets.boundary(d::MeshDomain) = DomainSets.UnionDomain(boundarypieces(d))
+
+"""
+    BCKind
+
+Supertype of the syntactic boundary-condition kinds returned by [`PDEBase.bckind`](@ref):
+[`PDEBase.Essential`](@ref), [`PDEBase.Natural`](@ref) and [`PDEBase.Robin`](@ref).
+"""
+abstract type BCKind end
+
+"""
+    Essential()
+
+The [`PDEBase.BCKind`](@ref) of a condition on trace values only, such as `u(t, Γ) ~ g`.
+"""
+struct Essential <: BCKind end
+
+"""
+    Natural()
+
+The [`PDEBase.BCKind`](@ref) of a condition on derivatives of traces only, such as
+`Dn_Γ(u(t, Γ)) ~ h`.
+"""
+struct Natural <: BCKind end
+
+"""
+    Robin()
+
+The [`PDEBase.BCKind`](@ref) of a condition on both trace values and derivatives of
+traces, such as `k * Dn_Γ(u(t, Γ)) + α * u(t, Γ) ~ β`.
+"""
+struct Robin <: BCKind end
+
+"""
+    bckind(eq::Equation)
+
+Classify the boundary condition `eq` by its syntax. A trace is a call with a
+[`BoundaryPiece`](@ref) argument, such as `u(t, Γ)`. A condition whose traces all sit
+inside a `Differential` or [`NormalDerivative`](@ref) is [`PDEBase.Natural`](@ref), one
+with no trace inside a derivative is [`PDEBase.Essential`](@ref), and one with both is
+[`PDEBase.Robin`](@ref).
+
+The classification is advisory: it does not check coefficients or which pieces the
+operators act on. Throws an `ArgumentError` when `eq` contains no trace.
+"""
+function bckind(eq::Equation)
+    under_derivative = Bool[]
+    _collect_traces!(under_derivative, eq.lhs, false)
+    _collect_traces!(under_derivative, eq.rhs, false)
+    isempty(under_derivative) &&
+        throw(ArgumentError("$(eq) contains no trace u(..., Γ) on a boundary piece"))
+    all(under_derivative) && return Natural()
+    any(under_derivative) && return Robin()
+    return Essential()
+end
+
+function _collect_traces!(under_derivative, ex, in_derivative)
+    ex = unwrap_const(safe_unwrap(ex))
+    iscall(ex) || return under_derivative
+    args = arguments(ex)
+    any(a -> unwrap_const(a) isa BoundaryPiece, args) &&
+        return push!(under_derivative, in_derivative)
+    op = operation(ex)
+    in_derivative |= op isa Differential || op isa NormalDerivative
+    foreach(a -> _collect_traces!(under_derivative, a, in_derivative), args)
+    return under_derivative
+end

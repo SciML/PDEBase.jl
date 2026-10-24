@@ -24,7 +24,10 @@ end
         @test hasdocstring(PDEBase, name)
         @test Base.isexported(PDEBase, name)
     end
-    for name in (:meshdim, :facetset_names, :cellset_names, :contains_point, :backend_mesh)
+    for name in (
+            :meshdim, :facetset_names, :cellset_names, :contains_point, :backend_mesh,
+            :BCKind, :Essential, :Natural, :Robin, :bckind,
+        )
         @test hasdocstring(PDEBase, name)
         if CAN_QUERY_PUBLIC
             @test Base.ispublic(PDEBase, name)

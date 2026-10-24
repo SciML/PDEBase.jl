@@ -158,7 +158,7 @@ VariableMap(pdesys) = VariableMap(pdesys, nothing)
 """
     spatial_domain(v::VariableMap)
 
-Return the domain of the spatial coordinates `indvars(v)`.
+Return the domain of the spatial coordinates `indvars(v)`, or `nothing` when there are none.
 
 When one pairing declares every spatial coordinate, as `(x, y) ∈ Ω` or `x ∈ Interval(0, 1)`,
 its domain is returned as given. When each coordinate is declared by its own interval
@@ -168,6 +168,7 @@ than one pairing and at least one of them is not an interval or interval product
 example a `MeshDomain` for `(x, y)` and an interval for `z`.
 """
 function spatial_domain(v::VariableMap)
+    isempty(v.x̄) && return nothing
     pairings = unique(x -> objectid(v.domains[x]), v.x̄)
     length(pairings) == 1 && return v.domains[only(pairings)].domain
     if all(x -> haskey(v.intervals, x), v.x̄)

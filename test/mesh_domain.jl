@@ -62,6 +62,50 @@ PDEBase.backend_mesh(m::WrappedMesh) = m.native
     end
 end
 
+@testset "MeshDomain boundary pieces" begin
+    Ω = MeshDomain(ToySquareMesh())
+    Γ = boundarypiece(Ω, :wall)
+    @test Γ isa BoundaryPiece
+    @test parent(Γ) === Ω
+    @test Γ.name === :wall
+    @test Γ.geometry === nothing
+    @test isequal(Γ, boundarypiece(Ω, :wall))
+    err = try
+        boundarypiece(Ω, :nowhere)
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test all(name -> occursin(string(name), err.msg), (:nowhere, :inlet, :wall, :outlet))
+
+    pieces = boundarypieces(Ω)
+    @test [p.name for p in pieces] == [:inlet, :wall, :outlet]
+    @test all(p -> parent(p) === Ω && p.geometry === nothing, pieces)
+    ∂Ω = DomainSets.boundary(Ω)
+    @test ∂Ω isa DomainSets.UnionDomain
+    @test isequal(collect(DomainSets.components(∂Ω)), pieces)
+end
+
+@testset "bckind" begin
+    @parameters t x y k α
+    @variables u(..)
+    Dx = Differential(x)
+    Ω = MeshDomain(ToySquareMesh())
+    Γ_in, Γ_wall, Γ_out = boundarypiece.(Ref(Ω), (:inlet, :wall, :outlet))
+    Dn_wall, Dn_out = NormalDerivative(Γ_wall), NormalDerivative(Γ_out)
+
+    @test PDEBase.bckind(u(t, Γ_in) ~ sin(t)) === PDEBase.Essential()
+    @test PDEBase.bckind(sin(t) ~ 2 * u(t, Γ_in)) === PDEBase.Essential()
+    @test PDEBase.bckind(Dn_wall(u(t, Γ_wall)) ~ 0) === PDEBase.Natural()
+    @test PDEBase.bckind(k * Dx(u(t, Γ_wall)) ~ 1) === PDEBase.Natural()
+    @test PDEBase.bckind(k * Dn_out(u(t, Γ_out)) + α * u(t, Γ_out) ~ α * 0.3) === PDEBase.Robin()
+    @test PDEBase.Essential() isa PDEBase.BCKind
+    @test PDEBase.Natural() isa PDEBase.BCKind
+    @test PDEBase.Robin() isa PDEBase.BCKind
+    @test_throws ArgumentError PDEBase.bckind(u(t, 0, y) ~ 0)
+end
+
 @testset "VariableMap domains" begin
     @parameters t x y z
     @variables u(..)
@@ -100,8 +144,7 @@ end
         @test v.domains[y] === meshdomain
         @test spatial_domain(v) === Ω
 
-        # A trace on a named subset of the mesh stands in for a boundary piece.
-        Γ = Region(Ω, :left_half)
+        Γ = boundarypiece(Ω, :inlet)
         @named traced = PDESystem(
             [eq], [u(0, x, y) ~ 0, u(t, Γ) ~ sin(t)], [meshdomain, t ∈ Interval(0.0, 1.0)],
             [t, x, y], [u(t, x, y)]
@@ -154,6 +197,16 @@ end
             [t, x, y, z], [w(t, x, y, z)]
         )
         @test_throws ArgumentError spatial_domain(VariableMap(split, disc))
+    end
+
+    @testset "no spatial variables" begin
+        @variables w(..)
+        @named ode = PDESystem(
+            [Dt(w(t)) ~ -w(t)], [w(0) ~ 1], [t ∈ Interval(0.0, 1.0)], [t], [w(t)]
+        )
+        v = VariableMap(ode, disc)
+        @test isempty(v.x̄)
+        @test spatial_domain(v) === nothing
     end
 
     @testset "missing domain" begin
