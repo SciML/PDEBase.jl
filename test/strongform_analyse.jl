@@ -16,6 +16,8 @@ PDEBase.get_time(d::TimeDiscretization) = d.time
 
 function prepared(eqs, dvs, ivs; t = nothing, ps = Num[], bcs = Equation[])
     @named sys = PDESystem(eqs, bcs, [iv ∈ (0.1 .. 1.0) for iv in ivs], ivs, dvs, ps)
+    # The preprocessing `symbolic_discretize` applies before the discretizer hooks.
+    PDEBase.cardinalize_eqs!(sys)
     sys, replaced = PDEBase.make_pdesys_compatible(sys)
     return sys, PDEBase.VariableMap(sys, TimeDiscretization(t); replaced_vars = replaced)
 end
@@ -179,6 +181,36 @@ end
     an, _ = @test_logs (:warn, r"ProductRule") analysed([eq], [Q], [t, r]; t)
     @test same(only(an.flux[1]), -an.slots.G[1])
     @test same(an.remainder[1] * an.slots.X[1], -2an.slots.G[1])
+end
+
+@testset "Integration-by-parts policies keyed through preprocessing" begin
+    U1 = u(t, x)
+    eq = Dt(U1) ~ (1 + x^2) * Dx(Dx(U1))
+    @test_throws "Reject() integration-by-parts policy forbids" analysed([eq], [U1], [t, x]; t, ibp = Dict(eq => Reject()))
+    flipped = (1 + x^2) * Dx(Dx(U1)) ~ Dt(U1)
+    @test_throws "Reject()" analysed([eq], [U1], [t, x]; t, ibp = Dict(flipped => Reject()))
+    @test_throws "matches no equation of the system" analysed(
+        [eq], [U1], [t, x]; t, ibp = Dict((Dt(U1) ~ Dx(Dx(U1))) => Reject())
+    )
+    @test_throws "matches no equation of the system" analysed([eq], [U1], [t, x]; t, ibp = Dict(2 => Reject()))
+
+    # A coefficient whose derivative simplifies to zero needs no correction.
+    eq = Dt(U1) ~ (sin(x)^2 + cos(x)^2) * Dx(Dx(U1))
+    an, _ = @test_logs analysed([eq], [U1], [t, x]; t, ibp = Dict(eq => Reject()))
+    @test isequal(an.remainder[1], Num(0))
+    G, R, corrected = split_divergence([(sin(x)^2 + cos(x)^2) * Dx(Dx(U1))], [x])
+    @test isempty(R) && !corrected
+end
+
+@testset "Array parameters get one slot per element" begin
+    U1 = u(t, x)
+    @parameters ap[1:2]
+    an, _ = analysed([Dt(U1) ~ ap[1] * Dx(Dx(U1)) + ap[2] * k], [U1], [t, x]; t, ps = [k, ap])
+    s = an.slots
+    @test length(s.P) == 3
+    @test same(only(an.flux[1]), -s.P[2] * s.G[1])
+    @test same(an.remainder[1], -s.P[3] * s.P[1])
+    @test reconstruction_error(an, 1) < 1.0e-12
 end
 
 @testset "split_divergence on its own" begin

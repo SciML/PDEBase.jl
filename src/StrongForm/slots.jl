@@ -2,7 +2,9 @@
     SlotContext(v::VariableMap; fields = depvars(v), params = v.ps)
 
 How the symbols of a `PDESystem` map to slots: field `f` is `fields[f]`, coordinate `X[d]` is
-`indvars(v)[d]`, `T` is the time and `P[j]` is `params[j]`.
+`indvars(v)[d]`, `T` is the time and `P` holds the parameters in the order of `params`, each
+array parameter contributing its scalar elements in column-major order (`a[1], a[2], …`).
+`Pair` entries `p => default` stand for `p`.
 """
 struct SlotContext
     ops::Vector{Any}
@@ -13,7 +15,12 @@ struct SlotContext
     intervals::Any
 end
 function SlotContext(v::VariableMap; fields = depvars(v), params = v.ps)
-    ps = Any[unwrap(p isa Pair ? p.first : p) for p in params]
+    ps = Any[]
+    for p in params
+        p = unwrap(p isa Pair ? p.first : p)
+        symtype(p) <: AbstractArray ? append!(ps, unwrap.(vec(collect(Symbolics.scalarize(p))))) :
+            push!(ps, p)
+    end
     ops = Any[operation(unwrap(u)) for u in fields]
     return SlotContext(ops, v.args, collect(Any, indvars(v)), v.time, ps, v.intervals)
 end
@@ -60,6 +67,8 @@ end
 
 function _slot_interior(ctx::SlotContext, ex, slots)
     iscall(ex) || return _slot_leaf(ctx, ex, slots)
+    j = findfirst(p -> isequal(p, ex), ctx.params)
+    j === nothing || return unwrap(slots.P[j])
     op = operation(ex)
     if op isa Differential
         slot = _derivative_slot(ctx, ex, slots)

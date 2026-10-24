@@ -1,8 +1,18 @@
-function ibp_policy(ibp, index, eq)
+same_residual(a, b) =
+    isequal(Symbolics.expand(Num(a - b)), Num(0)) || isequal(Symbolics.expand(Num(a + b)), Num(0))
+
+# Equation keys are matched by residual up to sign, since preprocessing such as
+# `cardinalize_eqs!` rewrites `lhs ~ rhs` as `lhs - rhs ~ 0`. A key matching nothing is an error.
+function ibp_policies(ibp, eqs)
+    policies = IBPPolicy[ProductRule() for _ in eqs]
+    residuals = [eq.lhs - eq.rhs for eq in eqs]
     for (key, policy) in ibp
-        (key isa Integer ? key == index : isequal(key, eq)) && return policy
+        matched = key isa Integer ? filter(==(key), eachindex(eqs)) :
+            findall(r -> same_residual(r, key.lhs - key.rhs), residuals)
+        isempty(matched) && error("ibp key $key matches no equation of the system")
+        policies[matched] .= Ref(policy)
     end
-    return ProductRule()
+    return policies
 end
 
 function check_no_boundary_conditions(boundarymap, ctx::SlotContext)
@@ -24,7 +34,9 @@ and `boundarymap` from `parse_bcs`. Each equation `e = lhs - rhs` passes the ope
 ([`split_divergence`](@ref)), and is written in [`StateSlots`](@ref) ordered as by
 [`SlotContext`](@ref).
 
-`ibp` maps an equation, or its index, to an [`IBPPolicy`](@ref); the default is
+`ibp` maps an equation, or its index, to an [`IBPPolicy`](@ref). Equations are matched by
+their residual `lhs - rhs` up to sign, so a key written before preprocessing still matches, and
+a key that matches no equation is an error. The default is
 [`ProductRule`](@ref), which warns once per call when it generates a correction term.
 Under [`Weighted`](@ref)`(w)` the whole analysis is of the weighted equation `w⋅e`.
 Equations are not paired with fields here. Boundary conditions are not analysed yet: a
@@ -39,8 +51,8 @@ function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
     strong, mass, remainder = Num[], Num[], Num[]
     flux, conormal = Vector{Num}[], Vector{Num}[]
     corrected = Int[]
-    for (index, eq) in enumerate(_flatten_eqs(get_eqs(pdesys)))
-        policy = ibp_policy(ibp, index, eq)
+    eqs = _flatten_eqs(get_eqs(pdesys))
+    for (index, (eq, policy)) in enumerate(zip(eqs, ibp_policies(ibp, eqs)))
         e = unwrap(eq.lhs - eq.rhs)
         policy isa Weighted && (e = unwrap(policy.w * e))
         check_whitelist(e, allivs, fields)

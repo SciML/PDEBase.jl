@@ -61,8 +61,9 @@ not_in_divergence_form(term) =
 Stage b of the strong-form analysis. Writes the sum of the spatial terms from [`split_time`](@ref)
 as `Σᵢ ∂ᵢG[i] + sum(R)` over the spatial variables `sivs`. A term without a second-order factor
 goes to `R` unchanged. A term `c⋅Dᵢ(w′)` with one second-order factor adds `c⋅w′` to `G[i]` and,
-when `c` depends on `xᵢ`, the product-rule correction `-(Dᵢc)⋅w′` to `R`; `corrected` reports
-whether any correction was generated. Under `Reject()` a correction is an error.
+when `c` depends on `xᵢ`, the product-rule correction `-(Dᵢc)⋅w′` to `R`, unless the corrections
+of all terms simplify to zero together; `corrected` reports whether corrections were added.
+Under `Reject()` a nonzero correction is an error.
 
 Errors on operators of order three or more, on second derivatives outside a divergence-compatible
 position (inside a nonlinearity, two in one product, or a coefficient depending on `∇u`), and on a
@@ -72,7 +73,7 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
     sivs = unwrap.(sivs)
     G = Num[0 for _ in sivs]
     R = Num[]
-    corrected = false
+    needy, corrections = Num[], Num[]
     for term in unwrap.(spatial)
         fs = factors(term)
         idx = findall(f -> is_spatial_derivative(f, sivs) && spatial_order(f, sivs) >= 2, fs)
@@ -91,12 +92,14 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
         inner = op.order == 1 ? w : unwrap(Differential(op.x, op.order - 1)(w))
         G[findfirst(isequal(op.x), sivs)] += c * inner
         depends_on(c, op.x) || continue
-        policy isa Reject &&
-            error("$term needs the product rule, which the Reject() integration-by-parts policy forbids")
         is_smooth(c, op.x) ||
             error("coefficient $c is not differentiable; write the equation in divergence form or register the derivative")
-        push!(R, -Symbolics.expand_derivatives(Differential(op.x)(c)) * inner)
-        corrected = true
+        push!(needy, term)
+        push!(corrections, -Symbolics.expand_derivatives(Differential(op.x)(c)) * inner)
     end
-    return G, R, corrected
+    # Corrections of terms split apart by `expand` may cancel, as for (sin² + cos²)⋅Δu.
+    isequal(Symbolics.simplify(sum(corrections; init = Num(0))), Num(0)) && return G, R, false
+    policy isa Reject &&
+        error("$(sum(needy)) needs the product rule, which the Reject() integration-by-parts policy forbids")
+    return G, vcat(R, corrections), true
 end
