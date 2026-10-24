@@ -10,18 +10,19 @@ and split into a time-derivative part and a spatial part, ready to be written as
 module StrongForm
 
 import SciMLPublic: @public
-using Symbolics: Symbolics, Differential, Equation, Num, unwrap
+using Symbolics: Symbolics, Differential, Equation, Num, substitute, unwrap, wrap
 using SymbolicUtils: SymbolicUtils, arguments, iscall, operation, symtype, unwrap_const
 using TermInterface: maketerm, metadata
 using ModelingToolkitBase: get_eqs
-using ..PDEBase: VariableMap, _flatten_eqs, chain_flatten_array_variables, depvars, indvars,
-    replaced_vars
+using ..PDEBase: VariableMap, LowerBoundary, UpperBoundary, InterfaceBoundary, _flatten_eqs,
+    chain_flatten_array_variables, depvars, indvars, isupper, replaced_vars
 
 include("types.jl")
 include("whitelist.jl")
 include("split_time.jl")
 include("split_divergence.jl")
 include("slots.jl")
+include("boundary.jl")
 include("analyse.jl")
 
 export analyse
