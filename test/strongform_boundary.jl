@@ -2,7 +2,7 @@ using PDEBase, ModelingToolkit, Symbolics, Test
 using DomainSets: Interval
 using PDEBase.StrongForm: StateSlots, SlotContext, BoxFace, EssentialBC, NaturalBC, PeriodicBC,
     match_flux, slot_condition, route_natural, essential_condition, periodic_condition,
-    boundary_conditions
+    boundary_conditions, pair_equations
 
 struct TimeDisc <: PDEBase.AbstractEquationSystemDiscretization
     t::Any
@@ -246,3 +246,15 @@ end
     )
 end
 
+@testset "pairing (spec §5.4)" begin
+    s = StateSlots(3, 2, 0)
+    Ud = s.Ud
+    @test pair_equations([Ud[2], 2Ud[1], Ud[3]], s) == [2, 1, 3]
+    # algebraic row: needs an explicit pairing; positional is not the fallback
+    @test_throws "equation 2 has no time derivative" pair_equations([Ud[1], 0, Ud[2]], s)
+    @test pair_equations([Ud[1], 0, Ud[2]], s; pairing = Dict(2 => 3)) == [1, 3, 2]
+    @test_throws "time derivatives of fields [1, 2]" pair_equations([Ud[1] + Ud[2], Ud[3]], s)
+    @test_throws "field 1 is paired with equations 1 and 2" pair_equations(
+        [Ud[1], Ud[2]], s; pairing = Dict(2 => 1)
+    )
+end

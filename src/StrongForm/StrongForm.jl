@@ -23,6 +23,7 @@ include("split_time.jl")
 include("split_divergence.jl")
 include("slots.jl")
 include("boundary.jl")
+include("pairing.jl")
 include("analyse.jl")
 
 export analyse
