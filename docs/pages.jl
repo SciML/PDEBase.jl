@@ -9,6 +9,7 @@ pages = [
         "VariableMap" => "variablemap.md",
         "Mesh Domains" => "mesh_domain.md",
         "Boundary Conditions" => "boundaries.md",
+        "Argument Classification" => "classify.md",
     ],
     "API Reference" => "api.md",
 ]

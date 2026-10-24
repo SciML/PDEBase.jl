@@ -1,0 +1,421 @@
+### ARGUMENT CLASSIFICATION ###
+
+# One classification step for every call of a dependent variable: `u(t, x, y)`,
+# `u(t, 0, y)` and the trace `u(t, Γ)` go through the same code, dispatching on the type of
+# each argument.
+
+"""
+    ArgumentClass
+
+Supertype of the classes [`classify_argument`](@ref) assigns to one argument of a call of
+a dependent variable: [`Free`](@ref PDEBase.Free), [`BoxFace`](@ref PDEBase.BoxFace) or
+[`Piece`](@ref PDEBase.Piece).
+"""
+abstract type ArgumentClass end
+
+"""
+    Free(iv) <: ArgumentClass
+
+The argument is the declared independent variable `iv` in its own position, as `x` in
+`u(t, x, y)`.
+"""
+struct Free <: ArgumentClass
+    iv::Any
+end
+
+"""
+    BoxFace(iv, side::Symbol) <: ArgumentClass
+
+The argument is an endpoint of the interval of `iv`, the lower one when `side` is `:lo`
+and the upper one when it is `:hi`, as `0` in `u(t, 0, y)` on `x ∈ Interval(0, 1)`. As a
+location, it is the face of the box on which `iv` is fixed at that endpoint. A
+[`Piece`](@ref PDEBase.Piece) that is a face of the box normalises to the same `BoxFace`
+(see [`location`](@ref PDEBase.location)).
+"""
+struct BoxFace <: ArgumentClass
+    iv::Any
+    side::Symbol
+end
+
+"""
+    Piece(piece::BoundaryPiece) <: ArgumentClass
+
+The argument is a [`BoundaryPiece`](@ref) standing for all the spatial arguments, as `Γ`
+in the trace `u(t, Γ)`.
+"""
+struct Piece <: ArgumentClass
+    piece::BoundaryPiece
+end
+
+"""
+    Interior()
+
+The [`location`](@ref PDEBase.location) of a call whose arguments are all
+[`Free`](@ref PDEBase.Free): the call is in the interior of the domain.
+"""
+struct Interior end
+
+Base.isequal(a::Free, b::Free) = isequal(a.iv, b.iv)
+Base.isequal(a::BoxFace, b::BoxFace) = isequal(a.iv, b.iv) && a.side === b.side
+Base.isequal(a::Piece, b::Piece) = isequal(a.piece, b.piece)
+Base.:(==)(a::T, b::T) where {T <: ArgumentClass} = isequal(a, b)
+Base.hash(a::Free, h::UInt) = hash(a.iv, hash(Free, h))
+Base.hash(a::BoxFace, h::UInt) = hash(a.side, hash(a.iv, hash(BoxFace, h)))
+Base.hash(a::Piece, h::UInt) = hash(a.piece, hash(Piece, h))
+
+_declared_call(v, u_op) = Num(u_op(v.args[u_op]...))
+
+# The interval of `iv` converted to its float type, for the endpoint test.
+function _float_interval(v, iv)
+    lo, hi = v.intervals[iv]
+    T = float(promote_type(typeof(lo), typeof(hi)))
+    return T, convert(T, lo), convert(T, hi)
+end
+
+"""
+    classify_argument(v::VariableMap, u_op, position::Int, arg) -> ArgumentClass
+
+Classify argument `arg` of a call of the dependent variable `u_op`, given in the place of
+the `position`-th argument of its declared argument list `v.args[u_op]`.
+
+  - A [`BoundaryPiece`](@ref) whose parent is the spatial domain (`isequal` to
+    [`spatial_domain(v)`](@ref spatial_domain)) is a [`Piece`](@ref PDEBase.Piece).
+  - A number or numeric constant is converted to the float type of the interval of the
+    declared variable `iv`. It is a [`BoxFace`](@ref PDEBase.BoxFace) when it lies within
+    `8eps·width` of an endpoint, so `u(t, π)` on `Interval(0.0, π)` and `u(t, 0.1 + 0.2)` on
+    `Interval(0.0, 0.3)` are on the upper face. Any other number is an error naming the
+    nearest endpoint and the distance to it.
+  - The declared variable `iv` itself is [`Free`](@ref PDEBase.Free).
+  - Anything else is an error that shows the declared argument list.
+"""
+function classify_argument(v::VariableMap, u_op, position::Int, arg)
+    arg = unwrap_const(safe_unwrap(arg))
+    declared = v.args[u_op]
+    iv = declared[position]
+    if arg isa BoundaryPiece
+        Ω = spatial_domain(v)
+        isequal(parent(arg), Ω) || throw(
+            ArgumentError(
+                "$(arg) in $(_declared_call(v, u_op)) is a piece of the boundary of $(parent(arg)), " *
+                    "not of the spatial domain $(Ω)"
+            )
+        )
+        return Piece(arg)
+    elseif arg isa Number
+        haskey(v.intervals, iv) || throw(
+            ArgumentError(
+                "$(iv) has no interval, so the number $(arg) in the place of $(iv) in " *
+                    "$(_declared_call(v, u_op)) cannot be an endpoint; write a trace on a boundary piece instead"
+            )
+        )
+        T, lo, hi = _float_interval(v, iv)
+        val = convert(T, arg)
+        tol = 8 * eps(T) * (hi - lo)
+        abs(val - lo) <= tol && return BoxFace(iv, :lo)
+        abs(val - hi) <= tol && return BoxFace(iv, :hi)
+        near, side = abs(val - lo) <= abs(val - hi) ? (lo, "lower") : (hi, "upper")
+        throw(
+            ArgumentError(
+                "$(arg) in the place of $(iv) in $(_declared_call(v, u_op)) is not on the boundary " *
+                    "of $(iv) ∈ [$(lo), $(hi)]: the nearest endpoint is the $(side) endpoint $(near), " *
+                    "at distance $(abs(val - near))"
+            )
+        )
+    elseif isequal(arg, iv)
+        return Free(iv)
+    end
+    throw(
+        ArgumentError(
+            "argument $(arg) in position $(position) of a call of $(u_op) is neither $(iv), an " *
+                "endpoint of its interval, nor a boundary piece; the declared argument list is " *
+                "$(_declared_call(v, u_op))"
+        )
+    )
+end
+
+_ispiece(arg) = unwrap_const(safe_unwrap(arg)) isa BoundaryPiece
+
+"""
+    classify_call(v::VariableMap, call) -> (u_op, Vector{ArgumentClass})
+
+Classify every argument of `call`, a call of a dependent variable of `v`, with
+[`classify_argument`](@ref), and return the operation of the call with the classes in
+argument order.
+
+A call without a [`BoundaryPiece`](@ref) must have the declared number of arguments, with
+each declared variable in its own position or replaced by a number. A call with a piece
+must be the declared argument list with every spatial argument replaced by the one piece
+and nothing else changed: on `u(t, x, y)` the trace is `u(t, Γ)`, on Brusselator's
+`u(x, y, t)` it is `u(Γ, t)`, and on a steady `u(x, y)` it is `u(Γ)`. A trace `u(Γ)` of a
+time-dependent variable is an error, "trace is missing the time argument". A trace has
+one class fewer than the declaration has arguments for each spatial argument beyond the
+first.
+"""
+function classify_call(v::VariableMap, call)
+    call = safe_unwrap(call)
+    u_op = operation(call)
+    haskey(v.args, u_op) ||
+        throw(ArgumentError("$(call) is not a call of a dependent variable; the dependent variables are $(v.ū)"))
+    args = arguments(call)
+    declared = v.args[u_op]
+    npieces = count(_ispiece, args)
+    if npieces == 0
+        length(args) == length(declared) || throw(
+            ArgumentError(
+                "$(call) has $(length(args)) arguments, but $(u_op) is declared as $(_declared_call(v, u_op))"
+            )
+        )
+        return u_op, ArgumentClass[classify_argument(v, u_op, i, a) for (i, a) in enumerate(args)]
+    end
+    npieces == 1 || throw(ArgumentError("$(call) has more than one boundary piece argument"))
+    # Declared positions of the trace's arguments, with `0` where the piece stands in for all spatial ones.
+    spatial = findall(a -> !isequal(a, v.time), declared)
+    isempty(spatial) && throw(
+        ArgumentError("$(call) has a boundary piece, but $(_declared_call(v, u_op)) has no spatial arguments")
+    )
+    layout = [i == first(spatial) ? 0 : i for i in eachindex(declared) if !(i in spatial) || i == first(spatial)]
+    piece = unwrap_const(safe_unwrap(args[findfirst(_ispiece, args)]))
+    expected = Num(u_op((i == 0 ? piece : declared[i] for i in layout)...))
+    if length(args) != length(layout)
+        if length(args) == length(layout) - 1 && v.time !== nothing && any(a -> isequal(a, v.time), declared)
+            throw(ArgumentError("$(call): trace is missing the time argument; write `$(expected)`"))
+        end
+        throw(
+            ArgumentError(
+                "$(call) has $(length(args)) arguments, but a trace of $(_declared_call(v, u_op)) " *
+                    "is written $(expected)"
+            )
+        )
+    end
+    classes = map(zip(layout, args)) do (i, a)
+        (i == 0) == _ispiece(a) || throw(
+            ArgumentError(
+                "$(call) does not have the arguments of $(_declared_call(v, u_op)) in their declared " *
+                    "positions; the trace is written $(expected)"
+            )
+        )
+        classify_argument(v, u_op, i == 0 ? first(spatial) : i, a)
+    end
+    return u_op, Vector{ArgumentClass}(classes)
+end
+
+"""
+    location(classes)
+    location(v::VariableMap, classes)
+
+Return where a call with argument classes `classes` (from [`classify_call`](@ref)) lies:
+[`Interior()`](@ref PDEBase.Interior) when every class is [`Free`](@ref PDEBase.Free),
+the one [`BoxFace`](@ref PDEBase.BoxFace), or the one [`Piece`](@ref PDEBase.Piece). Two
+faces in one call (an edge or a corner) or a face with a piece are an error.
+
+With `v`, a piece that is a face of the box `spatial_domain(v)` is normalised to its
+`BoxFace` with [`boxface`](@ref PDEBase.boxface), so `u(t, 0, y)` and the trace
+`u(t, Γ)` on the left face of `(x, y) ∈ Rectangle(...)` have equal locations.
+"""
+function location(classes)
+    bound = filter(c -> !(c isa Free), classes)
+    isempty(bound) && return Interior()
+    length(bound) == 1 && return only(bound)
+    throw(
+        ArgumentError(
+            "a call lies on more than one face of the domain, an edge or a corner: $(bound); " *
+                "write the condition on one face"
+        )
+    )
+end
+
+function location(v::VariableMap, classes)
+    loc = location(classes)
+    loc isa Piece || return loc
+    face = boxface(v, loc.piece)
+    return face === nothing ? loc : face
+end
+
+"""
+    boxface(v::VariableMap, piece::BoundaryPiece) -> Union{BoxFace, Nothing}
+
+Return the [`BoxFace`](@ref PDEBase.BoxFace) that `piece` is, when it is a face of the box
+`spatial_domain(v)` (a `DomainSets.HyperRectangle`, with pieces from
+[`boundarypieces`](@ref)), and `nothing` otherwise. Axis `i` of the box is coordinate `i`
+of its tuple pairing `(x, y) ∈ Ω`, or `indvars(v)[i]` when each coordinate has its own
+interval pairing.
+"""
+function boxface(v::VariableMap, piece::BoundaryPiece)
+    Ω = spatial_domain(v)
+    Ω isa DomainSets.HyperRectangle && isequal(parent(piece), Ω) || return nothing
+    face = try
+        _box_face(piece)
+    catch e
+        e isa ArgumentError || rethrow()
+        return nothing
+    end
+    axis, side = face
+    coords = _pairing_coordinates(v.domains[first(v.x̄)])
+    iv = coords === nothing ? v.x̄[axis] : safe_unwrap(coords[axis])
+    return BoxFace(iv, side)
+end
+
+"""
+    normal(face::BoxFace) -> (iv, sign)
+    normal(piece::Piece, x)
+
+Return the outward normal of a location. For a [`BoxFace`](@ref PDEBase.BoxFace) it is
+`±e_iv`, returned as the pair `(iv, -1)` on the lower face and `(iv, 1)` on the upper
+face. For a [`Piece`](@ref PDEBase.Piece) it is `DomainSets.normal(parent, x)` at the
+point `x` when DomainSets knows the normal of the parent domain; otherwise the
+discretization backend supplies it, and this is an error.
+"""
+normal(face::BoxFace) = (face.iv, face.side === :lo ? -1 : 1)
+
+function normal(p::Piece, x)
+    Ω = parent(p.piece)
+    hasmethod(DomainSets.normal, Tuple{typeof(Ω), typeof(x)}) && return DomainSets.normal(Ω, x)
+    throw(
+        ArgumentError(
+            "the normal of $(p.piece) is not known to PDEBase or DomainSets for a $(typeof(Ω)); " *
+                "the discretization backend supplies it"
+        )
+    )
+end
+
+"""
+    ConditionClass
+
+What [`classify_condition`](@ref) found a condition to be.
+
+# Fields
+- `kind`: `:initial`, `:boundary` or `:periodic`.
+- `locations`: The distinct locations of the condition's calls. One `BoxFace(t, :lo)` for
+  an initial condition, one [`BoxFace`](@ref PDEBase.BoxFace) or
+  [`Piece`](@ref PDEBase.Piece) for a boundary condition, and the lower then the upper
+  face of one axis for a periodic condition.
+"""
+struct ConditionClass
+    kind::Symbol
+    locations::Vector{Any}
+end
+
+# Locations of the dependent-variable calls in `ex`, checking that each normal derivative's
+# piece is the location of the trace it is applied to.
+function _call_locations!(locs, v, ex)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return locs
+    op = operation(ex)
+    if haskey(v.args, op)
+        push!(locs, location(v, classify_call(v, ex)[2]))
+        return locs
+    elseif op isa NormalDerivative
+        trace = safe_unwrap(only(arguments(ex)))
+        opface = location(v, [Piece(op.piece)])
+        argloc = iscall(trace) && haskey(v.args, operation(trace)) ?
+            location(v, classify_call(v, trace)[2]) : Interior()
+        isequal(opface, argloc) || throw(
+            ArgumentError(
+                "$(ex) takes the normal derivative on $(op.piece) of $(trace), which is not on " *
+                    "$(op.piece); write the trace on the operator's piece"
+            )
+        )
+    end
+    for arg in arguments(ex)
+        _call_locations!(locs, v, arg)
+    end
+    return locs
+end
+
+_istimeface(v, loc, side) = loc isa BoxFace && v.time !== nothing && isequal(loc.iv, v.time) && loc.side === side
+
+"""
+    classify_condition(v::VariableMap, eq) -> ConditionClass
+
+Classify the condition `eq` (an `Equation` or a `Pair`) by the set of
+[`location`](@ref PDEBase.location)s of its dependent-variable calls, and return a
+[`ConditionClass`](@ref PDEBase.ConditionClass):
+
+| Locations of the calls | Result |
+|:--- |:--- |
+| all on the lower time face, as `u(0, x)` | `:initial` |
+| any on the upper time face | error, not an initial condition |
+| one spatial face or one piece | `:boundary` |
+| the two opposite faces of one spatial axis | `:periodic` |
+| interior calls mixed with traces | error |
+| two faces in one call (an edge or a corner) | error |
+
+A trace written with a piece that is a face of the box classifies like its endpoint form.
+A `NormalDerivative(Γa)` applied to a trace on another piece `Γb` is an error.
+"""
+function classify_condition(v::VariableMap, eq)
+    lhs, rhs = _get_lhs_rhs(eq)
+    locs = unique(_call_locations!(_call_locations!(Any[], v, lhs), v, rhs))
+    isempty(locs) && throw(ArgumentError("condition $(eq) has no call of a dependent variable"))
+    any(loc -> loc isa Interior, locs) && throw(
+        ArgumentError(
+            "condition $(eq) is not on the boundary: " *
+                (length(locs) == 1 ? "every call is in the interior" : "it mixes interior calls with traces")
+        )
+    )
+    any(loc -> _istimeface(v, loc, :hi), locs) &&
+        throw(ArgumentError("condition $(eq) is on the final time $(v.intervals[v.time][2]), not an initial condition"))
+    if length(locs) == 1
+        loc = only(locs)
+        return ConditionClass(_istimeface(v, loc, :lo) ? :initial : :boundary, locs)
+    elseif length(locs) == 2 && all(loc -> loc isa BoxFace && !_istimeface(v, loc, :lo), locs)
+        lo, hi = sort(locs; by = loc -> loc.side === :hi)
+        isequal(lo.iv, hi.iv) && lo.side !== hi.side && return ConditionClass(:periodic, [lo, hi])
+    end
+    throw(
+        ArgumentError(
+            "condition $(eq) relates the locations $(locs); a condition must be on one face or piece, " *
+                "or relate the two opposite faces of one axis"
+        )
+    )
+end
+
+### SUBSTITUTION THROUGH OPERATORS ###
+
+_trace_substitute_filter(ex) =
+    SymbolicUtils.default_substitute_filter(ex) ||
+    (iscall(ex) && operation(ex) isa Union{Differential, NormalDerivative})
+
+"""
+    substitute_traces(ex, rules)
+
+`substitute(ex, rules)` that also substitutes inside `Differential` and
+[`NormalDerivative`](@ref) applications, which plain `substitute` leaves alone. `ex` may be
+an expression or an `Equation`. Use it wherever traces are rewritten, so that
+`Dx(u(t, Γ))`, `Dn(u(t, Γ))` and `k * Dn(u(t, Γ)) + α * u(t, Γ)` all have their trace
+replaced, and check the result with [`assert_no_traces`](@ref).
+"""
+substitute_traces(ex, rules) = substitute(ex, rules; filterer = _trace_substitute_filter)
+substitute_traces(eq::Equation, rules) = substitute_traces(eq.lhs, rules) ~ substitute_traces(eq.rhs, rules)
+
+function _find_trace(ex)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return nothing
+    operation(ex) isa NormalDerivative && return ex
+    any(_ispiece, arguments(ex)) && return ex
+    for arg in arguments(ex)
+        found = _find_trace(arg)
+        found === nothing || return found
+    end
+    return nothing
+end
+
+"""
+    assert_no_traces(ex)
+
+Throw an `ArgumentError` if `ex`, an expression or an `Equation`, still holds a trace (a
+call with a [`BoundaryPiece`](@ref) argument) or a [`NormalDerivative`](@ref), and return
+`ex` otherwise. Run it after replacing traces and before `expand_derivatives`, which
+silently turns `Dx(u(t, Γ))` into `0`.
+"""
+function assert_no_traces(ex)
+    found = _find_trace(ex)
+    found === nothing && return ex
+    throw(
+        ArgumentError(
+            "$(found) remains in $(ex) after trace substitution; traces and normal derivatives " *
+                "must be replaced before the expression is expanded"
+        )
+    )
+end
+assert_no_traces(eq::Equation) = (assert_no_traces(eq.lhs); assert_no_traces(eq.rhs); eq)

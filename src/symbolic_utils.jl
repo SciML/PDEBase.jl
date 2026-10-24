@@ -112,8 +112,13 @@ end
 
 """
     differential_order(eq, x)
+    differential_order(eq, x, v::VariableMap)
 
 Returns a set of all differential orders present in the equation with respect to variable `x`.
+
+A [`NormalDerivative`](@ref) is order 1 in the normal direction of its piece: when `x` is
+that [`BoundaryPiece`](@ref), and, given the variable map `v`, when the piece is the face
+of the box on which `x` is fixed (see [`boxface`](@ref PDEBase.boxface)).
 
 # Arguments
 - `eq`: A symbolic equation or expression to analyze
@@ -127,23 +132,37 @@ A set of integers representing all differential orders found in the equation (ex
 differential_order(Dx(Dx(u)) ~ 0, x) == Set([2])
 ```
 """
-function differential_order(eq, x)
+function differential_order(eq, x, v = nothing)
     orders = Set{Int}()
-    _differential_order!(orders, eq, x)
+    _differential_order!(orders, eq, x, v)
     return filter(!iszero, orders)
 end
 
 # Internal helper to avoid allocations from closures
-function _differential_order!(orders::Set{Int}, eq, x)
+function _differential_order!(orders::Set{Int}, eq, x, v = nothing)
     if iscall(eq)
         op = operation(eq)
         if op isa Differential
             push!(orders, count_differentials(eq, x))
+        elseif op isa NormalDerivative
+            _normal_derivative_order!(orders, op, x, v)
         else
             for ch in arguments(eq)
-                _differential_order!(orders, ch, x)
+                _differential_order!(orders, ch, x, v)
             end
         end
+    end
+    return nothing
+end
+
+# A normal derivative is first order in the normal direction of its piece: under the piece
+# itself as the key, or, given a `VariableMap`, in the variable of the box face it is.
+function _normal_derivative_order!(orders, op, x, v)
+    if x isa BoundaryPiece
+        isequal(op.piece, x) && push!(orders, 1)
+    elseif v !== nothing
+        face = boxface(v, op.piece)
+        face !== nothing && isequal(face.iv, x) && push!(orders, 1)
     end
     return nothing
 end
