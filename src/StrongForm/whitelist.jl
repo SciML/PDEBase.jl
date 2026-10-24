@@ -4,18 +4,16 @@ function is_state(ex, depvars)
     return any(a -> is_state(a, depvars), arguments(ex))
 end
 
-has_differential(ex) = iscall(ex) &&
-    (operation(ex) isa Differential || any(has_differential, arguments(ex)))
+differentiates_in(ex, s) = iscall(ex) &&
+    (operation(ex) isa Differential && isequal(operation(ex).x, s) || any(a -> differentiates_in(a, s), arguments(ex)))
 
-# Calls `op` on fresh symbols so that derivatives inside sibling arguments cannot be
-# mistaken for a missing rule; Bool arguments need no derivative.
+# Probes each state-carrying argument with its own fresh symbol and leaves the others (array
+# indices, Bool conditions) in place, so the call keeps its argument shapes.
 function has_derivative_rules(op, args, depvars)
-    fresh = [Symbolics.variable(gensym(); T = symtype(a) <: Bool ? Bool : Real) for a in args]
-    call = op(fresh...)
-    return all(eachindex(args)) do i
-        symtype(args[i]) <: Bool || !is_state(args[i], depvars) ||
-            !has_differential(unwrap(Symbolics.derivative(call, fresh[i])))
-    end
+    probed = findall(a -> !(symtype(a) <: Bool) && is_state(a, depvars), args)
+    fresh = Any[i in probed ? unwrap(Symbolics.variable(gensym())) : args[i] for i in eachindex(args)]
+    call = op(Symbolics.wrap.(fresh)...)
+    return all(i -> !differentiates_in(unwrap(Symbolics.derivative(call, fresh[i])), fresh[i]), probed)
 end
 
 unsupported(op) = error("operator $op is not supported by the strong-form analysis")
@@ -26,7 +24,7 @@ unsupported(op) = error("operator $op is not supported by the strong-form analys
 Stage 0 of the strong-form analysis: error unless every operation in `ex` (an expression
 or an `Equation`) is supported. Supported are `Differential` in one of `ivs`,
 `NormalDerivative` applied to a trace, calls of dependent variables and other symbolic
-functions, `ifelse`, and any function Symbolics can differentiate in each of its non-`Bool`
+functions, `ifelse`, `getindex`, and any function Symbolics can differentiate in each of its non-`Bool`
 arguments (arithmetic, comparisons and logical operators included). A registered function
 without a derivative rule is accepted only while no state from `depvars` reaches it.
 Returns `nothing`.
@@ -43,7 +41,7 @@ function check_whitelist(ex, ivs, depvars)
         # operator's piece is the trace's piece.
         iscall(only(args)) && is_state(only(args), depvars) || unsupported(op)
     elseif op isa Function
-        op === ifelse || has_derivative_rules(op, args, depvars) || unsupported(op)
+        op === ifelse || op === getindex || has_derivative_rules(op, args, depvars) || unsupported(op)
     elseif !(op isa SymbolicUtils.BasicSymbolic)
         unsupported(op)
     end

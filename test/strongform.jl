@@ -64,6 +64,10 @@ end
         opaque(U) * Dx(U), ivs, dvs
     )
     @test check_whitelist(opaque(x) * Dx(U), ivs, dvs) === nothing
+    # Indexed parameter arrays carry no state and keep their argument shapes.
+    @variables a[1:2]
+    @test check_whitelist(a[1] * U + a[2] * Dx(U), ivs, dvs) === nothing
+    @test check_whitelist(sin(a[1] * U) * Dx(U), ivs, dvs) === nothing
 end
 
 @testset "split_time" begin
@@ -95,6 +99,12 @@ end
         @test isequal(mass, [Num(0)])
         @test length(spatial) == 3
     end
+
+    # Quotients with an additive numerator, which `expand` leaves whole.
+    mass, spatial = split_time((Dt(U) + U) / x, [U], t)
+    @test isequal(mass, [1 / x])
+    @test isequal(only(spatial), U / x)
+    @test isequal(first(split_time((Dt(U) + Dt(Wf)) / x ~ 0, [U, Wf], t)), [1 / x, 1 / x])
 
     # Residual form is accepted as well as an equation.
     @test isequal(first(split_time(Dt(U) - Dx(Dx(U)), [U], t)), [Num(1)])

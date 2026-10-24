@@ -1,4 +1,13 @@
-addterms(ex) = iscall(ex) && operation(ex) === (+) ? reduce(vcat, addterms.(arguments(ex))) : [ex]
+"Additive terms of an expanded `ex`; `expand` leaves `(a + b) / d` whole, so quotients are split too."
+function addterms(ex)
+    iscall(ex) || return [ex]
+    operation(ex) === (+) && return reduce(vcat, addterms.(arguments(ex)))
+    if operation(ex) === (/)
+        num, den = arguments(ex)
+        return [term / den for term in addterms(num)]
+    end
+    return [ex]
+end
 factors(ex) = iscall(ex) && operation(ex) === (*) ? collect(arguments(ex)) :
     iscall(ex) && operation(ex) === (/) ? vcat(factors(arguments(ex)[1]), [1 / arguments(ex)[2]]) : [ex]
 
