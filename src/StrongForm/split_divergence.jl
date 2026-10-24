@@ -3,10 +3,12 @@
 
 Functions that are not differentiable in the symbolic sense. Their Symbolics derivatives are 0 or
 `ifelse(...)`, so a product-rule correction built from them would vanish silently (spec §5.1, M1).
-Comparisons and Bool operators are included; they only occur inside `ifelse` conditions.
+Comparisons and Bool operators are included; they only occur inside `ifelse` conditions. A
+derivative that comes out piecewise or `NaN` is rejected as well, catching functions not listed.
 """
 const NONSMOOTH_FUNCTIONS = (
-    ifelse, abs, max, min, sign, floor, ceil, round, signbit,
+    ifelse, abs, max, min, sign, floor, ceil, round, trunc, signbit, clamp,
+    mod, rem, mod1, rem2pi, div, fld, cld,
     <, <=, >, >=, ==, !=, &, |, !, xor,
 )
 
@@ -38,7 +40,8 @@ function distribute_derivatives(ex)
     op = operation(ex)
     args = map(distribute_derivatives, arguments(ex))
     op isa Differential || return maketerm(typeof(ex), op, args, metadata(ex))
-    return sum(term -> op(term), addterms(unwrap(Symbolics.expand(only(args)))))
+    terms = filter(t -> !(unwrap_const(t) isa Number), addterms(unwrap(Symbolics.expand(only(args)))))
+    return unwrap(sum(op, terms; init = Num(0)))
 end
 
 "Is `c`, as a function of `x`, built only from functions with symbolic derivatives?"
@@ -50,6 +53,13 @@ function is_smooth(c, x)
     op isa Function && op !== getindex &&
         !has_derivative_rules(op, args, a -> depends_on(a, x)) && return false
     return all(a -> is_smooth(a, x), args)
+end
+
+"Does `ex` hold an `ifelse` depending on `x`, or a `NaN`, as derivatives of jumps do?"
+function is_piecewise(ex, x)
+    iscall(ex) || return (v = unwrap_const(ex); v isa AbstractFloat && isnan(v))
+    operation(ex) === ifelse && depends_on(ex, x) && return true
+    return any(a -> is_piecewise(a, x), arguments(ex))
 end
 
 not_in_divergence_form(term) =
@@ -75,6 +85,8 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
     R = Num[]
     needy, corrections = Num[], Num[]
     for term in unwrap.(spatial)
+        n = spatial_order(term, sivs)
+        n > 2 && error("$(ordinal(n))-order operator needs a mixed or C¹ formulation: $term")
         fs = factors(term)
         idx = findall(f -> is_spatial_derivative(f, sivs) && spatial_order(f, sivs) >= 2, fs)
         if isempty(idx)
@@ -84,18 +96,17 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
         end
         length(idx) == 1 || not_in_divergence_form(term)
         Dw = fs[only(idx)]
-        n = spatial_order(Dw, sivs)
-        n > 2 && error("$(ordinal(n))-order operator needs a mixed or C¹ formulation: $term")
         c = prod(fs[j] for j in eachindex(fs) if j != only(idx); init = 1)
         spatial_order(c, sivs) == 0 || not_in_divergence_form(term)
         op, w = operation(Dw), only(arguments(Dw))
         inner = op.order == 1 ? w : unwrap(Differential(op.x, op.order - 1)(w))
         G[findfirst(isequal(op.x), sivs)] += c * inner
         depends_on(c, op.x) || continue
-        is_smooth(c, op.x) ||
+        dc = Symbolics.expand_derivatives(Differential(op.x)(c))
+        (is_smooth(c, op.x) && !is_piecewise(dc, op.x)) ||
             error("coefficient $c is not differentiable; write the equation in divergence form or register the derivative")
         push!(needy, term)
-        push!(corrections, -Symbolics.expand_derivatives(Differential(op.x)(c)) * inner)
+        push!(corrections, -dc * inner)
     end
     # Corrections of terms split apart by `expand` may cancel, as for (sin² + cos²)⋅Δu.
     isequal(Symbolics.simplify(sum(corrections; init = Num(0))), Num(0)) && return G, R, false

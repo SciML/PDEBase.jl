@@ -60,7 +60,7 @@ U, W = u(t, x, y), w(t, x, y)
     # (ii-b) non-divergence a(x, y)Δu with advection and reaction: the product rule adds ∇a⋅∇u
     axy = 1 + x^2 + y
     eq = Dt(U) ~ axy * (Dx(Dx(U)) + Dy(Dy(U))) - 0.7 * Dx(U) - 0.3 * Dy(U) - 2.5 * U + x * y + 1
-    an, _ = @test_logs (:warn, r"ProductRule .* non-symmetric") analysed([eq], [U], [t, x, y]; t)
+    an, _ = @test_logs (:warn, r"equations 1 \(ProductRule\(\)\), so .* non-symmetric") analysed([eq], [U], [t, x, y]; t)
     s = an.slots
     X, G = s.X, s.G
     @test all(same.(an.flux[1], -(1 + X[1]^2 + X[2]) .* G))
@@ -165,6 +165,18 @@ end
         Dt(U1) ~ ifelse(x < 0.5, 1.0, 3.0) * Dx(Dx(U1))
     )
     @test_throws r"unresolved symbols .* register the derivative" reject(Dt(U1) ~ a(x) * Dx(Dx(U1)))
+
+    # The true order wins over the divergence-position message.
+    @test_throws r"^third-order operator" reject(Dt(U1) ~ sin(Dx(Dx(Dx(U1)))))
+    @test_throws r"^third-order operator" reject(Dt(U1) ~ Dx(Dx(U1)) * Dx(Dx(Dx(U1))))
+
+    # Discontinuous coefficients, listed or caught through a piecewise or NaN derivative.
+    for c in (mod(x, 0.5), rem(x, 0.5), clamp(x, 0.2, 0.8))
+        @test_throws "is not differentiable" reject(Dt(U1) ~ c * Dx(Dx(U1)))
+    end
+    is_piecewise = PDEBase.StrongForm.is_piecewise
+    @test is_piecewise(Symbolics.unwrap(Symbolics.derivative(mod(x, 0.5), x)), Symbolics.unwrap(x))
+    @test !is_piecewise(Symbolics.unwrap(Symbolics.derivative(sin(x) * ifelse(y < 0.5, 1, 2), x)), Symbolics.unwrap(x))
 end
 
 @testset "Weighted(r²) gives the symmetric spherical form" begin
@@ -200,6 +212,35 @@ end
     @test isequal(an.remainder[1], Num(0))
     G, R, corrected = split_divergence([(sin(x)^2 + cos(x)^2) * Dx(Dx(U1))], [x])
     @test isempty(R) && !corrected
+end
+
+@testset "More integration-by-parts cases" begin
+    U1 = u(t, x)
+    # Mixed partial whose coefficient depends on the outer differentiation variable.
+    an, _ = @test_logs (:warn,) analysed([Dt(U) ~ x * Dx(Dy(U))], [U], [t, x, y]; t)
+    s = an.slots
+    @test all(same.(an.flux[1], [-s.X[1] * s.G[2], Num(0)]))
+    @test same(an.remainder[1], s.G[2])
+    @test reconstruction_error(an, 1) < 1.0e-12
+
+    # The warning names the policy that generated the correction.
+    eq = Dt(U1) ~ (1 + x^2) * Dx(Dx(U1))
+    @test_logs (:warn, r"equations 1 \(Weighted") analysed([eq], [U1], [t, x]; t, ibp = Dict(eq => Weighted(x)))
+
+    # Conflicting keys for one equation.
+    @test_throws "matched by ibp keys with different policies" analysed(
+        [eq], [U1], [t, x]; t, ibp = Dict(eq => Reject(), 1 => ProductRule())
+    )
+    @test_logs (:warn,) analysed([eq], [U1], [t, x]; t, ibp = Dict(eq => Weighted(x^2), 1 => Weighted(x^2)))
+
+    # Keys written with array-variable fields match after flattening.
+    @variables (q(..))[1:2]
+    Q1, Q2 = q(t, x)[1], q(t, x)[2]
+    eqs = [Dt(Q1) ~ (1 + x^2) * Dx(Dx(Q1)), Dt(Q2) ~ Dx(Dx(Q2))]
+    @test_throws "Reject()" analysed(eqs, [q(t, x)], [t, x]; t, ibp = Dict(eqs[1] => Reject()))
+
+    # Derivatives of constants are dropped when distributing.
+    @test isequal(PDEBase.StrongForm.distribute_derivatives(Dx(U1 + 2)), Symbolics.unwrap(Dx(U1)))
 end
 
 @testset "Array parameters get one slot per element" begin

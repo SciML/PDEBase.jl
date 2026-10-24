@@ -11,10 +11,11 @@ module StrongForm
 
 import SciMLPublic: @public
 using Symbolics: Symbolics, Differential, Equation, Num, unwrap
-using SymbolicUtils: SymbolicUtils, arguments, iscall, operation, symtype
+using SymbolicUtils: SymbolicUtils, arguments, iscall, operation, symtype, unwrap_const
 using TermInterface: maketerm, metadata
 using ModelingToolkitBase: get_eqs
-using ..PDEBase: VariableMap, _flatten_eqs, depvars, indvars
+using ..PDEBase: VariableMap, _flatten_eqs, chain_flatten_array_variables, depvars, indvars,
+    replaced_vars
 
 include("types.jl")
 include("whitelist.jl")
