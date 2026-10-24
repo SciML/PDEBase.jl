@@ -111,6 +111,15 @@ function PDEBase.lower_boundaries(pdesys::PDESystem, disc::LoweringDiscretizatio
     disc.received[] = pdesys
     return disc.lowered
 end
+function PDEBase.split_ics_bcs(boundarymap, v::VariableMap, disc::LoweringDiscretization)
+    t = PDEBase.get_time(disc)
+    ics = mapreduce(u -> boundarymap[u][t], vcat, keys(boundarymap))
+    bcmap = Dict(
+        u => filter(kv -> !isequal(first(kv), t), boundarymap[u])
+            for u in keys(boundarymap)
+    )
+    return ics, bcmap
+end
 
 @testset "Generic discretization hook dispatch" begin
     @parameters t x
@@ -219,6 +228,14 @@ end
         for x in keys(expected_bcmap[u])
             @test isequal(bcmap[u][x], expected_bcmap[u][x])
         end
+    end
+
+    override_ics, override_bcmap = PDEBase.split_ics_bcs(
+        boundarymap, v, LoweringDiscretization(t, nothing, Ref{Any}(nothing))
+    )
+    @test isequal(override_ics, expected_ics)
+    for u in keys(expected_bcmap), x in keys(expected_bcmap[u])
+        @test isequal(override_bcmap[u][x], expected_bcmap[u][x])
     end
 
     steady_ics, steady_bcmap = PDEBase.split_ics_bcs(boundarymap, v, PlainDiscretization())
