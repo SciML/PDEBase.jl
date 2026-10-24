@@ -5,6 +5,8 @@ This page provides a comprehensive reference for all exported types and function
 ```@docs
 PDEBase.AbstractEquationSystemDiscretization
 PDEBase.AbstractOptimizationSystemDiscretization
+PDEBase.AbstractBoxDiscretization
+PDEBase.AbstractMeshDiscretization
 PDEBase.AbstractDiscreteSpace
 PDEBase.AbstractCartesianDiscreteSpace
 PDEBase.AbstractVarEqMapping
@@ -62,6 +64,14 @@ Base type for discretizations that produce systems of ODEs or DAEs.
 **`AbstractOptimizationSystemDiscretization <: AbstractDiscretization`**
 
 Base type for discretizations targeting optimization problems.
+
+**`AbstractBoxDiscretization <: AbstractEquationSystemDiscretization`**
+
+Base type for equation-system discretizations on interval or box domains.
+
+**`AbstractMeshDiscretization <: AbstractEquationSystemDiscretization`**
+
+Base type for equation-system discretizations on general meshes.
 
 ### Space Types
 
@@ -155,6 +165,7 @@ For detailed documentation of interface functions, see [Developer Extension API]
 
 | Function | Purpose |
 |----------|---------|
+| `lower_boundaries` | Rewrite boundary conditions for the discretizer |
 | `interface_errors` | Check PDESystem compatibility |
 | `check_boundarymap` | Validate boundary conditions |
 | `should_transform` | Determine if system needs transformation |
@@ -163,6 +174,7 @@ For detailed documentation of interface functions, see [Developer Extension API]
 | `construct_discrete_space` | Build discrete grid and variables |
 | `construct_var_equation_mapping` | Map variables to equations |
 | `construct_differential_discretizer` | Prepare derivative approximations |
+| `split_ics_bcs` | Separate initial and boundary conditions |
 | `discretize_equation!` | Convert PDE to discrete equations |
 | `generate_ic_defaults` | Create initial conditions |
 | `generate_metadata` | Build discretization metadata |
