@@ -22,6 +22,7 @@ DomainSets = "0.7, 0.8"
 IntervalSets = "0.7"
 ModelingToolkitBase = "1.72"
 ModelingToolkit = "11.26.7"
+PDESystemLibrary = "0.1.10"
 PrecompileTools = "1.2.1"
 SciMLBase = "3.1"
 SciMLPublic = "1"
@@ -38,10 +39,11 @@ julia = "1.10"
 AllocCheck = "9b6a8646-10ed-4001-bbdc-1d2f46dfbb1a"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
+PDESystemLibrary = "d14f9848-fe58-4297-bd22-c1aba6f3000d"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 SciMLTesting = "09d9d899-5365-40a9-917a-5f67fddea283"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["AllocCheck", "BenchmarkTools", "ModelingToolkit", "SafeTestsets", "SciMLTesting", "SymbolicUtils", "Test"]
+test = ["AllocCheck", "BenchmarkTools", "ModelingToolkit", "PDESystemLibrary", "SafeTestsets", "SciMLTesting", "SymbolicUtils", "Test"]
