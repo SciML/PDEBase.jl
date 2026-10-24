@@ -1,6 +1,7 @@
 using PDEBase
 using PDEBase.StrongForm
-using PDEBase.StrongForm: ProductRule, Reject, Weighted, check_evaluable, split_divergence
+using PDEBase.StrongForm: BoxFace, ProductRule, Reject, SlotContext, Weighted, check_evaluable,
+    split_divergence
 using IntervalSets: var".."
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs
 using Symbolics
@@ -301,14 +302,84 @@ end
     @test isempty(R) && !corrected
 end
 
-@testset "Boundary conditions are not analysed yet" begin
-    U1 = u(t, x)
-    sys, v = prepared([Dt(U1) ~ Dx(Dx(U1))], [U1], [t, x]; t, bcs = [u(0.1, x) ~ 0, u(t, 0.1) ~ 0])
+function analysed_with_bcs(eqs, dvs, ivs, bcs; ibp = Dict(), kw...)
+    sys, v = prepared(eqs, dvs, ivs; bcs, kw...)
     orders = Dict(iv => PDEBase.d_orders(iv, get_bcs(sys)) for iv in PDEBase.all_ivs(v))
-    @test_throws "boundary-condition analysis is not implemented yet" analyse(
-        sys, v, PDEBase.parse_bcs(get_bcs(sys), v, orders)
+    return analyse(sys, v, PDEBase.parse_bcs(get_bcs(sys), v, orders); ibp), v
+end
+
+face(iv, side) = BoxFace(Symbolics.unwrap(iv), side)
+param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotContext(v).params)]
+
+@testset "Boundary conditions through analyse" begin
+    U1, W1 = u(t, x), w(t, x)
+
+    # 1D heat, Dirichlet at both ends
+    an, v = analysed_with_bcs(
+        [Dt(U1) ~ Dx(Dx(U1))], [U1], [t, x], [u(0.1, x) ~ 0, u(t, 0.1) ~ sin(t), u(t, 1.0) ~ 2]; t
     )
-    sys, v = prepared([Dt(U1) ~ Dx(Dx(U1))], [U1], [t, x]; t, bcs = [u(0.1, x) ~ 0])
-    orders = Dict(iv => PDEBase.d_orders(iv, get_bcs(sys)) for iv in PDEBase.all_ivs(v))
-    @test analyse(sys, v, PDEBase.parse_bcs(get_bcs(sys), v, orders)) isa StrongFormAnalysis
+    @test an isa StrongFormAnalysis{BoxFace}
+    @test isempty(an.natural) && isempty(an.periodic)
+    ess = Dict(b.piece => b for b in an.essential)
+    @test same(ess[face(x, :lo)].g, sin(an.slots.T)) && same(ess[face(x, :hi)].g, 2)
+    @test all(b -> b.field == 1, an.essential)
+    @test reconstruction_error(an, 1) < 1.0e-12
+
+    # 2D heat with k: Dirichlet, Neumann rescaled to -k h, Robin as facet bilinear plus source
+    @parameters h
+    bcs = [
+        u(0.1, x, y) ~ 0, u(t, 0.1, y) ~ 0, Dx(u(t, 1.0, y)) ~ h,
+        -k * Dy(u(t, x, 0.1)) + 2u(t, x, 0.1) ~ 3,
+    ]
+    an, v = analysed_with_bcs(
+        [Dt(U) ~ Dx(k * Dx(U)) + Dy(k * Dy(U))], [U], [t, x, y], bcs; t, ps = [k, h]
+    )
+    K, H = param_slot(an, v, k), param_slot(an, v, h)
+    @test length(an.essential) == 1 && same(only(an.essential).g, 0)
+    nat = Dict(b.piece => b for b in an.natural)
+    @test same(nat[face(x, :hi)].Φ, -K * H)
+    @test same(nat[face(y, :lo)].Φ, 2an.slots.U[1] - 3)
+    @test reconstruction_error(an, 1) < 1.0e-12
+
+    # spherical-like, weighted by r²: Neumann at the inner radius, Dirichlet at the outer
+    @variables r
+    @variables q(..)
+    Dr = Differential(r)
+    Q = q(t, r)
+    eq = Dt(Q) ~ 1 / r^2 * Dr(r^2 * Dr(Q))
+    an, v = analysed_with_bcs(
+        [eq], [Q], [t, r], [q(0.1, r) ~ 0, Dr(q(t, 0.1)) ~ 2, q(t, 1.0) ~ 1];
+        t, ibp = Dict(eq => Weighted(r^2))
+    )
+    # the conormal on r = 0.1 is r² ∂ₙq, so Dr(q) ~ 2 there contributes 0.1² ⋅ 2
+    @test only(an.natural).piece == face(r, :lo)
+    @test slot_value(only(an.natural).Φ, Dict()) ≈ 0.02
+    @test only(an.essential).piece == face(r, :hi) && same(only(an.essential).g, 1)
+    @test reconstruction_error(an, 1) < 1.0e-12
+
+    # periodic
+    an, v = analysed_with_bcs(
+        [Dt(U1) ~ Dx(Dx(U1))], [U1], [t, x], [u(0.1, x) ~ 0, u(t, 0.1) ~ u(t, 1.0)]; t
+    )
+    p = only(an.periodic)
+    @test (p.master, p.mirror, p.field) == (face(x, :lo), face(x, :hi), 1)
+    @test p.shift ≈ 0.9
+    @test isempty(an.essential) && isempty(an.natural)
+
+    # two fields: the Neumann condition on w routes to the w equation, rescaled by its 2
+    eqs = [Dt(U1) ~ Dx(Dx(U1)), Dt(W1) ~ Dx(2 * Dx(W1)) + U1]
+    bcs = [u(0.1, x) ~ 0, w(0.1, x) ~ 0, u(t, 0.1) ~ 0, Dx(w(t, 1.0)) ~ 1]
+    an, v = analysed_with_bcs(eqs, [U1, W1], [t, x], bcs; t)
+    @test only(an.essential).field == field(v, U1) && only(an.essential).piece == face(x, :lo)
+    nat = only(an.natural)
+    @test nat.eq == 2 && nat.piece == face(x, :hi) && same(nat.Φ, -2)
+    @test all(e -> reconstruction_error(an, e) < 1.0e-12, 1:2)
+
+    # equation errors come before boundary errors
+    @test_throws "third-order" analysed_with_bcs(
+        [Dt(U1) ~ Dx(Dx(Dx(U1)))], [U1], [t, x], [u(0.1, x) ~ 0, u(t, 0.1)^2 ~ 1]; t
+    )
+    @test_throws "Dirichlet data must be linear in one field" analysed_with_bcs(
+        [Dt(U1) ~ Dx(Dx(U1))], [U1], [t, x], [u(0.1, x) ~ 0, u(t, 0.1)^2 ~ 1]; t
+    )
 end

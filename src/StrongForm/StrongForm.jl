@@ -30,6 +30,8 @@ export analyse
 
 @public StateSlots, IBPPolicy, ProductRule, Weighted, Reject, EssentialBC, NaturalBC,
     PeriodicBC, StrongFormAnalysis, check_whitelist, split_time, split_divergence,
-    distribute_derivatives, NONSMOOTH_FUNCTIONS, DISCONTINUOUS_FUNCTIONS, SlotContext, slot_volume, check_evaluable
+    distribute_derivatives, NONSMOOTH_FUNCTIONS, DISCONTINUOUS_FUNCTIONS, SlotContext, slot_volume,
+    check_evaluable, BoxFace, slot_condition, restrict_to_face, match_flux, route_natural,
+    essential_condition, periodic_condition, boundary_conditions, pair_equations
 
 end # module StrongForm
