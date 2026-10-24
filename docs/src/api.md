@@ -19,6 +19,7 @@ PDEBase.LowerBoundary
 PDEBase.UpperBoundary
 PDEBase.InterfaceBoundary
 PDEBase.HigherOrderInterfaceBoundary
+PDEBase.PieceBoundary
 PDEBase.VariableMap
 PDEBase.PeriodicMap
 PDEBase.count_differentials
@@ -139,6 +140,10 @@ Interface condition connecting two regions at zero-th order. Fields:
 **`HigherOrderInterfaceBoundary <: AbstractInterfaceBoundary`**
 
 Interface condition with derivatives (e.g., flux continuity). Additional fields include `depvars`, `indvars`, and `order`.
+
+**`PieceBoundary <: AbstractBoundary`**
+
+Condition written with traces on a named `BoundaryPiece`, produced by `parse_bcs` for an `AbstractMeshDiscretization`. Fields: `u`, `piece`, `depvars`, `eq`, `kind` (`Essential`, `Natural` or `Robin`) and `order`.
 
 ## Concrete Types
 
