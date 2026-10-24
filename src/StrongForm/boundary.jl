@@ -44,6 +44,8 @@ end
 function _slot_substitute(ctx::SlotContext, ex, face, slots)
     ex = unwrap(ex)
     iscall(ex) || return _slot_leaf(ctx, ex, slots)
+    j = findfirst(p -> isequal(p, ex), ctx.params)
+    j === nothing || return unwrap(slots.P[j])
     op = operation(ex)
     op isa SymbolicUtils.Operator && return _slot_operator(ctx, op, ex, face, slots)
     f = _field(ctx, ex)
@@ -103,12 +105,16 @@ end
 
 The residual `eq.lhs - eq.rhs` of a boundary condition on `face` in slot form: each trace
 `u_f` becomes `U[f]`, `Dx_d(u_f)` becomes `G[(f-1)*dim+d]` and the face coordinate becomes its
-endpoint value. Errors if a trace remains. Only
-trace-free subexpressions are derivative-expanded (spec §3.3 trap).
+endpoint value. Errors if a trace or any other unslotted symbol remains. Only trace-free
+subexpressions are derivative-expanded (spec §3.3 trap).
 """
 function slot_condition(eq::Equation, face, ctx::SlotContext, slots)
     B = _slot_substitute(ctx, unwrap(eq.lhs - eq.rhs), face, slots)
     _assert_no_trace(ctx, B, eq, face)
+    slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.X, [slots.T], slots.N, slots.P)))
+    leftover = unique(_leftovers!(Any[], B, slotset, false))
+    isempty(leftover) ||
+        error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $face; declare them as parameters or register the derivative")
     return restrict_to_face(Num(B), face, ctx, slots)
 end
 
@@ -183,6 +189,9 @@ function _is_normal_derivative(B, n, slots)
     return length(nonzero) == 1 && _numerically_proportional(only(nonzero), Num.(n))
 end
 
+_gradcoefs(ex, slots) = [Symbolics.derivative(ex, gi) for gi in slots.G]
+_conormal_flux(G, n) = sum(G[d] * n[d] for d in eachindex(n))
+
 """
     route_natural(B, flux, n, slots; label = B) -> (eq::Int, Φ::Num)
 
@@ -195,8 +204,7 @@ function route_natural(B, flux, n, slots; label = B)
     Bn = substitute(B, nsub)
     matches = Tuple{Int, Num}[]
     for (e, G) in enumerate(flux)
-        Φ = substitute(sum(G[d] * n[d] for d in eachindex(n)), nsub)
-        Φbc = match_flux(Φ, Bn, slots)
+        Φbc = match_flux(substitute(_conormal_flux(G, n), nsub), Bn, slots)
         Φbc === nothing || push!(matches, (e, Φbc))
     end
     length(matches) == 1 && return only(matches)
@@ -205,10 +213,9 @@ function route_natural(B, flux, n, slots; label = B)
     end
     hint = _is_normal_derivative(Bn, n, slots) ? "write the conormal condition" :
         "write the normal derivative"
-    gradcoefs(ex) = [Symbolics.derivative(ex, gi) for gi in slots.G]
-    aB = gradcoefs(Bn)
+    aB = _gradcoefs(Bn, slots)
     near = findfirst(flux) do G
-        aΦ = gradcoefs(substitute(sum(G[d] * n[d] for d in eachindex(n)), nsub))
+        aΦ = _gradcoefs(substitute(_conormal_flux(G, n), nsub), slots)
         !any(a -> _depends(a, slots.G), vcat(aB, aΦ)) && !all(_iszero, aΦ) &&
             _numerically_proportional(aB, aΦ)
     end
@@ -260,6 +267,29 @@ function periodic_condition(b::InterfaceBoundary, ctx::SlotContext)
     return PeriodicBC(BoxFace(b.x, :lo), BoxFace(b.x, :hi), f, hi - lo)
 end
 
+# Routing on a face where some equation's conormal vanishes identically (e.g. the weighted
+# r²∂ᵣ flux at r = 0): a condition that matches only that equation's volume conormal imposes a
+# zero facet flux if it is homogeneous, and cannot be imposed otherwise.
+function _route_on_face(B, flux, faceflux, face, n, slots, label)
+    vanishing = [all(_iszero, _gradcoefs(_conormal_flux(G, n), slots)) for G in faceflux]
+    if any(vanishing) &&
+            all(G -> match_flux(_conormal_flux(G, n), B, slots) === nothing, faceflux)
+        degenerate = filter(findall(vanishing)) do e
+            match_flux(_conormal_flux(flux[e], n), B, slots) !== nothing
+        end
+        if length(degenerate) == 1
+            e = only(degenerate)
+            _iszero(substitute(B, Dict(g => 0 for g in slots.G))) ||
+                error("the conormal flux of equation $e vanishes identically on $face; the condition $(label) cannot be imposed there")
+            return e, Num(0)
+        end
+    end
+    return route_natural(B, faceflux, n, slots; label)
+end
+
+_gradient_fields(B, slots, dim) =
+    [f for f in eachindex(slots.U) if _depends(B, slots.G[((f - 1) * dim + 1):(f * dim)])]
+
 """
     boundary_conditions(boundarymap, ctx::SlotContext, slots, flux)
         -> (essential, natural, periodic)
@@ -267,11 +297,17 @@ end
 Classify every spatial boundary condition of a `parse_bcs` boundary map. A gradient-free
 condition is essential for the field `parse_bcs` filed it under; any other is routed to the
 equation whose conormal flux it matches. `flux[e]` is equation `e`'s flux vector in slots.
+Errors if two conditions fix the same field, or give the same equation's natural condition, on
+one face, or if one face has both an essential and a natural condition on the same field.
 """
 function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux)
     essential = EssentialBC{BoxFace}[]
     natural = NaturalBC{BoxFace}[]
     periodic = PeriodicBC{BoxFace}[]
+    dim = length(ctx.sivs)
+    fixed = Dict{Tuple{BoxFace, Int}, String}()        # (face, field) => essential condition
+    fluxed = Dict{Tuple{BoxFace, Int}, String}()       # (face, eq) => natural condition
+    graded = Dict{Tuple{BoxFace, Int}, String}()       # (face, field) => natural condition
     for (op, bykey) in boundarymap, (x, bs) in bykey
         ctx.t !== nothing && isequal(x, ctx.t) && continue
         for b in bs
@@ -286,11 +322,24 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux)
             label = "$(b.eq) on $face"
             if _depends(B, slots.G)
                 faceflux = [restrict_to_face.(G, (face,), (ctx,), (slots,)) for G in flux]
-                e, Φ = route_natural(B, faceflux, face_normal(face, ctx.sivs), slots; label)
+                e, Φ = _route_on_face(B, flux, faceflux, face, face_normal(face, ctx.sivs), slots, label)
+                haskey(fluxed, (face, e)) &&
+                    error("boundary conditions $(fluxed[(face, e)]) and $label both give the natural condition of equation $e")
+                fluxed[(face, e)] = label
+                for f in _gradient_fields(B, slots, dim)
+                    haskey(fixed, (face, f)) &&
+                        error("boundary conditions $(fixed[(face, f)]) and $label impose both an essential and a natural condition on field $f")
+                    graded[(face, f)] = label
+                end
                 push!(natural, NaturalBC(face, e, Φ))
             else
                 f = findfirst(o -> isequal(o, op), ctx.ops)
                 f, g = essential_condition(B, slots; field = f, label)
+                haskey(fixed, (face, f)) &&
+                    error("boundary conditions $(fixed[(face, f)]) and $label both fix field $f")
+                haskey(graded, (face, f)) &&
+                    error("boundary conditions $(graded[(face, f)]) and $label impose both an essential and a natural condition on field $f")
+                fixed[(face, f)] = label
                 push!(essential, EssentialBC(face, f, g))
             end
         end

@@ -1,6 +1,6 @@
 using PDEBase, ModelingToolkit, Symbolics, Test
 using DomainSets: Interval
-using PDEBase.StrongForm: StateSlots, SlotContext, BoxFace, EssentialBC, NaturalBC, PeriodicBC,
+using PDEBase.StrongForm: analyse, Weighted, StateSlots, SlotContext, BoxFace, EssentialBC, NaturalBC, PeriodicBC,
     match_flux, slot_condition, route_natural, essential_condition, periodic_condition,
     boundary_conditions, pair_equations
 
@@ -246,6 +246,67 @@ end
     )
 end
 
+@testset "array parameters and undeclared symbols in boundary conditions" begin
+    @parameters t x
+    @parameters a[1:2]
+    @variables u(..) c
+    Dt, Dx = Differential(t), Differential(x)
+    domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)]
+    bcs = [u(0, x) ~ 0, u(t, 0) ~ a[1], Dx(u(t, 1)) ~ a[2]]
+    v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [a], t)
+    ctx = SlotContext(v)
+    s = StateSlots(1, 1, length(ctx.params))
+    ess, nat, _ = boundary_conditions(bmap, ctx, s, [[-s.G[1]]])
+    @test symeq(only(ess).g, s.P[1])
+    @test symeq(only(nat).Φ, -s.P[2])
+    @test_throws "unresolved symbols" slot_condition(
+        u(t, 0) ~ c, BoxFace(Symbolics.unwrap(x), :lo), ctx, s
+    )
+end
+
+@testset "conormal vanishing identically on a face (weighted r²)" begin
+    @parameters t r
+    @variables u(..)
+    Dt, Dr = Differential(t), Differential(r)
+    domains = [t ∈ Interval(0.0, 1.0), r ∈ Interval(0.0, 1.0)]
+    eq = Dt(u(t, r)) ~ 1 / r^2 * Dr(r^2 * Dr(u(t, r)))
+    function weighted(bcs)
+        @named sys = PDESystem([eq], bcs, domains, [t, r], [u(t, r)])
+        v = VariableMap(sys, TimeDisc(t))
+        bmap = PDEBase.parse_bcs(bcs, v, Dict(x => d_orders(x, bcs) for x in all_ivs(v)))
+        return analyse(sys, v, bmap; ibp = Dict(1 => Weighted(r^2)))
+    end
+    an = weighted([u(0, r) ~ 1, Dr(u(t, 0)) ~ 0, u(t, 1) ~ 0])
+    nat = only(an.natural)
+    @test nat.piece == BoxFace(Symbolics.unwrap(r), :lo) && nat.eq == 1 && symeq(nat.Φ, 0)
+    @test only(an.essential).piece == BoxFace(Symbolics.unwrap(r), :hi)
+    @test_throws "the conormal flux of equation 1 vanishes identically" weighted(
+        [u(0, r) ~ 1, Dr(u(t, 0)) ~ 1, u(t, 1) ~ 0]
+    )
+end
+
+@testset "over-specified faces" begin
+    @parameters t x
+    @variables u(..)
+    Dt, Dx = Differential(t), Differential(x)
+    domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)]
+    s = StateSlots(1, 1, 0)
+    function classify(bcs)
+        v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
+        return boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]])
+    end
+    @test_throws "both give the natural condition of equation 1" classify(
+        [u(0, x) ~ 0, Dx(u(t, 0)) ~ 1, Dx(u(t, 0)) ~ 2]
+    )
+    @test_throws "impose both an essential and a natural condition on field 1" classify(
+        [u(0, x) ~ 0, u(t, 0) ~ 1, Dx(u(t, 0)) ~ 2]
+    )
+    @test_throws "both fix field 1" classify([u(0, x) ~ 0, u(t, 0) ~ 1, u(t, 0) ~ 2])
+    # one condition per face is fine
+    ess, nat, _ = classify([u(0, x) ~ 0, u(t, 0) ~ 1, Dx(u(t, 1)) ~ 2])
+    @test length(ess) == 1 && length(nat) == 1
+end
+
 @testset "pairing (spec §5.4)" begin
     s = StateSlots(3, 2, 0)
     Ud = s.Ud
@@ -254,6 +315,8 @@ end
     @test_throws "equation 2 has no time derivative" pair_equations([Ud[1], 0, Ud[2]], s)
     @test pair_equations([Ud[1], 0, Ud[2]], s; pairing = Dict(2 => 3)) == [1, 3, 2]
     @test_throws "time derivatives of fields [1, 2]" pair_equations([Ud[1] + Ud[2], Ud[3]], s)
+    @test_throws "but there are 3 fields" pair_equations([Ud[1], 0, Ud[2]], s; pairing = Dict(2 => 4))
+    @test_throws "names equation 5" pair_equations([Ud[1], Ud[2], Ud[3]], s; pairing = Dict(5 => 1))
     @test_throws "field 1 is paired with equations 1 and 2" pair_equations(
         [Ud[1], Ud[2]], s; pairing = Dict(2 => 1)
     )

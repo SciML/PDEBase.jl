@@ -8,9 +8,14 @@ The field each equation is paired with. `mass[e]` is equation `e`'s time-derivat
 `Σ_f m_ef Ud[f]` in slots. An explicit `pairing[e] = f` wins; otherwise the equation is paired with
 the one field whose time derivative it contains. An algebraic row (no time derivative) or a row
 holding several fields' time derivatives must be named in `pairing`. Errors if a field is paired
-twice.
+twice or `pairing` names an equation or field that does not exist.
 """
 function pair_equations(mass, slots; pairing = Dict{Int, Int}())
+    for (e, f) in pairing
+        e in eachindex(mass) || error("`pairing` names equation $e, but there are $(length(mass)) equations")
+        f in eachindex(slots.U) ||
+            error("`pairing` pairs equation $e with field $f, but there are $(length(slots.U)) fields")
+    end
     fields = map(eachindex(mass)) do e
         haskey(pairing, e) && return pairing[e]
         owned = [f for f in eachindex(slots.Ud) if _depends(mass[e], [slots.Ud[f]])]
