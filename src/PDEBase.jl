@@ -136,6 +136,9 @@ export PeriodicMap
 # Mesh-domain interface, implemented by mesh backends.
 @public meshdim, facetset_names, cellset_names, contains_point, backend_mesh
 
+# Syntactic boundary-condition classification.
+@public BCKind, Essential, Natural, Robin, bckind
+
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
 @public interface_errors, check_boundarymap, should_transform, transform_pde_system!,
