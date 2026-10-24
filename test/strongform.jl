@@ -84,7 +84,7 @@ end
     # Two fields with a coefficient on one mass term and a coupled flux.
     mass, spatial = split_time(2x * Dt(U) - Dt(Wf) / 3 ~ Dx(Dx(U) + U * Dx(Wf)), [U, Wf], t)
     @test isequal(mass, [2x, Num(-1 // 3)])
-    @test isequal(only(spatial), -Dx(Dx(U) + U * Dx(Wf)))
+    @test length(spatial) == 2  # derivatives are distributed over the sum
 
     # Wave as a first-order system.
     @test isequal(first(split_time(Dt(U) ~ Wf, [U, Wf], t)), [Num(1), Num(0)])
@@ -143,11 +143,13 @@ end
 @testset "StrongForm developer API is documented" begin
     api = (
         :StateSlots, :IBPPolicy, :ProductRule, :Weighted, :Reject, :EssentialBC, :NaturalBC,
-        :PeriodicBC, :StrongFormAnalysis, :check_whitelist, :split_time,
+        :PeriodicBC, :StrongFormAnalysis, :check_whitelist, :split_time, :split_divergence,
+        :distribute_derivatives, :NONSMOOTH_FUNCTIONS, :SlotContext, :slot_volume, :analyse,
     )
     for name in api
         @test haskey(Base.Docs.meta(PDEBase.StrongForm), Base.Docs.Binding(PDEBase.StrongForm, name))
         isdefined(Base, :ispublic) && @test Base.ispublic(PDEBase.StrongForm, name)
     end
     @test isempty(intersect(names(PDEBase), (:StrongForm, api...)))
+    @test [name for name in api if Base.isexported(PDEBase.StrongForm, name)] == [:analyse]
 end

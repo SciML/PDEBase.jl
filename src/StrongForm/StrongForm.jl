@@ -12,12 +12,21 @@ module StrongForm
 import SciMLPublic: @public
 using Symbolics: Symbolics, Differential, Equation, Num, unwrap
 using SymbolicUtils: SymbolicUtils, arguments, iscall, operation, symtype
+using TermInterface: maketerm, metadata
+using ModelingToolkitBase: get_eqs
+using ..PDEBase: VariableMap, _flatten_eqs, depvars, indvars
 
 include("types.jl")
 include("whitelist.jl")
 include("split_time.jl")
+include("split_divergence.jl")
+include("slots.jl")
+include("analyse.jl")
+
+export analyse
 
 @public StateSlots, IBPPolicy, ProductRule, Weighted, Reject, EssentialBC, NaturalBC,
-    PeriodicBC, StrongFormAnalysis, check_whitelist, split_time
+    PeriodicBC, StrongFormAnalysis, check_whitelist, split_time, split_divergence,
+    distribute_derivatives, NONSMOOTH_FUNCTIONS, SlotContext, slot_volume
 
 end # module StrongForm
