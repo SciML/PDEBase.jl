@@ -9,7 +9,9 @@ Rewrite the boundary conditions of `pdesys` into the form `disc` consumes.
 
 This is the first hook `symbolic_discretize` calls, before complex splitting,
 equation normalization and `VariableMap` construction, so every later hook sees
-the lowered system. The default returns `pdesys` unchanged. Extend it for a
+the lowered system. The default returns `pdesys` unchanged. For an
+`AbstractBoxDiscretization` it is [`to_box_bcs`](@ref) with the discretization's
+time, which rewrites trace conditions on box faces into endpoint form. Extend it for a
 discretization family whose downstream code expects one spelling of boundary
 conditions, such as endpoint-substituted calls on a box.
 
@@ -28,6 +30,7 @@ end
 ```
 """
 lower_boundaries(pdesys::PDESystem, disc::AbstractDiscretization) = pdesys
+lower_boundaries(pdesys::PDESystem, disc::AbstractBoxDiscretization) = to_box_bcs(pdesys; time = get_time(disc))
 
 """
     interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization)
