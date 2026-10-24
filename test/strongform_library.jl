@@ -4,11 +4,13 @@
 using PDEBase, Symbolics, Test
 using PDEBase: VariableMap, all_ivs, d_orders, parse_bcs, indvars, LowerBoundary,
     UpperBoundary, InterfaceBoundary, isupper
-using PDEBase.StrongForm: StrongFormAnalysis, analyse
+using PDEBase.StrongForm: StrongFormAnalysis, Weighted, analyse
 using Base.CoreLogging: Warn, with_logger
 using Symbolics: Differential, unwrap
 using SymbolicUtils: iscall, operation, arguments
 import PDESystemLibrary
+
+include(joinpath(@__DIR__, "shared", "strongform_identity.jl"))
 
 const THIRD = "third-order operator needs a mixed or C¹ formulation"
 const FOURTH = "fourth-order operator needs a mixed or C¹ formulation"
@@ -25,6 +27,9 @@ const PERIODIC = Set(
     [:convsin, :convcos, :convtri, :convsquare, :convsquare2, :adv, :diff, :advdiff, :bruss]
 )
 const NONLINEAR = Set([:inviscid_burgers_monotonic, :burgers_2d, :bruss])
+# Systems whose default ProductRule analysis warns about a non-symmetric correction term. sph,
+# 4/r² ∂ᵣ(r² ∂ᵣu), is the spec's own example (§5.1), whose remedy is `Weighted(r²)`.
+const PRODUCT_RULE_WARNS = Set([:sph])
 
 const NSTATES = 5
 const RTOL = 1.0e-9
@@ -40,15 +45,29 @@ struct LibraryTime <: PDEBase.AbstractEquationSystemDiscretization
 end
 PDEBase.get_time(d::LibraryTime) = d.t
 
-"The `VariableMap` and `parse_bcs` boundary map of a library system, as `symbolic_discretize` builds them."
+"""
+A library system preprocessed as `symbolic_discretize` does, with its `VariableMap` and
+`parse_bcs` boundary map. `make_pdesys_compatible` returns a copy, so the shared library
+system is never mutated by `cardinalize_eqs!`.
+"""
 function library_setup(sys)
+    sys, replaced = PDEBase.make_pdesys_compatible(sys)
+    PDEBase.cardinalize_eqs!(sys)
     it = findfirst(iv -> Symbol(iv) == :t, sys.ivs)
-    v = VariableMap(sys, LibraryTime(it === nothing ? nothing : sys.ivs[it]))
+    v = VariableMap(sys, LibraryTime(it === nothing ? nothing : sys.ivs[it]); replaced_vars = replaced)
     orders = Dict(x => d_orders(x, sys.bcs) for x in all_ivs(v))
-    return v, parse_bcs(sys.bcs, v, orders)
+    return sys, v, parse_bcs(sys.bcs, v, orders)
 end
 
-params(v) = Any[unwrap(p isa Pair ? p.first : p) for p in v.ps]
+# Parameter slots: a Pair stands for its key, an array parameter for its elements column-major.
+function params(v)
+    ps = Any[]
+    for p in v.ps
+        p = unwrap(p isa Pair ? p.first : p)
+        Symbolics.symtype(p) <: AbstractArray ? append!(ps, unwrap.(vec(collect(Symbolics.scalarize(p))))) : push!(ps, p)
+    end
+    return ps
+end
 fieldops(v) = Any[operation(unwrap(u)) for u in v.ū]
 hasderivative(ex) = (ex = unwrap(ex); iscall(ex) && (operation(ex) isa Differential || any(hasderivative, arguments(ex))))
 depends(ex, syms) = any(s -> any(isequal(unwrap(s)), Symbolics.get_variables(ex)), syms)
@@ -123,20 +142,6 @@ end
 
 evaluate(ex, vals) = Float64(Symbolics.value(substitute(Num(ex), vals; fold = Val(true))))
 
-# ∂ᵢ of a slot expression holding at most first derivatives: the total derivative through
-# the state slots, ∂/∂Xᵢ + Σ_f ∂/∂U_f ⋅ G_fi + Σ_fd ∂/∂G_fd ⋅ H_fdi.
-function total_derivative(ex, slots, i)
-    dim = length(slots.X)
-    D = Symbolics.derivative(ex, slots.X[i])
-    for f in eachindex(slots.U)
-        D += Symbolics.derivative(ex, slots.U[f]) * slots.G[(f - 1) * dim + i]
-        for d in 1:dim
-            D += Symbolics.derivative(ex, slots.G[(f - 1) * dim + d]) * slots.H[hessian_index(f, d, i, dim)]
-        end
-    end
-    return D
-end
-
 statevars(slots) = vcat(slots.U, slots.G, slots.Ud, slots.H)
 
 # Affine in the state slots iff f(a) + f(b) = f(a + b) + f(0) at random state values.
@@ -178,11 +183,11 @@ function analysed_bcs(a::StrongFormAnalysis)
 end
 
 # Run `analyse`, returning the analysis or the exception, and every warning it logged.
-function analyse_logged(sys, v, bmap)
+function analyse_logged(sys, v, bmap; ibp = Dict())
     logger = Test.TestLogger(; min_level = Warn, respect_maxlog = false)
     result = with_logger(logger) do
         try
-            analyse(sys, v, bmap)
+            analyse(sys, v, bmap; ibp)
         catch err
             err
         end
@@ -199,13 +204,22 @@ const SYSTEMS = PDESystemLibrary.all_systems
     @test issubset(PERIODIC ∪ NONLINEAR, getproperty.(SYSTEMS, :name))
     # L6: trans_sin is defined but never added to all_systems
     @test_broken any(s -> s.name === :trans_sin, SYSTEMS)
+    # Weighted(r²) makes sph's weighted conormal vanish on r = 0, so analyse rejects its
+    # Dr(u(t, 0)) ~ 0 as "not a conormal condition" (reported against PR 3; spec §5.1 remedy).
+    sph, v, bmap = library_setup(only(filter(s -> s.name === :sph, SYSTEMS)))
+    weighted = analyse_logged(sph, v, bmap; ibp = Dict(1 => Weighted(first(indvars(v))^2)))[1]
+    @test_broken weighted isa StrongFormAnalysis
 end
 
-# Checks on an accepted analysis `a` of library system `sys`.
-function check_accepted(sys, v, bmap, a, logs)
+# Checks on an accepted analysis `a` of the preprocessed library system `sys` named `name`.
+function check_accepted(name, sys, v, bmap, a, logs)
     slots = a.slots
-    @test isempty(logs)
-    @test isempty(a.periodic) == !(sys.name in PERIODIC)
+    if name in PRODUCT_RULE_WARNS
+        @test length(logs) == 1 && occursin("ProductRule", only(logs).message)
+    else
+        @test isempty(logs)
+    end
+    @test isempty(a.periodic) == !(name in PERIODIC)
     @test (a.nfields, a.dim) == (length(v.ū), length(indvars(v)))
     @test length(a.strong) == length(sys.eqs)
     @test !any(G -> depends(G, vcat(slots.H, slots.Ud)), reduce(vcat, a.flux))
@@ -213,7 +227,7 @@ function check_accepted(sys, v, bmap, a, logs)
     bases = [random_state(rng, slots, v) for _ in 1:NSTATES]
     for (k, eq) in enumerate(sys.eqs)
         reference = reference_slots(eq, v, slots)
-        divergence = sum(total_derivative(G, slots, i) for (i, G) in enumerate(a.flux[k]); init = Num(0))
+        divergence = sum(total_derivative(G, i, slots, a.dim) for (i, G) in enumerate(a.flux[k]); init = Num(0))
         reconstructed = a.mass[k] + divergence + a.remainder[k]
         for vals in bases
             e = evaluate(a.strong[k], vals)
@@ -222,15 +236,16 @@ function check_accepted(sys, v, bmap, a, logs)
         end
     end
     linear = isaffine(vcat(a.mass, reduce(vcat, a.flux), a.remainder), slots, rng, bases[1])
-    @test linear == !(sys.name in NONLINEAR)
+    @test linear == !(name in NONLINEAR)
     @test analysed_bcs(a) == syntactic_bcs(v, bmap)
     return nothing
 end
 
 outcomes = Dict{Symbol, String}()
+original_eqs = [copy(sys.eqs) for sys in SYSTEMS]
 @testset "golden outcome: $(sys.name)" for sys in SYSTEMS
-    v, bmap = library_setup(sys)
-    result, logs = analyse_logged(sys, v, bmap)
+    prepared, v, bmap = library_setup(sys)
+    result, logs = analyse_logged(prepared, v, bmap)
     accepted = result isa StrongFormAnalysis
     outcomes[sys.name] = accepted ? "accepted" : sprint(showerror, result)
     if haskey(REJECTED, sys.name)
@@ -238,9 +253,11 @@ outcomes = Dict{Symbol, String}()
         @test result isa ErrorException && occursin(REJECTED[sys.name], result.msg)
     else
         @test accepted
-        accepted && check_accepted(sys, v, bmap, result, logs)
+        accepted && check_accepted(sys.name, prepared, v, bmap, result, logs)
     end
 end
+
+@test all(isequal(sys.eqs, eqs) for (sys, eqs) in zip(SYSTEMS, original_eqs))
 
 naccepted = count(==("accepted"), values(outcomes))
 println("StrongForm golden outcomes: $naccepted accepted, $(length(outcomes) - naccepted) rejected")
