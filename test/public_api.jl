@@ -19,6 +19,19 @@ end
     end
 end
 
+@testset "Mesh-domain API" begin
+    for name in (:MeshDomain, :Region, :regions, :spatial_domain)
+        @test hasdocstring(PDEBase, name)
+        @test Base.isexported(PDEBase, name)
+    end
+    for name in (:meshdim, :facetset_names, :cellset_names, :contains_point, :backend_mesh)
+        @test hasdocstring(PDEBase, name)
+        if CAN_QUERY_PUBLIC
+            @test Base.ispublic(PDEBase, name)
+        end
+    end
+end
+
 @testset "Developer extension API" begin
     developer_api = (
         :interface_errors,

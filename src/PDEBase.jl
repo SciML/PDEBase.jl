@@ -100,6 +100,7 @@ abstract type AbstractDiscretizationState end
 include("fallbacks.jl")
 include("symbolic_utils.jl")
 include("utils.jl")
+include("mesh_domain.jl")
 include("variable_map.jl")
 include("interface_defaults.jl")
 include("discretization_state.jl")
@@ -127,9 +128,13 @@ export count_differentials, differential_order, has_derivatives, find_derivative
     get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
     recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface,
     haslowerupper, has_interfaces, isupper
-export VariableMap
+export VariableMap, spatial_domain
+export MeshDomain, Region, regions
 export ivs, all_ivs, depvar, depvars, indvars, replaced_vars, x2i
 export PeriodicMap
+
+# Mesh-domain interface, implemented by mesh backends.
+@public meshdim, facetset_names, cellset_names, contains_point, backend_mesh
 
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
