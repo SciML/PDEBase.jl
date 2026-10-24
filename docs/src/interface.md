@@ -16,19 +16,22 @@ API for discretizer authors, not an application-level solver API.
 
 The generic pipeline calls the hooks in this order:
 
-1. `VariableMap(pdesys, discretization)` normalizes symbolic variables and
+1. `lower_boundaries` rewrites the boundary conditions into the form the
+   discretizer consumes.
+2. `VariableMap(pdesys, discretization)` normalizes symbolic variables and
    domains.
-2. `interface_errors` rejects unsupported systems before work is allocated.
-3. `parse_bcs` creates the boundary map, then `check_boundarymap` validates it.
-4. `should_transform` optionally enables `transform_pde_system!`.
-5. `construct_disc_state`, `construct_discrete_space`, and
+3. `interface_errors` rejects unsupported systems before work is allocated.
+4. `parse_bcs` creates the boundary map, then `check_boundarymap` validates it.
+5. `should_transform` optionally enables `transform_pde_system!`.
+6. `construct_disc_state`, `construct_discrete_space`, and
    `construct_var_equation_mapping` create the discretizer state.
-6. `construct_differential_discretizer` precomputes derivative data.
-7. For each PDE, `get_eqvar` selects its discrete variable and
+7. `construct_differential_discretizer` precomputes derivative data.
+8. `split_ics_bcs` separates initial conditions from spatial boundary conditions.
+9. For each PDE, `get_eqvar` selects its discrete variable and
    `discretize_equation!` updates the state in place.
-8. `generate_ic_defaults` creates discrete initial values.
-9. `generate_metadata` stores data needed by the generated problem and solution.
-10. `generate_system` constructs the final symbolic system.
+10. `generate_ic_defaults` creates discrete initial values.
+11. `generate_metadata` stores data needed by the generated problem and solution.
+12. `generate_system` constructs the final symbolic system.
 
 The default methods are intentionally conservative no-ops. A production
 discretizer must override the hooks that construct its space, map, derivative
@@ -83,6 +86,10 @@ end
 
 `AbstractEquationSystemDiscretization` is for ODE/DAE-like symbolic systems;
 `AbstractOptimizationSystemDiscretization` is for optimization systems.
+Equation-system discretizers on interval or box domains subtype
+`AbstractBoxDiscretization`, and those on general meshes subtype
+`AbstractMeshDiscretization`; both are `AbstractEquationSystemDiscretization`s,
+so every hook default applies to them unchanged.
 `AbstractDiscreteSpace`, `AbstractVarEqMapping`,
 `AbstractDifferentialDiscretizer`, and `AbstractDiscretizationState` describe
 the values exchanged by the protocol and are intentionally free of concrete
@@ -97,6 +104,7 @@ input. `should_transform` must be a pure decision for the supplied system;
 system consumed by later hooks.
 
 ```@docs
+PDEBase.lower_boundaries
 PDEBase.interface_errors
 PDEBase.check_boundarymap
 PDEBase.should_transform
@@ -123,10 +131,13 @@ PDEBase.construct_differential_discretizer
 `discretize_equation!` is the only per-equation hook. It should append or mutate
 the state and leave system construction to `generate_system`. The finalization
 hooks should keep the metadata and initial-value representations consistent;
+`split_ics_bcs` decides which parsed boundaries become initial values and which
+are passed to `discretize_equation!` as `bcmap`;
 `generate_system` receives the `checks` keyword and should forward it to the
 symbolic system constructor.
 
 ```@docs
+PDEBase.split_ics_bcs
 PDEBase.discretize_equation!
 PDEBase.generate_ic_defaults
 PDEBase.generate_metadata
