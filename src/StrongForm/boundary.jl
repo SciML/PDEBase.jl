@@ -280,7 +280,7 @@ function periodic_condition(b::InterfaceBoundary, ctx::SlotContext)
     (f === nothing || !isequal(operation(unwrap(b.u)), operation(unwrap(b.u2)))) &&
         error("periodic condition $(b.eq) must equate the same field on two faces")
     isequal(b.x, b.x2) ||
-        error("periodic pairing needs a translation; general maps are unsupported: $(b.eq)")
+        error("boundary condition $(b.eq) relates values on two faces of different axes, $(b.x) and $(b.x2); only u(.., x_lo, ..) ~ u(.., x_hi, ..) periodic pairs are supported")
     residual = Num(unwrap(b.eq.lhs - b.eq.rhs))
     pair = Num(unwrap(b.u)) - Num(unwrap(b.u2))
     (_iszero(residual - pair) || _iszero(residual + pair)) ||
@@ -365,10 +365,12 @@ function _check_conflicts(essential, natural, periodic, labels, owner)
 end
 
 """
-    boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = nothing)
+    boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = nothing, bcs = nothing)
         -> (essential, natural, periodic)
 
-Classify every spatial boundary condition of a `parse_bcs` boundary map. A gradient-free
+Classify every spatial boundary condition of a `parse_bcs` boundary map. Each output vector
+lists its conditions in the order of `bcs`, the system's boundary conditions; without `bcs` the
+order is that of the boundary map. Which condition wins at a corner is the discretizer's choice. A gradient-free
 condition is essential for the field `parse_bcs` filed it under; any other is routed to the
 equation whose conormal flux it matches. `flux[e]` is equation `e`'s flux vector and `mass[e]`
 its time-derivative part, in slots.
@@ -381,21 +383,16 @@ Otherwise it is also an error to give a face both an essential condition on a fi
 natural condition for that field's equation, or to give either kind of condition on a face of a
 field's periodic pair.
 """
-function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = nothing)
-    essential = EssentialBC{BoxFace}[]
-    natural = NaturalBC{BoxFace}[]
-    periodic = PeriodicBC{BoxFace}[]
-    esslabels, natlabels, perlabels = String[], String[], String[]
+function boundary_conditions(
+        boundarymap, ctx::SlotContext, slots, flux; mass = nothing, bcs = nothing
+    )
+    rank(eq) = bcs === nothing ? 0 : something(findfirst(c -> isequal(c, eq), bcs), length(bcs) + 1)
+    found = Tuple{Int, Any, String}[]    # (rank, condition, label)
     for (op, bykey) in boundarymap, (x, bs) in bykey
         ctx.t !== nothing && isequal(x, ctx.t) && continue
         for b in bs
             if b isa InterfaceBoundary
-                isupper(b) && continue
-                p = periodic_condition(b, ctx)
-                any(q -> (q.master, q.mirror, q.field) == (p.master, p.mirror, p.field), periodic) &&
-                    continue
-                push!(periodic, p)
-                push!(perlabels, string(b.eq))
+                isupper(b) || push!(found, (rank(b.eq), periodic_condition(b, ctx), string(b.eq)))
                 continue
             end
             b isa Union{LowerBoundary, UpperBoundary} ||
@@ -405,26 +402,36 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = 
             B = restrict_to_face(Bvolume, face, ctx, slots)
             label = "$(b.eq) on $face"
             faceflux = [restrict_to_face.(G, (face,), (ctx,), (slots,)) for G in flux]
-            if _depends(Bvolume, slots.G) && _iszero(B)
+            condition = if _depends(Bvolume, slots.G) && _iszero(B)
                 e = _route_vanishing(Bvolume, flux, faceflux, face_normal(face, ctx.sivs), slots, label)
-                push!(natural, NaturalBC(face, e, Num(0)))
-                push!(natlabels, label)
+                NaturalBC(face, e, Num(0))
             elseif !_depends(B, vcat(slots.G, slots.U)) && !_iszero(B)
                 error("the condition $label reduces to a nonzero constant on the face and cannot be imposed")
             elseif _depends(B, slots.G)
                 e, Φ = _route_on_face(B, flux, faceflux, face, face_normal(face, ctx.sivs), slots, label)
-                push!(natural, NaturalBC(face, e, Φ))
-                push!(natlabels, label)
+                NaturalBC(face, e, Φ)
             else
                 f = findfirst(o -> isequal(o, op), ctx.ops)
                 f, g = essential_condition(B, slots; field = f, label)
-                push!(essential, EssentialBC(face, f, g))
-                push!(esslabels, label)
+                EssentialBC(face, f, g)
             end
+            push!(found, (rank(b.eq), condition, label))
         end
     end
+    sort!(found; by = first)
+    essential = EssentialBC{BoxFace}[c for (_, c, _) in found if c isa EssentialBC]
+    natural = NaturalBC{BoxFace}[c for (_, c, _) in found if c isa NaturalBC]
+    periodic = PeriodicBC{BoxFace}[]
+    labels = [[l for (_, c, l) in found if c isa T] for T in (EssentialBC, NaturalBC)]
+    perlabels = String[]
+    for (_, p, l) in found
+        p isa PeriodicBC || continue
+        any(q -> (q.master, q.mirror, q.field) == (p.master, p.mirror, p.field), periodic) && continue
+        push!(periodic, p)
+        push!(perlabels, l)
+    end
     owner = mass === nothing ? fill(nothing, length(flux)) : _own_fields(mass, slots)
-    _check_conflicts(essential, natural, periodic, vcat(esslabels, natlabels, perlabels), owner)
+    _check_conflicts(essential, natural, periodic, vcat(labels..., perlabels), owner)
     foreach(b -> check_evaluable(b.g), essential)
     foreach(b -> check_evaluable(b.Φ), natural)
     return essential, natural, periodic

@@ -13,7 +13,7 @@ import SciMLPublic: @public
 using Symbolics: Symbolics, Differential, Equation, Num, substitute, unwrap, wrap
 using SymbolicUtils: SymbolicUtils, arguments, iscall, operation, symtype, unwrap_const
 using TermInterface: maketerm, metadata
-using ModelingToolkitBase: get_dvs, get_eqs
+using ModelingToolkitBase: get_bcs, get_dvs, get_eqs
 using ..PDEBase: VariableMap, LowerBoundary, UpperBoundary, InterfaceBoundary, _flatten_eqs,
     chain_flatten_array_variables, depvars, indvars, isupper, replaced_vars
 

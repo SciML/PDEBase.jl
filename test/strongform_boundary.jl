@@ -226,7 +226,7 @@ end
 end
 
 @testset "periodic" begin
-    @parameters t x
+    @parameters t x y
     @variables u(..) w(..)
     Dt, Dx = Differential(t), Differential(x)
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 2.0)]
@@ -249,12 +249,43 @@ end
         p.mirror == BoxFace(Symbolics.unwrap(x), :hi)
     @test p.field == 1 && p.shift == 2.0
 
+    # boundary data converts between key types
+    lo, hi = BoxFace(Symbolics.unwrap(x), :lo), BoxFace(Symbolics.unwrap(x), :hi)
+    anykey = PeriodicBC{Any}[]
+    push!(anykey, p)
+    @test only(anykey) isa PeriodicBC{Any} && only(anykey).mirror == hi && only(anykey).shift == 2.0
+    ess = EssentialBC{Any}[]
+    push!(ess, EssentialBC(lo, 1, Num(0)))
+    nat = NaturalBC{Any}[]
+    push!(nat, NaturalBC(hi, 1, Num(1)))
+    @test only(ess).piece == lo && only(nat).piece == hi
+
     bcs = [u(0, x) ~ 0, w(0, x) ~ 0, u(t, 0) ~ w(t, 2)]
     sys, v, bmap = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(u(t, x))), Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], bcs, domains,
         [t, x], [u(t, x), w(t, x)], [], t
     )
     s = StateSlots(2, 1, 0)
+    # a cross-face condition between two axes is not a periodic pair
+    s2d = StateSlots(1, 2, 0)
+    function crossface(bc)
+        sys2d, v2d, bmap2d = boxsetup(
+            [Dt(u(t, x, y)) ~ Dx(Dx(u(t, x, y))) + Differential(y)(Differential(y)(u(t, x, y)))],
+            [u(0, x, y) ~ 0, bc],
+            [t ∈ Interval(0.0, 1.0), x ∈ Interval(-1.0, 1.0), y ∈ Interval(-1.0, 1.0)], [t, x, y],
+            [u(t, x, y)], [], t
+        )
+        try
+            boundary_conditions(bmap2d, SlotContext(sys2d, v2d), s2d, [[-s2d.G[1], -s2d.G[2]]])
+            return ""
+        catch err
+            return sprint(showerror, err)
+        end
+    end
+    for bc in (u(t, -1, y) ~ u(t, x, 1), Differential(y)(u(t, -1, y)) ~ u(t, x, 1))
+        msg = crossface(bc)
+        @test occursin("on two faces", msg) && !occursin("translation", msg)
+    end
     @test_throws "must equate the same field" boundary_conditions(
         bmap, SlotContext(sys, v), s, [[-s.G[1]], [-s.G[2]]]
     )

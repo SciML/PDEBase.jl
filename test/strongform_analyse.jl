@@ -407,6 +407,14 @@ param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotCo
         @test nat.eq == 1 && nat.piece == face(x, :lo) && same(nat.Φ, 0)
     end
 
+    # outputs follow the order of the system's bcs, not the boundary map's
+    bcs = [
+        u(0.1, x, y) ~ 0, u(t, x, 1.0) ~ 1, u(t, 0.1, y) ~ 2, u(t, x, 0.1) ~ 3, u(t, 1.0, y) ~ 4,
+    ]
+    an, v = analysed_with_bcs([Dt(U) ~ Dx(Dx(U)) + Dy(Dy(U))], [U], [t, x, y], bcs; t)
+    @test [b.piece for b in an.essential] == [face(y, :hi), face(x, :lo), face(y, :lo), face(x, :hi)]
+    @test all(same.([b.g for b in an.essential], 1:4))
+
     # equation errors come before boundary errors
     @test_throws "third-order" analysed_with_bcs(
         [Dt(U1) ~ Dx(Dx(Dx(U1)))], [U1], [t, x], [u(0.1, x) ~ 0, u(t, 0.1)^2 ~ 1]; t

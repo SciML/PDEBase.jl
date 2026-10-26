@@ -131,3 +131,10 @@ struct StrongFormAnalysis{K}
     natural::Vector{NaturalBC{K}}
     periodic::Vector{PeriodicBC{K}}
 end
+
+# Change the boundary-key type, e.g. so a `Vector{PeriodicBC{Any}}` accepts a
+# `PeriodicBC{BoxFace}`.
+Base.convert(::Type{EssentialBC{K}}, b::EssentialBC) where {K} = EssentialBC{K}(b.piece, b.field, b.g)
+Base.convert(::Type{NaturalBC{K}}, b::NaturalBC) where {K} = NaturalBC{K}(b.piece, b.eq, b.Φ)
+Base.convert(::Type{PeriodicBC{K}}, b::PeriodicBC) where {K} =
+    PeriodicBC{K, typeof(b.shift)}(b.master, b.mirror, b.field, b.shift)
