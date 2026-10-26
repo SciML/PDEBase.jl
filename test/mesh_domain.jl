@@ -93,6 +93,15 @@ end
     @test err isa ArgumentError
     @test all(name -> occursin(string(name), err.msg), (:nowhere, :inlet, :wall, :outlet))
 
+    # The spelling of the FiniteElementMethod user API.
+    Γ_in, Γ_wall, Γ_out = boundarypiece.(Ω, (:inlet, :wall, :outlet))
+    @test Γ_in.name === :inlet && Γ_wall.name === :wall && Γ_out.name === :outlet
+    @test all(p -> parent(p) === Ω, (Γ_in, Γ_wall, Γ_out))
+    @test isequal(boundarypiece.(Ω, [:inlet, :wall]), [Γ_in, Γ_wall])
+    # DomainSets' arithmetic on domains is built on broadcasting and must still work.
+    @test -Ω isa DomainSets.MappedDomain
+    @test 2 * Ω isa DomainSets.MappedDomain
+
     pieces = boundarypieces(Ω)
     @test [p.name for p in pieces] == [:inlet, :wall, :outlet]
     @test all(p -> parent(p) === Ω && p.geometry === nothing, pieces)
