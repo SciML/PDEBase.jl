@@ -183,6 +183,34 @@ end
             @test !isless(Γa, Γa) && !isless(Γa, boundarypiece(rect, :left))
             @test isless(Γa, Γb) != isless(Γb, Γa)
             @test isless(Γa, Γc) != isless(Γc, Γa)
+
+            # regression: equal parents that print differently once broke transitivity
+            pa = BoundaryPiece(DomainSets.Rectangle(0 .. 1, 0 .. 1), :wall)
+            pb = BoundaryPiece(DomainSets.Rectangle(0.0 .. 1.0, 0.0 .. 1.0), :wall)
+            pc = BoundaryPiece(DomainSets.Rectangle(0.0 .. 0.5, 0.0 .. 1.0), :wall)
+            @test isequal(pa, pb)
+            @test !isless(pa, pb) && !isless(pb, pa)
+            @test isless(pa, pc) == isless(pb, pc)
+            @test isless(pc, pa) == isless(pc, pb)
+
+            rects = (
+                DomainSets.Rectangle(0 .. 1, 0 .. 1), DomainSets.Rectangle(0.0 .. 1.0, 0.0 .. 1.0),
+                DomainSets.Rectangle(0.0 .. 0.5, 0.0 .. 1.0), DomainSets.Rectangle(0 .. 2, 2 .. 3),
+            )
+            ps = Any[BoundaryPiece(r, n) for r in rects for n in (:wall, :inlet)]
+            append!(ps, boundarypieces(rects[1]), boundarypieces(rects[2]), boundarypieces(rects[3]))
+            @test all(!isless(p, p) for p in ps)
+            @test all(!(isless(p, q) && isless(q, p)) for p in ps, q in ps)
+            @test all(!isequal(p, q) || (!isless(p, q) && !isless(q, p)) for p in ps, q in ps)
+            @test all(
+                !(isless(p, q) && isless(q, r)) || isless(p, r) for p in ps, q in ps, r in ps
+            )
+            # incomparability is transitive, as a strict weak order requires
+            incomparable(p, q) = !isless(p, q) && !isless(q, p)
+            @test all(
+                !(incomparable(p, q) && incomparable(q, r)) || incomparable(p, r)
+                    for p in ps, q in ps, r in ps
+            )
             sums = (
                 (u(t, Γa) + u(t, Γb), u(t, Γb) + u(t, Γa)),
                 (u(t, Γa) - u(t, Γb), -u(t, Γb) + u(t, Γa)),
