@@ -216,6 +216,13 @@ function location(classes)
     bound = filter(c -> !(c isa Free), classes)
     isempty(bound) && return Interior()
     length(bound) == 1 && return only(bound)
+    any(c -> c isa Piece, bound) && throw(
+        ArgumentError(
+            "a trace on $(only(c.piece for c in bound if c isa Piece)) also fixes a non-spatial " *
+                "argument: $(bound); write an initial condition over the whole domain, as " *
+                "`u(0, x, y)`, and keep the time argument free in a trace, as `u(t, Γ)`"
+        )
+    )
     throw(
         ArgumentError(
             "a call lies on more than one face of the domain, an edge or a corner: $(bound); " *
@@ -296,25 +303,31 @@ struct ConditionClass
 end
 
 # Locations of the dependent-variable calls in `ex`, checking that each normal derivative's
-# piece is the location of the trace it is applied to.
+# piece is the location of every trace it is applied to. A call of a variable with no
+# spatial arguments, such as an ODE variable `w(t)`, has no spatial location and
+# contributes none unless it fixes the time, as `w(0)`.
 function _call_locations!(locs, v, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return locs
     op = operation(ex)
     if haskey(v.args, op)
-        push!(locs, location(v, classify_call(v, ex)[2]))
+        loc = location(v, classify_call(v, ex)[2])
+        loc isa Interior && all(a -> isequal(a, v.time), v.args[op]) && return locs
+        push!(locs, loc)
         return locs
     elseif op isa NormalDerivative
-        trace = safe_unwrap(only(arguments(ex)))
         opface = location(v, [Piece(op.piece)])
-        argloc = iscall(trace) && haskey(v.args, operation(trace)) ?
-            location(v, classify_call(v, trace)[2]) : Interior()
-        isequal(opface, argloc) || throw(
+        arglocs = unique(_call_locations!(Any[], v, only(arguments(ex))))
+        isempty(arglocs) &&
+            throw(ArgumentError("$(ex) takes a normal derivative of an expression with no trace on $(op.piece)"))
+        all(loc -> isequal(loc, opface), arglocs) || throw(
             ArgumentError(
-                "$(ex) takes the normal derivative on $(op.piece) of $(trace), which is not on " *
-                    "$(op.piece); write the trace on the operator's piece"
+                "$(ex) takes the normal derivative on $(op.piece) of an expression located at " *
+                    "$(arglocs), which is not on $(op.piece); write the trace on the operator's piece"
             )
         )
+        append!(locs, arglocs)
+        return locs
     end
     for arg in arguments(ex)
         _call_locations!(locs, v, arg)
@@ -337,11 +350,15 @@ Classify the condition `eq` (an `Equation` or a `Pair`) by the set of
 | any on the upper time face | error, not an initial condition |
 | one spatial face or one piece | `:boundary` |
 | the two opposite faces of one spatial axis | `:periodic` |
+| two pieces that are not opposite faces of a box | error, not supported yet |
 | interior calls mixed with traces | error |
 | two faces in one call (an edge or a corner) | error |
 
 A trace written with a piece that is a face of the box classifies like its endpoint form.
-A `NormalDerivative(Γa)` applied to a trace on another piece `Γb` is an error.
+A call of a variable with no spatial arguments, such as `w(t)`, has no location, so
+`u(t, 0) ~ w(t)` is a boundary condition; `w(0)` is on the lower time face. A
+`NormalDerivative(Γa)` applied to an expression whose traces are not all on `Γa` is an
+error.
 """
 function classify_condition(v::VariableMap, eq)
     lhs, rhs = _get_lhs_rhs(eq)
@@ -361,6 +378,14 @@ function classify_condition(v::VariableMap, eq)
     elseif length(locs) == 2 && all(loc -> loc isa BoxFace && !_istimeface(v, loc, :lo), locs)
         lo, hi = sort(locs; by = loc -> loc.side === :hi)
         isequal(lo.iv, hi.iv) && lo.side !== hi.side && return ConditionClass(:periodic, [lo, hi])
+    elseif length(locs) == 2 && all(loc -> loc isa Piece, locs)
+        throw(
+            ArgumentError(
+                "condition $(eq) relates the pieces $(locs[1].piece) and $(locs[2].piece), which are not " *
+                    "opposite faces of a box; periodic conditions between such pieces need the map " *
+                    "between them, inferred as a translation (marked INFERRED in the spec), which is not supported yet"
+            )
+        )
     end
     throw(
         ArgumentError(

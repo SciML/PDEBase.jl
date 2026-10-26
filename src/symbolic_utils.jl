@@ -143,9 +143,14 @@ function _differential_order!(orders::Set{Int}, eq, x, v = nothing)
     if iscall(eq)
         op = operation(eq)
         if op isa Differential
-            push!(orders, count_differentials(eq, x))
+            push!(orders, count_differentials(eq, x) + _count_normal_derivatives(eq, x, v))
         elseif op isa NormalDerivative
-            _normal_derivative_order!(orders, op, x, v)
+            inner = Set{Int}()
+            for ch in arguments(eq)
+                _differential_order!(inner, ch, x, v)
+            end
+            own = _normal_derivative_order(op, x, v)
+            isempty(inner) ? push!(orders, own) : union!(orders, (own + o for o in inner))
         else
             for ch in arguments(eq)
                 _differential_order!(orders, ch, x, v)
@@ -157,14 +162,22 @@ end
 
 # A normal derivative is first order in the normal direction of its piece: under the piece
 # itself as the key, or, given a `VariableMap`, in the variable of the box face it is.
-function _normal_derivative_order!(orders, op, x, v)
-    if x isa BoundaryPiece
-        isequal(op.piece, x) && push!(orders, 1)
-    elseif v !== nothing
-        face = boxface(v, op.piece)
-        face !== nothing && isequal(face.iv, x) && push!(orders, 1)
+function _normal_derivative_order(op, x, v)
+    x isa BoundaryPiece && return Int(isequal(op.piece, x))
+    v === nothing && return 0
+    face = boxface(v, op.piece)
+    return Int(face !== nothing && isequal(face.iv, x))
+end
+
+# The normal derivatives in `term` counted like `count_differentials` counts `Differential`s.
+function _count_normal_derivatives(term, x, v)::Int
+    iscall(term) || return 0
+    op = operation(term)
+    n = op isa NormalDerivative ? _normal_derivative_order(op, x, v) : 0
+    for arg in arguments(term)
+        n += _count_normal_derivatives(arg, x, v)
     end
-    return nothing
+    return n
 end
 
 """
