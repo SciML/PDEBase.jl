@@ -376,6 +376,22 @@ end
     @test_throws "reduces to a nonzero constant on the face" classify(
         [u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 1]
     )
+    # codex: with constant diffusion the facet flux does not vanish, so x Dx(u) ~ 0 imposes nothing
+    v, bmap = boxsetup(
+        [Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], [u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 0], domains, [t, x],
+        [u(t, x)], [], t
+    )
+    @test_throws "reduces to 0 ~ 0 on the face and imposes nothing there" boundary_conditions(
+        bmap, SlotContext(v), s, [[-s.G[1]]]; mass = [s.Ud[1]]
+    )
+    # codex: Dt(u) ~ Dx(Dx(x u)) has facet flux U at x = 0, which no natural condition prescribes
+    v, bmap = boxsetup(
+        [Dt(u(t, x)) ~ Dx(Dx(x * u(t, x)))], [u(0, x) ~ 0, Dx(u(t, 0)) ~ 0], domains, [t, x],
+        [u(t, x)], [], t
+    )
+    @test_throws "conormal gradient coefficients of equation 1 vanish" boundary_conditions(
+        bmap, SlotContext(v), s, [[-s.X[1] * s.G[1] - s.U[1]]]; mass = [s.Ud[1]]
+    )
 end
 
 @testset "pairing (spec §5.4)" begin

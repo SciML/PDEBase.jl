@@ -195,15 +195,20 @@ function _is_normal_derivative(B, n, slots)
     return length(nonzero) == 1 && _numerically_proportional(only(nonzero), Num.(n))
 end
 
-# A condition written with a coefficient that vanishes on the face, such as r²∂ᵣu ~ 0 at r = 0:
-# it is homogeneous there, so it is the zero natural condition of the one equation whose volume
-# conormal it matches.
-function _route_vanishing(Bvolume, flux, n, slots, label)
+# A condition written with a coefficient that vanishes on the face, such as r²∂ᵣu ~ 0 at r = 0,
+# reads 0 ~ 0 there. It is the zero natural condition of the one equation whose volume conormal
+# it matches only if that equation's whole facet flux vanishes on the face too; otherwise it
+# would silently impose a zero flux the user never wrote.
+function _route_vanishing(Bvolume, flux, faceflux, n, slots, label)
     matches = filter(e -> match_flux(_conormal_flux(flux[e], n), Bvolume, slots) !== nothing, eachindex(flux))
-    length(matches) == 1 && return only(matches)
     isempty(matches) &&
         error("boundary condition $label is not a conormal condition for any equation's flux; write the normal derivative")
-    return error("boundary condition $label is a conormal condition for the fluxes of equations $(matches[1]) and $(matches[2]); the routing is ambiguous")
+    length(matches) == 1 ||
+        error("boundary condition $label is a conormal condition for the fluxes of equations $(matches[1]) and $(matches[2]); the routing is ambiguous")
+    e = only(matches)
+    _iszero(_conormal_flux(faceflux[e], n)) ||
+        error("the condition $label reduces to 0 ~ 0 on the face and imposes nothing there, while equation $e has a nonzero flux on that face; write the condition without the vanishing factor")
+    return e
 end
 
 _gradcoefs(ex, slots) = [Symbolics.derivative(ex, gi) for gi in slots.G]
@@ -284,9 +289,10 @@ function periodic_condition(b::InterfaceBoundary, ctx::SlotContext)
     return PeriodicBC(BoxFace(b.x, :lo), BoxFace(b.x, :hi), f, hi - lo)
 end
 
-# Routing on a face where some equation's conormal vanishes identically (e.g. the weighted
-# r²∂ᵣ flux at r = 0): a condition that matches only that equation's volume conormal imposes a
-# zero facet flux if it is homogeneous, and cannot be imposed otherwise.
+# Routing on a face where some equation's conormal gradient coefficients vanish (e.g. the
+# weighted r²∂ᵣ flux at r = 0). If its whole facet flux vanishes, a homogeneous condition that
+# matches its volume conormal is the zero natural condition, and other data cannot be imposed.
+# If a gradient-free facet flux remains, no natural condition can prescribe it.
 function _route_on_face(B, flux, faceflux, face, n, slots, label)
     vanishing = [all(_iszero, _gradcoefs(_conormal_flux(G, n), slots)) for G in faceflux]
     if any(vanishing) &&
@@ -296,6 +302,9 @@ function _route_on_face(B, flux, faceflux, face, n, slots, label)
         end
         if length(degenerate) == 1
             e = only(degenerate)
+            Φ₀ = _conormal_flux(faceflux[e], n)
+            _iszero(Φ₀) ||
+                error("the conormal gradient coefficients of equation $e vanish on $face; its facet flux there is $Φ₀ and cannot be prescribed by $label")
             _iszero(substitute(B, Dict(g => 0 for g in slots.G))) ||
                 error("the conormal flux of equation $e vanishes identically on $face; the condition $(label) cannot be imposed there")
             return e, Num(0)
@@ -395,14 +404,14 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = 
             Bvolume = _slot_unrestricted(b.eq, face, ctx, slots)
             B = restrict_to_face(Bvolume, face, ctx, slots)
             label = "$(b.eq) on $face"
+            faceflux = [restrict_to_face.(G, (face,), (ctx,), (slots,)) for G in flux]
             if _depends(Bvolume, slots.G) && _iszero(B)
-                e = _route_vanishing(Bvolume, flux, face_normal(face, ctx.sivs), slots, label)
+                e = _route_vanishing(Bvolume, flux, faceflux, face_normal(face, ctx.sivs), slots, label)
                 push!(natural, NaturalBC(face, e, Num(0)))
                 push!(natlabels, label)
             elseif !_depends(B, vcat(slots.G, slots.U)) && !_iszero(B)
                 error("the condition $label reduces to a nonzero constant on the face and cannot be imposed")
             elseif _depends(B, slots.G)
-                faceflux = [restrict_to_face.(G, (face,), (ctx,), (slots,)) for G in flux]
                 e, Φ = _route_on_face(B, flux, faceflux, face, face_normal(face, ctx.sivs), slots, label)
                 push!(natural, NaturalBC(face, e, Φ))
                 push!(natlabels, label)
