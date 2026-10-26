@@ -156,6 +156,42 @@ heat_system(bcs, domains; kwargs...) =
     end
 end
 
+@testset "box axes follow the domain declaration" begin
+    @variables q(..)
+    I = Interval(0.0, 1.0)
+    # `q(t, y)` comes first, so `indvars` starts with `y`; the box axes do not.
+    coupled = [Dt(q(t, y)) ~ Dy(Dy(q(t, y))), Dt(u(t, x, y)) ~ Dx(Dx(u(t, x, y))) + q(t, y)]
+    for (Ix, Iy) in ((I, I), (I, Interval(0.0, 2.0)))
+        Γ = boundarypiece(Rectangle(Ix, Iy), :left)
+        sys = PDESystem(
+            coupled, [u(0, x, y) ~ 0, q(0, y) ~ 0, u(t, Γ) ~ 1], [t ∈ I, x ∈ Ix, y ∈ Iy],
+            [t, x, y], [q(t, y), u(t, x, y)]; name = :coupled
+        )
+        @test isequal(lowered_bcs(sys)[3], u(t, 0.0, y) ~ 1)
+        Γ_top = boundarypiece(Rectangle(Ix, Iy), :top)
+        sys = PDESystem(
+            coupled, [u(0, x, y) ~ 0, q(0, y) ~ 0, u(t, Γ_top) ~ 1], [t ∈ I, x ∈ Ix, y ∈ Iy],
+            [t, x, y], [q(t, y), u(t, x, y)]; name = :coupled
+        )
+        @test isequal(lowered_bcs(sys)[3], u(t, x, Iy.right) ~ 1)
+    end
+    # A space-time pairing, with the variable declared in another order than the pairing.
+    @variables r(..)
+    Γ = boundarypiece(Rectangle(I, I), :left)
+    @named spacetime = PDESystem(
+        [Dt(r(t, y, x)) ~ Dx(Dx(r(t, y, x)))], [r(0, y, x) ~ 0, r(t, Γ) ~ 1],
+        [(t, x, y) ∈ DomainSets.ProductDomain(I, I, I)], [t, x, y], [r(t, y, x)]
+    )
+    @test isequal(lowered_bcs(spacetime)[2], r(t, y, 0.0) ~ 1)
+end
+
+@testset "Pair conditions" begin
+    lowered = lowered_bcs(heat_system([Dn_right(u(t, Γ_right)) => 0], box_domains))
+    @test lowered[2] isa Pair
+    @test isequal(lowered[2].first, Dx(u(t, 1, y)))
+    @test isequal(lowered[2].second, 0)
+end
+
 @testset "rejections" begin
     mesh_sys = PDESystem(
         [heat], [u(0, x, y) ~ 0], [(x, y) ∈ MeshDomain(LoweringMesh()), t ∈ Interval(0.0, 1.0)],
@@ -183,6 +219,32 @@ end
         "trace is missing the time argument",
         errmsg(() -> PDEBase.lower_boundaries(missing_time, BoxLoweringDisc(t)))
     )
+    msg = errmsg(() -> to_box_bcs(missing_time))
+    @test occursin("trace is missing the time argument", msg)
+    # A number in the place of time is classified, not mistaken for a missing argument.
+    msg = errmsg(() -> to_box_bcs(heat_system([u(0.5, Γ_left) ~ 0], box_domains)))
+    @test occursin("0.5 in the place of t", msg)
+    # A trace on a face whose coordinate the variable does not depend on.
+    @variables q(..)
+    @named partial = PDESystem(
+        [heat, Dt(q(t, y)) ~ Dy(Dy(q(t, y)))], [u(0, x, y) ~ 0, q(0, y) ~ 0, q(t, Γ_left) ~ 1],
+        box_domains, [t, x, y], [u(t, x, y), q(t, y)]
+    )
+    @test occursin("does not depend on x", errmsg(() -> to_box_bcs(partial)))
+    # Array and complex dependent variables.
+    line = Interval(0.0, 1.0)
+    Γ_lo = boundarypiece(line, :x1_lo)
+    @variables a(..)[1:2] ψ(..)::Complex
+    @named arr = PDESystem(
+        [Dt(a(t, x)[i]) ~ Dx(Dx(a(t, x)[i])) for i in 1:2], [a(0, x)[1] ~ 0, a(t, Γ_lo)[1] ~ 1],
+        [t ∈ line, x ∈ line], [t, x], [a(t, x)]
+    )
+    @test occursin("traces on array or complex dependent variables are not supported yet", errmsg(() -> to_box_bcs(arr)))
+    @named cplx = PDESystem(
+        [Dt(ψ(t, x)) ~ im * Dx(Dx(ψ(t, x)))], [ψ(0, x) ~ 0, ψ(t, Γ_lo) ~ 0],
+        [t ∈ line, x ∈ line], [t, x], [ψ(t, x)]
+    )
+    @test occursin("trace of a complex dependent variable", errmsg(() -> to_box_bcs(cplx)))
     # A periodic pair that is not the two faces of one axis.
     msg = errmsg(() -> to_box_bcs(heat_system([u(t, Γ_left) ~ u(t, Γ_bottom)], box_domains)))
     @test occursin("relates the locations", msg)

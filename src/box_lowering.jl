@@ -25,34 +25,66 @@ function _check_box_domains(pdesys)
     return nothing
 end
 
-_has_trace(bc::Equation) = _find_trace(bc.lhs) !== nothing || _find_trace(bc.rhs) !== nothing
+_has_trace(bc::Union{Equation, Pair}) = any(side -> _find_trace(side) !== nothing, _get_lhs_rhs(bc))
 _has_trace(bcs::AbstractVector) = any(_has_trace, bcs)
 _has_trace(_) = false
 
-# Independent variables kept as plain arguments of trace calls; by the trace rule they are
-# the non-spatial ones, that is time.
-function _trace_ivs!(ivs, ex)
+# Every call with a `BoundaryPiece` argument in the conditions `bc`.
+function _trace_calls!(calls, ex)
     ex = safe_unwrap(ex)
-    iscall(ex) || return ivs
-    args = arguments(ex)
-    if any(_ispiece, args)
-        for a in args
-            a = unwrap_const(safe_unwrap(a))
-            SymbolicUtils.issym(a) && push!(ivs, a)
-        end
-    end
-    foreach(a -> _trace_ivs!(ivs, a), args)
-    return ivs
+    iscall(ex) || return calls
+    any(_ispiece, arguments(ex)) && push!(calls, ex)
+    foreach(a -> _trace_calls!(calls, a), arguments(ex))
+    return calls
 end
-_trace_ivs!(ivs, bc::Equation) = _trace_ivs!(_trace_ivs!(ivs, bc.lhs), bc.rhs)
-_trace_ivs!(ivs, bcs::AbstractVector) = (foreach(bc -> _trace_ivs!(ivs, bc), bcs); ivs)
+_trace_calls!(calls, bc::Union{Equation, Pair}) = foldl(_trace_calls!, _get_lhs_rhs(bc); init = calls)
+_trace_calls!(calls, bcs::AbstractVector) = foldl(_trace_calls!, bcs; init = calls)
 
-function _trace_time(bcs)
-    ivs = unique(_trace_ivs!(Any[], bcs))
-    length(ivs) <= 1 && return isempty(ivs) ? nothing : only(ivs)
+function _check_trace_types(calls)
+    for call in calls
+        T = SymbolicUtils.symtype(call)
+        T <: Complex || T <: AbstractArray || continue
+        throw(
+            ArgumentError(
+                "$(call) is a trace of a $(T <: Complex ? "complex" : "array") dependent variable; traces " *
+                    "on array or complex dependent variables are not supported yet, write the endpoint form"
+            )
+        )
+    end
+    return nothing
+end
+
+# The time variable, from the declared argument lists of the traced variables: a trace keeps
+# every argument but the spatial ones in its declared position, so the declared arguments
+# before and after the piece are the non-spatial ones.
+function _trace_time(pdesys, calls)
+    declared = Dict(operation(u) => arguments(u) for u in map(safe_unwrap, get_dvs(pdesys)) if iscall(u))
+    times = Any[]
+    for call in calls
+        args = get(declared, operation(call), nothing)
+        args === nothing && continue
+        trace = arguments(call)
+        p = findfirst(_ispiece, trace)
+        piece = unwrap_const(safe_unwrap(trace[p]))
+        # The piece stands for this many declared arguments; more than the box has axes means
+        # a non-spatial argument is missing.
+        nspatial = length(args) - length(trace) + 1
+        nspatial >= 1 || continue
+        if nspatial > DomainSets.dimension(parent(piece))
+            throw(
+                ArgumentError(
+                    "$(call): trace is missing the time argument; a trace of $(operation(call))$(Tuple(args)) " *
+                        "keeps its non-spatial arguments in their declared positions"
+                )
+            )
+        end
+        append!(times, [args[1:(p - 1)]; args[(p + nspatial):end]])
+    end
+    times = unique(times)
+    length(times) <= 1 && return isempty(times) ? nothing : only(times)
     throw(
         ArgumentError(
-            "the traces keep more than one independent variable, $(ivs), so the time variable " *
+            "the traces keep more than one non-spatial argument, $(times), so the time variable " *
                 "cannot be inferred; pass it as to_box_bcs(pdesys; time = t)"
         )
     )
@@ -73,6 +105,12 @@ end
 # coordinate of `face` fixed at its endpoint.
 function _endpoint_call(v, call, face)
     u_op = operation(call)
+    any(a -> isequal(a, face.iv), v.args[u_op]) || throw(
+        ArgumentError(
+            "$(call) is a trace on the face where $(face.iv) is fixed, but $(_declared_call(v, u_op)) " *
+                "does not depend on $(face.iv); write the condition on a face of its own coordinates"
+        )
+    )
     value = v.intervals[face.iv][face.side === :lo ? 1 : 2]
     kept = Iterators.Stateful(filter(a -> !_ispiece(a), arguments(call)))
     args = map(v.args[u_op]) do a
@@ -99,11 +137,13 @@ function _box_rules!(rules, v, ex)
     return rules
 end
 
-function _lower_bc(v, bc::Equation)
+function _lower_bc(v, bc::Union{Equation, Pair})
     _has_trace(bc) || return bc
     classify_condition(v, bc)
-    rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, bc.lhs), v, bc.rhs)
-    return assert_no_traces(substitute_traces(bc, rules))
+    lhs, rhs = _get_lhs_rhs(bc)
+    rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
+    lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
+    return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end
 _lower_bc(v, bcs::AbstractVector) = map(bc -> _lower_bc(v, bc), bcs)
 _lower_bc(v, bc) = bc
@@ -132,22 +172,28 @@ object. Every other field of the system is kept. Each lowered condition is check
 [`classify_condition`](@ref) and [`assert_no_traces`](@ref) and is never
 derivative-expanded.
 
-`time` is the time variable; by default it is the independent variable the traces keep as
-an argument, as `t` in `u(t, Γ)`, or `nothing` when they keep none. Pass it when the
-traces do not show it. `lower_boundaries` calls `to_box_bcs` with the discretization's time
-for every `AbstractBoxDiscretization`.
+`time` is the time variable. By default it is read from the declared argument lists of the
+traced variables: a trace keeps the non-spatial arguments in their declared positions, so on
+`u(t, x, y)` the trace `u(t, Γ)` makes `t` the time, and a steady `u(x, y)` with trace
+`u(Γ)` has none. `lower_boundaries` calls `to_box_bcs` with the discretization's time for
+every `AbstractBoxDiscretization`. Conditions may be `Equation`s or `Pair`s.
 
 Throws an `ArgumentError` when a domain of `pdesys` is a `MeshDomain` or another domain
 that is not an interval or interval product, such as a ball ("MethodOfLines needs an
 interval or box domain; this system uses a MeshDomain, use FEMDiscretization"), and with
 the classifier's message for a trace missing its time argument, a periodic pair that is
 not the two opposite faces of one axis, or a normal derivative applied to a trace on
-another piece.
+another piece. Traces of array or complex dependent variables are not supported yet and are
+an `ArgumentError` asking for the endpoint form, as is a trace on a face whose coordinate
+the variable does not depend on.
 """
-function to_box_bcs(pdesys::PDESystem; time = _trace_time(get_bcs(pdesys)))
+function to_box_bcs(pdesys::PDESystem; time = nothing)
     _check_box_domains(pdesys)
     bcs = get_bcs(pdesys)
     any(_has_trace, bcs) || return pdesys
+    calls = _trace_calls!(Any[], bcs)
+    _check_trace_types(calls)
+    time = something(time, Some(_trace_time(pdesys, calls)))
     v = VariableMap(pdesys, _BoxTime(time))
     return PDESystem(
         get_eqs(pdesys), map(bc -> _lower_bc(v, bc), bcs), get_domain(pdesys), get_ivs(pdesys),
