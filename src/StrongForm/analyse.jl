@@ -47,10 +47,9 @@ Under [`Weighted`](@ref)`(w)` the whole analysis is of the weighted equation `wâ
 Equations are not paired with fields here ([`pair_equations`](@ref) is the discretizer's
 helper). Spatial boundary conditions in `boundarymap` are classified by
 [`boundary_conditions`](@ref) into essential, natural (matched against the slot-form fluxes)
-and periodic conditions keyed by `PDEBase.BoxFace` on a box face and by `BoundaryPiece` on any
-other piece; initial conditions are skipped. In place of the `parse_bcs` map, `boundarymap` may
-be a list of condition equations, such as `get_bcs(pdesys)`, which are located with the
-classifier; this is the form for traces on the pieces of a mesh boundary.
+and periodic conditions, keyed by `PDEBase.BoxFace` for a box discretization's map and by
+`BoundaryPiece` for the `PieceBoundary` entries of a mesh discretization's map; initial
+conditions are skipped.
 """
 function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
     fields = declared_fields(pdesys, v)

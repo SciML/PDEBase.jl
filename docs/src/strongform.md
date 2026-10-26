@@ -31,9 +31,15 @@ PDEBase.StrongForm.check_evaluable
 
 ## Boundary conditions
 
-`analyse` classifies each spatial boundary condition of a box face as essential (`u_f = g`),
-natural (the facet flux `Φ` of the one equation whose conormal flux the condition is proven
-proportional to) or periodic. Traces are put into slots without ever being derivative-expanded.
+`analyse` classifies each spatial boundary condition of the `parse_bcs` boundary map as
+essential (`u_f = g`), natural (the facet flux `Φ` of the one equation whose conormal flux the
+condition is proven proportional to) or periodic. A box discretization's conditions are keyed by
+their `PDEBase.BoxFace`, and the `PieceBoundary` entries of a mesh discretization's map by their
+`BoundaryPiece`. Traces are located with the classifier and put into slots with
+`PDEBase.substitute_traces`, never derivative-expanded first: `NormalDerivative(Γ)(u_f(t, Γ))`
+becomes `N·G_f`, with the numeric normal `±e_iv` on a face of the box and the symbolic normal
+slots `N` on any other piece, whose normal the backend supplies per quadrature point. A
+Cartesian derivative such as `Dx(u(t, Γ))` is accepted only on a face of the box.
 `pair_equations` is the helper a discretizer uses to give each equation its test field.
 
 ```@docs
