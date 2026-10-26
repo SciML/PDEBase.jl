@@ -50,8 +50,8 @@ helper). Spatial boundary conditions in `boundarymap` are classified by
 and periodic conditions keyed by [`BoxFace`](@ref); initial conditions are skipped.
 """
 function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
-    ctx = SlotContext(v)
-    fields = depvars(v)
+    fields = declared_fields(pdesys, v)
+    ctx = SlotContext(pdesys, v; fields)
     nfields, dim = length(fields), length(ctx.sivs)
     slots = StateSlots(nfields, dim, length(ctx.params))
     allivs = ctx.t === nothing ? ctx.sivs : vcat(ctx.sivs, ctx.t)
