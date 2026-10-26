@@ -84,6 +84,7 @@ MeshDomain(mesh) = MeshDomain{typeof(mesh), eltype(DomainSets.UnitCube(Val(meshd
 
 DomainSets.dimension(d::MeshDomain) = meshdim(d.mesh)
 
+
 # Compact, without the mesh's fields: a backend mesh can be large, and pieces of meshes
 # are printed while sorting.
 function Base.show(io::IO, d::MeshDomain)
@@ -135,6 +136,13 @@ function PDEBase.boundarypiece(d::MeshDomain, name::Symbol)
         )
     )
     return BoundaryPiece(d, name, nothing)
+end
+
+# DomainSets broadcasts a domain as a set, and its own arithmetic (`-d`, `a * d`) is built on
+# that, so a MeshDomain must keep its broadcast style. Only `boundarypiece.(Ω, names)`
+# treats the domain as a scalar.
+function Base.broadcasted(::typeof(PDEBase.boundarypiece), d::MeshDomain, names)
+    return Base.broadcasted(PDEBase.boundarypiece, Ref(d), names)
 end
 
 function DomainSets.boundary(d::MeshDomain)
