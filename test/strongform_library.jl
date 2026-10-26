@@ -204,18 +204,23 @@ const SYSTEMS = PDESystemLibrary.all_systems
     @test issubset(PERIODIC ∪ NONLINEAR, getproperty.(SYSTEMS, :name))
     # L6: trans_sin is defined but never added to all_systems
     @test_broken any(s -> s.name === :trans_sin, SYSTEMS)
-    # Weighted(r²) makes sph's weighted conormal vanish on r = 0, so analyse rejects its
-    # Dr(u(t, 0)) ~ 0 as "not a conormal condition" (reported against PR 3; spec §5.1 remedy).
+    # The Weighted(r²) remedy: the weighted conormal vanishes on r = 0, so Dr(u(t, 0)) ~ 0 is a
+    # zero facet flux, and the Dirichlet condition at r = 1 stays essential.
     sph, v, bmap = library_setup(only(filter(s -> s.name === :sph, SYSTEMS)))
-    weighted = analyse_logged(sph, v, bmap; ibp = Dict(1 => Weighted(first(indvars(v))^2)))[1]
-    @test_broken weighted isa StrongFormAnalysis
+    weighted, logs = analyse_logged(sph, v, bmap; ibp = Dict(1 => Weighted(first(indvars(v))^2)))
+    @test weighted isa StrongFormAnalysis && isempty(logs)
+    if weighted isa StrongFormAnalysis
+        @test analysed_bcs(weighted) == syntactic_bcs(v, bmap)
+        @test isequal(Symbolics.simplify(only(weighted.natural).Φ), 0)
+        @test only(weighted.natural).piece.side === :lo && only(weighted.essential).piece.side === :hi
+    end
 end
 
 # Checks on an accepted analysis `a` of the preprocessed library system `sys` named `name`.
 function check_accepted(name, sys, v, bmap, a, logs)
     slots = a.slots
     if name in PRODUCT_RULE_WARNS
-        @test length(logs) == 1 && occursin("ProductRule", only(logs).message)
+        @test length(logs) == 1 && occursin("product-rule correction terms", only(logs).message)
     else
         @test isempty(logs)
     end
