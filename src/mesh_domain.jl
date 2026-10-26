@@ -171,18 +171,21 @@ struct Robin <: BCKind end
     bckind(eq::Equation)
 
 Classify the boundary condition `eq` by its syntax. A trace is a call with a
-[`BoundaryPiece`](@ref) argument, such as `u(t, Γ)`. A condition whose traces all sit
-inside a `Differential` or [`NormalDerivative`](@ref) is [`PDEBase.Natural`](@ref), one
-with no trace inside a derivative is [`PDEBase.Essential`](@ref), and one with both is
-[`PDEBase.Robin`](@ref).
+[`BoundaryPiece`](@ref) argument, such as `u(t, Γ)`. Only spatial derivatives of a trace
+count: a [`NormalDerivative`](@ref), or a `Differential` in a variable that the trace does
+not keep, such as `Dx(u(t, Γ))`. A `Differential` in a kept argument, such as
+`Dt(u(t, Γ))`, differentiates along the piece and leaves the trace a value. A condition
+whose traces all sit inside a spatial derivative is [`PDEBase.Natural`](@ref), one with
+none inside a spatial derivative is [`PDEBase.Essential`](@ref) (so `Dt(u(t, Γ)) ~ g` is a
+dynamic Dirichlet condition), and one with both is [`PDEBase.Robin`](@ref).
 
 The classification is advisory: it does not check coefficients or which pieces the
 operators act on. Throws an `ArgumentError` when `eq` contains no trace.
 """
 function bckind(eq::Equation)
     under_derivative = Bool[]
-    _collect_traces!(under_derivative, eq.lhs, false)
-    _collect_traces!(under_derivative, eq.rhs, false)
+    _collect_traces!(under_derivative, eq.lhs, ())
+    _collect_traces!(under_derivative, eq.rhs, ())
     isempty(under_derivative) &&
         throw(ArgumentError("$(eq) contains no trace u(..., Γ) on a boundary piece"))
     all(under_derivative) && return Natural()
@@ -190,14 +193,21 @@ function bckind(eq::Equation)
     return Essential()
 end
 
-function _collect_traces!(under_derivative, ex, in_derivative)
+# `derivatives` holds the derivative operators enclosing `ex`.
+function _collect_traces!(under_derivative, ex, derivatives)
     ex = unwrap_const(safe_unwrap(ex))
     iscall(ex) || return under_derivative
     args = arguments(ex)
-    any(a -> unwrap_const(a) isa BoundaryPiece, args) &&
-        return push!(under_derivative, in_derivative)
+    if any(a -> unwrap_const(a) isa BoundaryPiece, args)
+        return push!(under_derivative, any(op -> _is_spatial_derivative(op, args), derivatives))
+    end
     op = operation(ex)
-    in_derivative |= op isa Differential || op isa NormalDerivative
-    foreach(a -> _collect_traces!(under_derivative, a, in_derivative), args)
+    inner = op isa Union{Differential, NormalDerivative} ? (derivatives..., op) : derivatives
+    foreach(a -> _collect_traces!(under_derivative, a, inner), args)
     return under_derivative
+end
+
+function _is_spatial_derivative(op, trace_args)
+    op isa NormalDerivative && return true
+    return !any(a -> isequal(unwrap_const(a), safe_unwrap(op.x)), trace_args)
 end
