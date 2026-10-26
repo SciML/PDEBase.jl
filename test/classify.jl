@@ -89,6 +89,19 @@ loc(call) = location(v, classify_call(v, call)[2])
         @test face(pmap(Interval(1.0e6, 1.0e6 + 1)), 1.0e6 + 1.0e-9) == BoxFace(X, :lo)
         @test occursin("not on the boundary", errmsg(() -> face(pmap(Interval(1.0e6, 1.0e6 + 1)), 1.0e6 + 1.0e-6)))
 
+        # Overlapping tolerances: the exact endpoint, then the nearer one, wins.
+        narrow = pmap(Interval(1.0e16, 1.0e16 + 2))
+        @test face(narrow, 1.0e16) == BoxFace(X, :lo)
+        @test face(narrow, 1.0e16 + 2) == BoxFace(X, :hi)
+        @test classify_call(narrow, p(t, 1.0e16 + 2))[2] == [Free(unwrap(t)), BoxFace(X, :hi)]
+        @test face(narrow, 1.0e16 + 4) == BoxFace(X, :hi)
+        @test classify_condition(narrow, p(t, 1.0e16) ~ p(t, 1.0e16 + 2)).kind === :periodic
+        wide = pmap(Interval(1.0e16, 1.0e16 + 8))
+        @test face(wide, 1.0e16 + 6) == BoxFace(X, :hi)
+        @test face(wide, 1.0e16 + 2) == BoxFace(X, :lo)
+        @test occursin("equally close to both endpoints", errmsg(() -> face(wide, 1.0e16 + 4)))
+        @test face(pmap(Interval(2.0, 2.0)), 2.0) == BoxFace(X, :lo)
+
         # Infinite endpoints match only exactly, and finite quantities set the tolerance.
         right = pmap(Interval(0.0, Inf))
         @test face(right, Inf) == BoxFace(X, :hi)

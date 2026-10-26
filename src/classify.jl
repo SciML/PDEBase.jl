@@ -94,8 +94,10 @@ the `position`-th argument of its declared argument list `v.args[u_op]`.
     `8eps·max(width, |endpoint|)` of an endpoint, where `eps` is that of the coarser of the
     interval's and the number's float types, so `u(t, π)` and `u(t, Float32(π))` on
     `Interval(0.0, π)` and `u(t, 0.1 + 0.2)` on `Interval(0.0, 0.3)` are on the upper face.
-    An infinite endpoint matches only an infinite number of the same sign. Any other number
-    is an error naming the nearest endpoint and the distance to it.
+    An infinite endpoint matches only an infinite number of the same sign. An exact endpoint
+    always wins; when a number is within the tolerance of both endpoints of a narrow
+    interval, the nearer endpoint wins, and a number equally close to both is an error. Any
+    other number is an error naming the nearest endpoint and the distance to it.
   - The declared variable `iv` itself is [`Free`](@ref PDEBase.Free).
   - Anything else is an error that shows the declared argument list.
 """
@@ -122,8 +124,23 @@ function classify_argument(v::VariableMap, u_op, position::Int, arg)
         T, lo, hi = _float_interval(v, iv)
         val = convert(T, arg)
         ϵ = arg isa AbstractFloat ? max(eps(T), T(eps(typeof(arg)))) : eps(T)
-        _on_endpoint(val, lo, hi - lo, ϵ) && return BoxFace(iv, :lo)
-        _on_endpoint(val, hi, hi - lo, ϵ) && return BoxFace(iv, :hi)
+        val == lo && return BoxFace(iv, :lo)
+        val == hi && return BoxFace(iv, :hi)
+        onlo, onhi = _on_endpoint(val, lo, hi - lo, ϵ), _on_endpoint(val, hi, hi - lo, ϵ)
+        if onlo && onhi
+            # The tolerances overlap, as on Interval(1e16, 1e16 + 2): the nearer endpoint wins.
+            abs(val - lo) < abs(val - hi) && return BoxFace(iv, :lo)
+            abs(val - hi) < abs(val - lo) && return BoxFace(iv, :hi)
+            throw(
+                ArgumentError(
+                    "$(arg) in the place of $(iv) in $(_declared_call(v, u_op)) is equally close to both " *
+                        "endpoints of $(iv) ∈ [$(lo), $(hi)], which is too narrow to tell its endpoints " *
+                        "apart at the precision of $(arg); write an endpoint exactly"
+                )
+            )
+        end
+        onlo && return BoxFace(iv, :lo)
+        onhi && return BoxFace(iv, :hi)
         near, side = abs(val - lo) <= abs(val - hi) ? (lo, "lower") : (hi, "upper")
         throw(
             ArgumentError(
