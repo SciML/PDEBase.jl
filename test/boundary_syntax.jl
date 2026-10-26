@@ -177,6 +177,28 @@ end
         Dxx = Differential(x)^2
         eqs = [Dt(u(t, x, y)) ~ Dxx(u(t, x, y))]
         bcs = [u(t, Γ) ~ 0, Dn(u(t, boundarypiece(rect, :right))) ~ 1]
+        @testset "sums of traces" begin
+            Γa, Γb = boundarypiece(rect, :left), boundarypiece(rect, :right)
+            Γc = boundarypiece(DomainSets.Rectangle(0.0 .. 2.0, 2.0 .. 3.0), :left)
+            @test !isless(Γa, Γa) && !isless(Γa, boundarypiece(rect, :left))
+            @test isless(Γa, Γb) != isless(Γb, Γa)
+            @test isless(Γa, Γc) != isless(Γc, Γa)
+            sums = (
+                (u(t, Γa) + u(t, Γb), u(t, Γb) + u(t, Γa)),
+                (u(t, Γa) - u(t, Γb), -u(t, Γb) + u(t, Γa)),
+                (u(t, Γa) + u(t, Γc), u(t, Γc) + u(t, Γa)),
+                (u(t, Γa) + u(t, 0.5) + u(t, Γb), u(t, Γb) + u(t, 0.5) + u(t, Γa)),
+            )
+            for (s1, s2) in sums
+                @test isequal(s1, s2)
+                @test hash(s1) == hash(s2)
+                @test repr(s1) == repr(s2)
+            end
+            dn = NormalDerivative(Γa)(u(t, Γa) + 2u(t, Γb))
+            @test operation(unwrap(dn)) isa NormalDerivative
+            @test isequal(dn, NormalDerivative(Γa)(2u(t, Γb) + u(t, Γa)))
+        end
+
         domains = [(x, y) ∈ rect, t ∈ DomainSets.Interval(0.0, 1.0)]
         @named pdesys = PDESystem(eqs, bcs, domains, [t, x, y], [u(t, x, y)])
         u_op = [operation(unwrap(u(t, x, y)))]
