@@ -54,6 +54,16 @@ PDEBase.backend_mesh(m::WrappedMesh) = m.native
     @test occursin("WrappedMesh", err.msg)
     @test occursin("contains_point", err.msg)
 
+    @testset "printing" begin
+        big = MeshDomain(WrappedMesh(NativeMesh(collect(0.0:0.125:1.0))))
+        for printed in (repr(big), repr(MIME"text/plain"(), big))
+            @test printed == "MeshDomain{WrappedMesh}(1D)"
+        end
+        @test repr(Region(Ω, :left_half)) == "Region(MeshDomain{ToySquareMesh}(2D), :left_half)"
+        @test repr(MIME"text/plain"(), Region(Ω, :left_half)) ==
+            "Region(MeshDomain{ToySquareMesh}(2D), :left_half)"
+    end
+
     @testset "Region" begin
         r = Region(Ω, :left_half)
         @test r isa DomainSets.Domain{DomainSets.SVector{2, Float64}}

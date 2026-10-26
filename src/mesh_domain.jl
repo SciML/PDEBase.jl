@@ -83,6 +83,12 @@ end
 MeshDomain(mesh) = MeshDomain{typeof(mesh), eltype(DomainSets.UnitCube(Val(meshdim(mesh))))}(mesh)
 
 DomainSets.dimension(d::MeshDomain) = meshdim(d.mesh)
+
+# Compact, without the mesh's fields: a backend mesh can be large, and pieces of meshes
+# are printed while sorting.
+function Base.show(io::IO, d::MeshDomain)
+    return print(io, "MeshDomain{", nameof(typeof(d.mesh)), "}(", meshdim(d.mesh), "D)")
+end
 DomainSets.indomain(x, d::MeshDomain) = contains_point(d.mesh, x)
 
 """
@@ -104,6 +110,8 @@ function Region(d::MeshDomain{M, T}, name::Symbol) where {M, T}
         throw(ArgumentError("mesh of type $(typeof(d.mesh)) has no cell set $name; its cell sets are $(collect(names))"))
     return Region{T, typeof(d)}(d, name)
 end
+
+Base.show(io::IO, r::Region) = print(io, "Region(", r.parent, ", ", repr(r.name), ")")
 
 """
     regions(d::MeshDomain)
