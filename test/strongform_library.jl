@@ -4,7 +4,7 @@
 using PDEBase, Symbolics, Test
 using PDEBase: VariableMap, all_ivs, d_orders, parse_bcs, indvars, LowerBoundary,
     UpperBoundary, InterfaceBoundary, isupper
-using PDEBase.StrongForm: StrongFormAnalysis, Weighted, analyse
+using PDEBase.StrongForm: StrongFormAnalysis, Weighted, analyse, declared_fields
 using Base.CoreLogging: Warn, with_logger
 using Symbolics: Differential, unwrap
 using SymbolicUtils: iscall, operation, arguments
@@ -69,20 +69,21 @@ function params(v)
     end
     return ps
 end
-fieldops(v) = Any[operation(unwrap(u)) for u in v.ū]
+# Field f is the f-th dependent variable in the order the system declares them.
+fieldops(sys, v) = Any[operation(unwrap(u)) for u in declared_fields(sys, v)]
 hasderivative(ex) = (ex = unwrap(ex); iscall(ex) && (operation(ex) isa Differential || any(hasderivative, arguments(ex))))
 depends(ex, syms) = any(s -> any(isequal(unwrap(s)), Symbolics.get_variables(ex)), syms)
 
 hessian_index(f, d, e, dim) = ((f - 1) * dim + d - 1) * dim + e
 
 # Slot of the state atom `ex`: a field call under at most two Differentials.
-function atom_slot(ex, v, slots)
+function atom_slot(ex, ops, v, slots)
     ds = Any[]
     while iscall(ex) && operation(ex) isa Differential
         append!(ds, fill(operation(ex).x, operation(ex).order))
         ex = unwrap(only(arguments(ex)))
     end
-    f = findfirst(op -> isequal(op, operation(ex)), fieldops(v))
+    f = findfirst(op -> isequal(op, operation(ex)), ops)
     sivs, dim = indvars(v), length(indvars(v))
     isempty(ds) && return slots.U[f]
     length(ds) == 1 && isequal(ds[1], v.time) && return slots.Ud[f]
@@ -109,9 +110,10 @@ end
 The residual `lhs - rhs` of equation `eq` in slot form, built independently of `analyse`:
 derivatives expanded, then every state atom, coordinate, time and parameter replaced by its slot.
 """
-function reference_slots(eq, v, slots)
+function reference_slots(eq, sys, v, slots)
     e = Symbolics.expand_derivatives(eq.lhs - eq.rhs)
-    rules = Dict{Any, Any}(a => atom_slot(a, v, slots) for a in collect_atoms!(Set{Any}(), e, fieldops(v)))
+    ops = fieldops(sys, v)
+    rules = Dict{Any, Any}(a => atom_slot(a, ops, v, slots) for a in collect_atoms!(Set{Any}(), e, ops))
     for (d, x) in enumerate(indvars(v))
         rules[x] = slots.X[d]
     end
@@ -234,7 +236,7 @@ function check_accepted(name, sys, v, bmap, a, logs)
     rng = Draws(0)
     bases = [random_state(rng, slots, v) for _ in 1:NSTATES]
     for (k, eq) in enumerate(sys.eqs)
-        reference = reference_slots(eq, v, slots)
+        reference = reference_slots(eq, sys, v, slots)
         divergence = sum(total_derivative(G, i, slots, a.dim) for (i, G) in enumerate(a.flux[k]); init = Num(0))
         reconstructed = a.mass[k] + divergence + a.remainder[k]
         for vals in bases
