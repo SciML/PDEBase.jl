@@ -142,19 +142,10 @@ end
 function _differential_order!(orders::Set{Int}, eq, x, v = nothing)
     if iscall(eq)
         op = operation(eq)
-        if op isa Differential
-            if _has_normal_derivative(eq)
-                _path_orders!(orders, eq, x, v, 0)
-            else
-                push!(orders, count_differentials(eq, x))
-            end
-        elseif op isa NormalDerivative
-            inner = Set{Int}()
-            for ch in arguments(eq)
-                _differential_order!(inner, ch, x, v)
-            end
-            own = _normal_derivative_order(op, x, v)
-            isempty(inner) ? push!(orders, own) : union!(orders, (own + o for o in inner))
+        if op isa NormalDerivative || (op isa Differential && _has_normal_derivative(eq))
+            _path_orders!(orders, eq, x, v, 0)
+        elseif op isa Differential
+            push!(orders, count_differentials(eq, x))
         else
             for ch in arguments(eq)
                 _differential_order!(orders, ch, x, v)

@@ -410,5 +410,13 @@ end
         @test d_orders(x, [Dx(Dn(u(t, Γ_left)) + Dn(Dn(u(t, Γ_left)))) ~ 0], v) == [3, 2]
         @test d_orders(x, [Dx(Dn(u(t, Γ_left)) + Dx(u(t, 0, y))) ~ 0], v) == [2]
         @test d_orders(t, [Dt(Dn(u(t, Γ_left)) + Dt(u(t, Γ_left))) ~ 0]) == [2, 1]
+        # A root normal derivative counts per path too, like one beneath a Differential.
+        @test d_orders(Γ_left, [Dn(u(t, Γ_left) + Dn(u(t, Γ_left))) ~ 0]) == [2, 1]
+        @test d_orders(Γ_left, [Dt(Dn(u(t, Γ_left) + Dn(u(t, Γ_left)))) ~ 0]) == [2, 1]
+        @test d_orders(x, [Dn(u(t, Γ_left) + Dx(u(t, Γ_left))) ~ 0], v) == [2, 1]
+        @test d_orders(x, [Dn(u(t, Γ_left) + Dx(u(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(Γ_left, [Dn(Dn(u(t, Γ_left))) ~ 0]) == [2]
+        @test d_orders(x, [Dn(Dn(u(t, Γ_left))) ~ 0], v) == [2]
+        @test d_orders(y, [Dn(Dn(u(t, Γ_left))) ~ 0], v) == Int[]
     end
 end
