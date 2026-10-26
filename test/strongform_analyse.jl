@@ -60,7 +60,7 @@ U, W = u(t, x, y), w(t, x, y)
     # (ii-b) non-divergence a(x, y)Δu with advection and reaction: the product rule adds ∇a⋅∇u
     axy = 1 + x^2 + y
     eq = Dt(U) ~ axy * (Dx(Dx(U)) + Dy(Dy(U))) - 0.7 * Dx(U) - 0.3 * Dy(U) - 2.5 * U + x * y + 1
-    an, _ = @test_logs (:warn, r"equations 1 \(ProductRule\(\)\), so .* non-symmetric") analysed([eq], [U], [t, x, y]; t)
+    an, _ = @test_logs (:warn, r"equations 1 \(ProductRule\), so .* non-symmetric") analysed([eq], [U], [t, x, y]; t)
     s = an.slots
     X, G = s.X, s.G
     @test all(same.(an.flux[1], -(1 + X[1]^2 + X[2]) .* G))
