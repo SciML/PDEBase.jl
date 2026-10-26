@@ -418,5 +418,13 @@ end
         @test d_orders(Γ_left, [Dn(Dn(u(t, Γ_left))) ~ 0]) == [2]
         @test d_orders(x, [Dn(Dn(u(t, Γ_left))) ~ 0], v) == [2]
         @test d_orders(y, [Dn(Dn(u(t, Γ_left))) ~ 0], v) == Int[]
+        # Paths ending at a constant factor record no order.
+        @parameters k
+        @test d_orders(Γ_left, [Dn(2 * Dn(u(t, Γ_left))) ~ 0]) == [2]
+        @test d_orders(Γ_left, [Dn(k * Dn(u(t, Γ_left))) ~ 0]) == [2]
+        @test d_orders(Γ_left, [Dn(2 * u(t, Γ_left) + Dn(u(t, Γ_left))) ~ 0]) == [2, 1]
+        @test d_orders(x, [Dn(k * Dx(u(t, Γ_left))) ~ 0], v) == [2]
+        @test d_orders(Γ_left, [Dt(k * Dn(u(t, Γ_left)) + t) ~ 0]) == [1]
+        @test d_orders(x, [Dx(2 * Dx(u(t, x, y))) ~ 0]) == [2]
     end
 end
