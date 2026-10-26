@@ -281,14 +281,19 @@ struct PieceBoundary <: AbstractBoundary
     end
 end
 
-# The highest derivative order applied to a trace in `ex`.
-function _trace_order(ex, order = 0)
+# The highest spatial derivative order applied to a trace in `ex`. As in `bckind`, a
+# `Differential` in a variable the trace keeps, such as `t` in `Dt(u(t, Γ))`, does not count.
+function _trace_order(ex, derivatives = ())
     ex = safe_unwrap(ex)
     iscall(ex) || return 0
-    any(_ispiece, arguments(ex)) && return order
+    args = arguments(ex)
+    if any(_ispiece, args)
+        spatial = filter(op -> _is_spatial_derivative(op, args), collect(derivatives))
+        return sum(op -> op isa NormalDerivative ? 1 : op.order, spatial; init = 0)
+    end
     op = operation(ex)
-    inner = op isa NormalDerivative ? order + 1 : op isa Differential ? order + op.order : order
-    return maximum(a -> _trace_order(a, inner), arguments(ex); init = 0)
+    inner = op isa Union{Differential, NormalDerivative} ? (derivatives..., op) : derivatives
+    return maximum(a -> _trace_order(a, inner), args; init = 0)
 end
 
 function Base.isequal(i1::InterfaceBoundary, i2::InterfaceBoundary)
@@ -553,7 +558,7 @@ parse_bcs(bcs, v::VariableMap, orders, ::AbstractEquationSystemDiscretization) =
 
 function parse_bcs(bcs, v::VariableMap, orders, ::AbstractBoxDiscretization)
     _check_traced_conditions(bcs, v)
-    return _parse_bcs(bcs, v, _face_matcher(v, orders))
+    return _parse_bcs(map(bc -> _snap_endpoints(bc, v), bcs), v, _face_matcher(v, orders))
 end
 
 function parse_bcs(bcs, v::VariableMap, orders, disc::AbstractMeshDiscretization)
@@ -567,7 +572,7 @@ function parse_bcs(bcs, v::VariableMap, orders, disc::AbstractMeshDiscretization
         class = classify_condition(v, bc)
         trace = _first_trace(bc)
         if class.kind === :initial
-            _parse_bc!(boundarymap, bc, v, matches)
+            _parse_bc!(boundarymap, _snap_endpoints(bc, v), v, matches)
         elseif class.kind === :boundary && trace !== nothing
             piece = location(classify_call(v, trace)[2]).piece
             push!(get!(() -> [], boundarymap[operation(trace)], piece), PieceBoundary(trace, piece, bc, v))
@@ -694,6 +699,25 @@ function _face_matcher(v::VariableMap, orders)
 end
 
 _face_call(v, op, x, val) = op(substitute.(v.args[op], (x => val,))...)
+
+# `bc` with every call on a box face that spells its endpoint only to within the tolerance of
+# `classify_argument`, as `u(t, 0.1 + 0.2)` on `Interval(0.0, 0.3)`, rewritten to the exact
+# endpoint, so that the boundary's `eq` and `indvars` agree with its `u`. A condition with
+# no such call is returned as is.
+function _snap_endpoints(bc, v::VariableMap)
+    lhs, rhs = _get_lhs_rhs(bc)
+    rules = Dict()
+    for (_, call) in _calls_with_parents!(_calls_with_parents!(Tuple{Any, Any}[], lhs, nothing, v), rhs, nothing, v)
+        any(_ispiece, arguments(call)) && continue
+        face = _face_location(v, call)
+        face isa BoxFace || continue
+        exact = _face_call(v, operation(call), face.iv, v.intervals[face.iv][face.side === :lo ? 1 : 2])
+        isequal(call, exact) || (rules[call] = exact)
+    end
+    isempty(rules) && return bc
+    lhs, rhs = substitute_traces(lhs, rules), substitute_traces(rhs, rules)
+    return bc isa Pair ? lhs => rhs : lhs ~ rhs
+end
 
 _is_face_normal(v, op, face) = op isa NormalDerivative && isequal(location(v, [Piece(op.piece)]), face)
 

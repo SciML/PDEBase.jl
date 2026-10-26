@@ -194,16 +194,24 @@ rect_domains = [(x, y) ∈ rect, t ∈ Interval(0.0, 1.0)]
 end
 
 @testset "parse_bcs box method: endpoint tolerance" begin
-    exact_fields = (:u, :x, :depvars, :order)
     for (domain, given, exact) in ((Interval(0.0, π), π, Float64(π)), (Interval(0.0, 0.3), 0.1 + 0.2, 0.3))
-        bcs_given = [u(0, x) ~ 0, u(t, 0) ~ 0, Dx(u(t, given)) ~ 0]
-        bcs_exact = [u(0, x) ~ 0, u(t, 0) ~ 0, Dx(u(t, exact)) ~ 0]
-        bcs, v, orders = prepare(heat1d(bcs_given; domain = x ∈ domain), BoxBCDiscretization(t))
-        # The substitution matcher needs the endpoint exactly.
-        @test_throws AssertionError parse_bcs(bcs, v, orders)
-        box = parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
-        bcs, v, orders = prepare(heat1d(bcs_exact; domain = x ∈ domain), BoxBCDiscretization(t))
-        @test same_map(box, legacy_parse_bcs(bcs, v, orders); ordered = false, fields = exact_fields)
+        for condition in (c -> u(t, c) ~ 1, c -> Dx(u(t, c)) ~ 0)
+            bcs_given = [u(0, x) ~ 0, u(t, 0) ~ 0, condition(given)]
+            bcs_exact = [u(0, x) ~ 0, u(t, 0) ~ 0, condition(exact)]
+            bcs, v, orders = prepare(heat1d(bcs_given; domain = x ∈ domain), BoxBCDiscretization(t))
+            # The substitution matcher needs the endpoint exactly.
+            @test_throws AssertionError parse_bcs(bcs, v, orders)
+            box = parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
+            # The near spelling is rewritten to the endpoint, so `u`, `eq` and `indvars` agree.
+            b = only(box[operation(unwrap(u(t, x)))][unwrap(x)][2:end])
+            @test b isa UpperBoundary
+            @test isempty(get_depvars(PDEBase.substitute_traces(b.eq.lhs, Dict(b.u => 42.0)), v.depvar_ops))
+            if b.order == 0
+                @test isequal(PDEBase.unwrap_const(substitute(b.eq.lhs, Dict(b.u => 42.0))), 42.0)
+            end
+            bcs, v, orders = prepare(heat1d(bcs_exact; domain = x ∈ domain), BoxBCDiscretization(t))
+            @test same_map(box, legacy_parse_bcs(bcs, v, orders); ordered = false)
+        end
     end
 end
 
