@@ -115,6 +115,15 @@ end
     @test PDEBase.Natural() isa PDEBase.BCKind
     @test PDEBase.Robin() isa PDEBase.BCKind
     @test_throws ArgumentError PDEBase.bckind(u(t, 0, y) ~ 0)
+
+    # A time derivative keeps the trace on its piece; only spatial derivatives count.
+    Dt = Differential(t)
+    @test PDEBase.bckind(Dt(u(t, Γ_in)) ~ 1) === PDEBase.Essential()
+    @test PDEBase.bckind(Dt(u(t, Γ_in)) + u(t, Γ_in) ~ 1) === PDEBase.Essential()
+    @test PDEBase.bckind(Dt(Dn_wall(u(t, Γ_wall))) ~ 0) === PDEBase.Natural()
+    @test PDEBase.bckind(Dn_wall(Dt(u(t, Γ_wall))) ~ 0) === PDEBase.Natural()
+    @test PDEBase.bckind(Dt(Dx(u(t, Γ_wall))) ~ 0) === PDEBase.Natural()
+    @test PDEBase.bckind(Dt(u(t, Γ_wall)) + Dn_wall(u(t, Γ_wall)) ~ 0) === PDEBase.Robin()
 end
 
 @testset "VariableMap domains" begin
