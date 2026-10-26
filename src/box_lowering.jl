@@ -54,38 +54,40 @@ function _check_trace_types(calls)
     return nothing
 end
 
-# The time variable, from the declared argument lists of the traced variables: a trace keeps
-# every argument but the spatial ones in its declared position, so the declared arguments
-# before and after the piece are the non-spatial ones.
-function _trace_time(pdesys, calls)
-    declared = Dict(operation(u) => arguments(u) for u in map(safe_unwrap, get_dvs(pdesys)) if iscall(u))
-    times = Any[]
-    for call in calls
-        args = get(declared, operation(call), nothing)
-        args === nothing && continue
-        trace = arguments(call)
-        p = findfirst(_ispiece, trace)
-        piece = unwrap_const(safe_unwrap(trace[p]))
-        # The piece stands for this many declared arguments; more than the box has axes means
-        # a non-spatial argument is missing.
-        nspatial = length(args) - length(trace) + 1
-        nspatial >= 1 || continue
-        if nspatial > DomainSets.dimension(parent(piece))
-            throw(
-                ArgumentError(
-                    "$(call): trace is missing the time argument; a trace of $(operation(call))$(Tuple(args)) " *
-                        "keeps its non-spatial arguments in their declared positions"
-                )
-            )
-        end
-        append!(times, [args[1:(p - 1)]; args[(p + nspatial):end]])
+_or_nothing(f) =
+try
+    f()
+catch e
+    e isa Union{ArgumentError, ErrorException} || rethrow()
+    nothing
+end
+
+# The time variable, when the caller gives none: the independent variable (or `nothing`)
+# whose removal makes the spatial domain the parent of every traced piece, as the classifier
+# sees it. Two candidates can fit the domain when intervals coincide, as `t` and `x` on
+# `Interval(0, 1)`; then the one under which every trace call classifies wins, and after that
+# the one declared by a pairing of its own.
+function _infer_time(pdesys, calls)
+    pieces = unique(unwrap_const(safe_unwrap(a)) for c in calls for a in arguments(c) if _ispiece(a))
+    function fit(τ)
+        v = _or_nothing(() -> VariableMap(pdesys, _BoxTime(τ)))
+        Ω = v === nothing ? nothing : _or_nothing(() -> spatial_domain(v))
+        Ω !== nothing && all(p -> isequal(parent(p), Ω), pieces) || return 0
+        return _or_nothing(() -> (foreach(c -> classify_call(v, c), calls); true)) === nothing ? 1 : 2
     end
-    times = unique(times)
-    length(times) <= 1 && return isempty(times) ? nothing : only(times)
+    candidates = Any[nothing; map(safe_unwrap, get_ivs(pdesys))]
+    scores = map(fit, candidates)
+    best = maximum(scores)
+    best == 0 && return nothing
+    winners = candidates[scores .== best]
+    length(winners) == 1 && return only(winners)
+    # Still tied: prefer the one variable with a pairing of its own, as `t ∈ Interval(0, 1)`.
+    alone = filter(τ -> any(p -> isequal(safe_unwrap(p.variables), τ), get_domain(pdesys)), winners)
+    length(alone) == 1 && return only(alone)
     throw(
         ArgumentError(
-            "the traces keep more than one non-spatial argument, $(times), so the time variable " *
-                "cannot be inferred; pass it as to_box_bcs(pdesys; time = t)"
+            "the time variable cannot be inferred from the traces: each of $(winners) fits the " *
+                "domain; pass it as to_box_bcs(pdesys; time = t)"
         )
     )
 end
@@ -124,10 +126,11 @@ function _box_rules!(rules, v, ex)
     iscall(ex) || return rules
     op = operation(ex)
     if op isa NormalDerivative
-        face = _trace_face(v, op.piece)
-        iv, sign = normal(face)
-        derivative = Differential(iv)(_endpoint_call(v, safe_unwrap(only(arguments(ex))), face))
+        iv, sign = normal(_trace_face(v, op.piece))
+        operand = safe_unwrap(only(arguments(ex)))
+        derivative = Differential(iv)(substitute_traces(operand, _box_rules!(Dict{Any, Any}(), v, operand)))
         rules[ex] = sign < 0 ? -derivative : derivative
+        return rules
     elseif haskey(v.args, op) && any(_ispiece, arguments(ex))
         piece = unwrap_const(safe_unwrap(only(filter(_ispiece, arguments(ex)))))
         rules[ex] = _endpoint_call(v, ex, _trace_face(v, piece))
@@ -172,10 +175,11 @@ object. Every other field of the system is kept. Each lowered condition is check
 [`classify_condition`](@ref) and [`assert_no_traces`](@ref) and is never
 derivative-expanded.
 
-`time` is the time variable. By default it is read from the declared argument lists of the
-traced variables: a trace keeps the non-spatial arguments in their declared positions, so on
-`u(t, x, y)` the trace `u(t, Γ)` makes `t` the time, and a steady `u(x, y)` with trace
-`u(Γ)` has none. `lower_boundaries` calls `to_box_bcs` with the discretization's time for
+`time` is the time variable. When it is not given, it is the independent variable (or
+`nothing`, for a steady system) that leaves the parent domain of the traced pieces as the
+spatial domain; when two fit, as `t` and `x` both on `Interval(0, 1)`, the one under which
+every trace classifies is taken, then the one declared by a pairing of its own, and
+otherwise `time` must be passed. A given `time` is used as is. `lower_boundaries` calls `to_box_bcs` with the discretization's time for
 every `AbstractBoxDiscretization`. Conditions may be `Equation`s or `Pair`s.
 
 Throws an `ArgumentError` when a domain of `pdesys` is a `MeshDomain` or another domain
@@ -193,7 +197,7 @@ function to_box_bcs(pdesys::PDESystem; time = nothing)
     any(_has_trace, bcs) || return pdesys
     calls = _trace_calls!(Any[], bcs)
     _check_trace_types(calls)
-    time = something(time, Some(_trace_time(pdesys, calls)))
+    time === nothing && (time = _infer_time(pdesys, calls))
     v = VariableMap(pdesys, _BoxTime(time))
     return PDESystem(
         get_eqs(pdesys), map(bc -> _lower_bc(v, bc), bcs), get_domain(pdesys), get_ivs(pdesys),

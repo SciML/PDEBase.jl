@@ -185,6 +185,48 @@ end
     @test isequal(lowered_bcs(spacetime)[2], r(t, y, 0.0) ~ 1)
 end
 
+@testset "time inference" begin
+    @variables w(..) m(..)
+    # Time between the spatial arguments: the piece replaces x and y, which are not adjacent.
+    @named middle = PDESystem(
+        [Dt(m(x, t, y)) ~ Dx(Dx(m(x, t, y)))],
+        [m(x, 0, y) ~ 0, m(Γ_left, t) ~ 1, Dn_top(m(Γ_top, t)) ~ 0], box_domains, [t, x, y], [m(x, t, y)]
+    )
+    expected = [m(x, 0, y) ~ 0, m(0, t, y) ~ 1, Dy(m(x, t, 2)) ~ 0]
+    @test bcs_equal(lowered_bcs(middle), expected)
+    @test bcs_equal(lowered_bcs(middle; time = t), expected)
+    # Two layouts in one system.
+    @named mixed = PDESystem(
+        [Dt(m(x, t, y)) ~ Dx(Dx(m(x, t, y))), Dt(w(t, x, y)) ~ Dy(Dy(w(t, x, y)))],
+        [m(x, 0, y) ~ 0, w(0, x, y) ~ 0, m(Γ_left, t) ~ w(t, Γ_left), w(t, Γ_right) ~ 1],
+        box_domains, [t, x, y], [m(x, t, y), w(t, x, y)]
+    )
+    expected = [m(x, 0, y) ~ 0, w(0, x, y) ~ 0, m(0, t, y) ~ w(t, 0, y), w(t, 1, y) ~ 1]
+    @test bcs_equal(lowered_bcs(mixed), expected)
+    @test bcs_equal(lowered_bcs(mixed; time = t), expected)
+    # A given time is used without inference: on equal intervals `u(Γ)` cannot tell `t`
+    # from `x`, and with `time = t` the classifier reports the missing argument.
+    line = Interval(0.0, 1.0)
+    Γ_lo = boundarypiece(line, :x1_lo)
+    @named ambiguous = PDESystem(
+        [Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], [w(0, x) ~ 0, w(Γ_lo) ~ 0], [t ∈ line, x ∈ line], [t, x], [w(t, x)]
+    )
+    @test occursin("pass it as to_box_bcs(pdesys; time = t)", errmsg(() -> to_box_bcs(ambiguous)))
+    @test occursin("trace is missing the time argument", errmsg(() -> to_box_bcs(ambiguous; time = t)))
+end
+
+@testset "normal derivative of an expression" begin
+    @variables w(..)
+    two = heat_system([NormalDerivative(Γ_left)(2 * u(t, Γ_left)) ~ 0], box_domains)
+    @test isequal(lowered_bcs(two)[2], -Dx(2 * u(t, 0.0, y)) ~ 0)
+    @named sum_sys = PDESystem(
+        [heat, Dt(w(t, x, y)) ~ Dx(Dx(w(t, x, y)))],
+        [u(0, x, y) ~ 0, w(0, x, y) ~ 0, Dn_right(u(t, Γ_right) + k * w(t, Γ_right)) ~ 1],
+        box_domains, [t, x, y], [u(t, x, y), w(t, x, y)]
+    )
+    @test isequal(lowered_bcs(sum_sys)[3], Dx(u(t, 1.0, y) + k * w(t, 1.0, y)) ~ 1)
+end
+
 @testset "Pair conditions" begin
     lowered = lowered_bcs(heat_system([Dn_right(u(t, Γ_right)) => 0], box_domains))
     @test lowered[2] isa Pair
