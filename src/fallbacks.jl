@@ -77,7 +77,7 @@ else
     It prints as `Γ_<name>`, and `parent(Γ)` returns the parent domain.
 
     Pieces compare and hash structurally, by parent, name and geometry. `isless` orders
-    pieces by name, then by the printed parent and geometry, so that Symbolics can order
+    pieces by name, then by the hashes of parent and geometry, so that Symbolics can order
     the terms of a sum of traces such as `u(t, Γa) - u(t, Γb)`.
 
     This is PDEBase's fallback for the type proposed for DomainSets, used only while the
@@ -109,16 +109,11 @@ else
         return hash(p.geometry, hash(p.parent, hash(p.name, hash(BoundaryPiece, h))))
     end
     # SymbolicUtils orders sum terms by comparing same-typed constant arguments with `<`.
-    # The order is total, consistent with `isequal`, and deterministic across processes
-    # except at the last tie-break, reached only by unequal pieces that print identically.
-    function Base.isless(a::BoundaryPiece, b::BoundaryPiece)
-        a.name === b.name || return isless(a.name, b.name)
-        isequal(a, b) && return false
-        return isless(
-            (repr(a.parent), repr(a.geometry), hash(a)),
-            (repr(b.parent), repr(b.geometry), hash(b))
-        )
-    end
+    # Lexicographic on a key, so a strict weak order; consistent with `isequal` because
+    # `hash` is (IntervalSets' empty intervals are the known exception: `isequal` but
+    # unequal hashes). Stable across processes except for parents hashed by identity.
+    _order_key(p::BoundaryPiece) = (p.name, hash(p.parent), hash(p.geometry))
+    Base.isless(a::BoundaryPiece, b::BoundaryPiece) = isless(_order_key(a), _order_key(b))
 end
 
 # Face names of a box, in the order of `components(boundary(d))`: a rectangle's
