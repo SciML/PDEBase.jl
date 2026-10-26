@@ -98,7 +98,7 @@ end
     @test occursin("declared argument list", errmsg(() -> classify_call(v, u(x, t, y))))
     @test occursin("declared positions", errmsg(() -> classify_call(v, u(Γ_left, t))))
     @test occursin("edge or a corner", errmsg(() -> loc(u(t, 0, 0))))
-    @test occursin("edge or a corner", errmsg(() -> location([BoxFace(unwrap(x), :lo), Piece(Γ_left)])))
+    @test occursin("also fixes a non-spatial argument", errmsg(() -> location([BoxFace(unwrap(x), :lo), Piece(Γ_left)])))
 
     @test normal(BoxFace(unwrap(x), :lo)) == (unwrap(x), -1)
     @test normal(BoxFace(unwrap(y), :hi)) == (unwrap(y), 1)
@@ -181,7 +181,39 @@ end
         @test d_orders(x, [NormalDerivative(inlet)(m(t, inlet)) ~ 0], mv) == Int[]
         @test occursin("not on Γ_wall", errmsg(() -> classify_condition(mv, NormalDerivative(wall)(m(t, inlet)) ~ 0)))
         @test occursin("number 0 in the place of x", errmsg(() -> classify_call(mv, m(t, 0, y))))
-        @test occursin("relates the locations", errmsg(() -> classify_condition(mv, m(t, inlet) ~ m(t, wall))))
+        msg = errmsg(() -> classify_condition(mv, m(t, inlet) ~ m(t, wall)))
+        @test occursin("not opposite faces of a box", msg)
+        @test occursin("INFERRED", msg)
+        msg = errmsg(() -> classify_condition(mv, m(0, inlet) ~ 0))
+        @test occursin("also fixes a non-spatial argument", msg)
+        @test !occursin("edge or a corner", msg)
+    end
+
+    @testset "variables without spatial arguments" begin
+        @variables q(..) z(..)
+        @named coupled = PDESystem(
+            [Dt(q(t, x)) ~ Dx(Dx(q(t, x))), Dt(z(t)) ~ q(t, 1)], [q(0, x) ~ 0, z(0) ~ 1, q(t, 0) ~ z(t)],
+            [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)], [t, x], [q(t, x), z(t)]
+        )
+        cv = VariableMap(coupled, ClassifyDiscretization(t))
+        bc = classify_condition(cv, q(t, 0) ~ z(t))
+        @test bc.kind === :boundary
+        @test bc.locations == [BoxFace(unwrap(x), :lo)]
+        @test classify_condition(cv, Dx(q(t, 1)) ~ 2 * z(t) + 1).kind === :boundary
+        @test classify_condition(cv, z(0) ~ 1).kind === :initial
+        @test classify_condition(cv, z(0) => 1).locations == [BoxFace(unwrap(t), :lo)]
+        @test occursin("not an initial condition", errmsg(() -> classify_condition(cv, z(1) ~ 1)))
+        @test occursin("mixes interior calls with traces", errmsg(() -> classify_condition(cv, q(t, 0) ~ q(t, x) + z(t))))
+    end
+
+    @testset "traces under scalar factors inside Dn" begin
+        Dn_left = NormalDerivative(Γ_left)
+        @test class(Dn_left(2 * u(t, Γ_left)) ~ 0).locations == [BoxFace(unwrap(x), :lo)]
+        @test class(Dn_left(2 * u(t, Γ_left) + u(t, 0, y)) ~ 0).kind === :boundary
+        msg = errmsg(() -> class(Dn_left(2 * u(t, Γ_right)) ~ 0))
+        @test occursin("not on Γ_left", msg)
+        @test occursin("not on Γ_left", errmsg(() -> class(Dn_left(u(t, Γ_left) + 2 * u(t, 1, y)) ~ 0)))
+        @test occursin("no trace", errmsg(() -> class(Dn_left(t) + u(t, Γ_left) ~ 0)))
     end
 end
 
@@ -226,4 +258,14 @@ end
     @test d_orders(Γ_left, bcs) == [1]
     @test d_orders(Γ_right, bcs) == Int[]
     @test d_orders(x, [Dn(u(t, Γ_left)) + Dx(Dx(u(t, 0, y))) ~ 0], v) == [2, 1]
+
+    @testset "nesting with Differential" begin
+        @test d_orders(Γ_left, [Dt(Dn(u(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(t, [Dt(Dn(u(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(x, [Dt(Dn(u(t, Γ_left))) ~ 0], v) == [1]
+        @test d_orders(x, [Dn(Dx(u(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(x, [Dn(Dx(u(t, Γ_left))) ~ 0], v) == [2]
+        @test d_orders(Γ_left, [Dn(Dx(u(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(y, [Dn(Dy(Dy(u(t, Γ_left)))) ~ 0], v) == [2]
+    end
 end
