@@ -243,9 +243,10 @@ end
 
 Return the [`BoxFace`](@ref PDEBase.BoxFace) that `piece` is, when it is a face of the box
 `spatial_domain(v)` (a `DomainSets.HyperRectangle`, with pieces from
-[`boundarypieces`](@ref)), and `nothing` otherwise. Axis `i` of the box is coordinate `i`
-of its tuple pairing `(x, y) ∈ Ω`, or `indvars(v)[i]` when each coordinate has its own
-interval pairing.
+[`boundarypieces`](@ref)), and `nothing` otherwise. The axes of the box follow the domain
+declaration, as in `spatial_domain`: the spatial coordinates of a tuple pairing in tuple
+order, or the spatial interval pairings in the order of the domain list, never the order
+of `indvars(v)`.
 """
 function boxface(v::VariableMap, piece::BoundaryPiece)
     Ω = spatial_domain(v)
@@ -257,9 +258,7 @@ function boxface(v::VariableMap, piece::BoundaryPiece)
         return nothing
     end
     axis, side = face
-    coords = _pairing_coordinates(v.domains[first(v.x̄)])
-    iv = coords === nothing ? v.x̄[axis] : safe_unwrap(coords[axis])
-    return BoxFace(iv, side)
+    return BoxFace(_box_axes(v)[axis], side)
 end
 
 """
