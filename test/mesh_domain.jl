@@ -243,6 +243,40 @@ end
         @test occursin("MeshDomain", err.msg)
     end
 
+    @testset "box axis order follows the declaration" begin
+        @variables q(..)
+        Ix, Iy = Interval(0.0, 1.0), Interval(5.0, 7.0)
+        coupled = [
+            Dt(q(t, y)) ~ Dy(Dy(q(t, y))),
+            Dt(u(t, x, y)) ~ Dx(Dx(u(t, x, y))) + q(t, y),
+        ]
+        bcs = [q(0, y) ~ 0, u(0, x, y) ~ 0]
+        @named split_xy = PDESystem(
+            coupled, bcs, [t ∈ Interval(0.0, 1.0), x ∈ Ix, y ∈ Iy], [t, x, y], [q(t, y), u(t, x, y)]
+        )
+        v = VariableMap(split_xy, disc)
+        @test isequal(v.x̄, [y, x])
+        @test isequal(PDEBase._box_axes(v), [x, y])
+        @test spatial_domain(v) == Rectangle(Ix, Iy)
+
+        @named split_yx = PDESystem(
+            coupled, bcs, [t ∈ Interval(0.0, 1.0), y ∈ Iy, x ∈ Ix], [t, x, y], [q(t, y), u(t, x, y)]
+        )
+        v = VariableMap(split_yx, disc)
+        @test isequal(PDEBase._box_axes(v), [y, x])
+        @test spatial_domain(v) == Rectangle(Iy, Ix)
+
+        box = DomainSets.ProductDomain(Interval(0.0, 2.0), Ix, Iy)
+        @named spacetime = PDESystem(
+            [Dt(u(t, y, x)) ~ Dx(Dx(u(t, y, x)))], [u(0, y, x) ~ 0], [(t, x, y) ∈ box],
+            [t, x, y], [u(t, y, x)]
+        )
+        v = VariableMap(spacetime, disc)
+        @test isequal(v.x̄, [y, x])
+        @test isequal(PDEBase._box_axes(v), [x, y])
+        @test spatial_domain(v) == Rectangle(Ix, Iy)
+    end
+
     @testset "no spatial variables" begin
         @variables w(..)
         @named ode = PDESystem(
@@ -271,6 +305,7 @@ end
     @testset "positional constructor without domains" begin
         v = VariableMap([], [x], [], t, Dict(x => (0, 1)), Dict(), [], Dict(), Dict(), Dict())
         @test isempty(v.domains)
+        @test_throws ArgumentError spatial_domain(v)
         @test v.intervals[x] == (0, 1)
     end
 end
