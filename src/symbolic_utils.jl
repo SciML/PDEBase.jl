@@ -143,7 +143,11 @@ function _differential_order!(orders::Set{Int}, eq, x, v = nothing)
     if iscall(eq)
         op = operation(eq)
         if op isa Differential
-            push!(orders, count_differentials(eq, x) + _count_normal_derivatives(eq, x, v))
+            if _has_normal_derivative(eq)
+                _path_orders!(orders, eq, x, v, 0)
+            else
+                push!(orders, count_differentials(eq, x))
+            end
         elseif op isa NormalDerivative
             inner = Set{Int}()
             for ch in arguments(eq)
@@ -169,15 +173,30 @@ function _normal_derivative_order(op, x, v)
     return Int(face !== nothing && isequal(face.iv, x))
 end
 
-# The normal derivatives in `term` counted like `count_differentials` counts `Differential`s.
-function _count_normal_derivatives(term, x, v)::Int
-    iscall(term) || return 0
-    op = operation(term)
-    n = op isa NormalDerivative ? _normal_derivative_order(op, x, v) : 0
-    for arg in arguments(term)
-        n += _count_normal_derivatives(arg, x, v)
+_has_normal_derivative(term) =
+    iscall(term) && (operation(term) isa NormalDerivative || any(_has_normal_derivative, arguments(term)))
+
+# The orders of `term` along each path from its root to a leaf, `acc` plus the `Differential`
+# orders in `x` and the matching normal derivatives on the path, so that sibling terms do not
+# add up. Used only when `term` holds a normal derivative; without one, `count_differentials`
+# keeps the established results.
+function _path_orders!(orders::Set{Int}, term, x, v, acc::Int)
+    if !iscall(term)
+        push!(orders, acc)
+        return nothing
     end
-    return n
+    op = operation(term)
+    if op isa Differential
+        acc += isequal(op.x, x) ? op.order : 0
+    elseif op isa NormalDerivative
+        acc += _normal_derivative_order(op, x, v)
+    end
+    args = arguments(term)
+    isempty(args) && push!(orders, acc)
+    for arg in args
+        _path_orders!(orders, arg, x, v, acc)
+    end
+    return nothing
 end
 
 """
