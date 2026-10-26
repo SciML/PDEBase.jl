@@ -27,3 +27,22 @@ PDEBase.StrongForm.DISCONTINUOUS_FUNCTIONS
 PDEBase.StrongForm.slot_volume
 PDEBase.StrongForm.check_evaluable
 ```
+
+## Boundary conditions
+
+`analyse` classifies each spatial boundary condition of a box face as essential (`u_f = g`),
+natural (the facet flux `Φ` of the one equation whose conormal flux the condition is proven
+proportional to) or periodic. Traces are put into slots without ever being derivative-expanded.
+`pair_equations` is the helper a discretizer uses to give each equation its test field.
+
+```@docs
+PDEBase.StrongForm.BoxFace
+PDEBase.StrongForm.boundary_conditions
+PDEBase.StrongForm.slot_condition
+PDEBase.StrongForm.restrict_to_face
+PDEBase.StrongForm.match_flux
+PDEBase.StrongForm.route_natural
+PDEBase.StrongForm.essential_condition
+PDEBase.StrongForm.periodic_condition
+PDEBase.StrongForm.pair_equations
+```

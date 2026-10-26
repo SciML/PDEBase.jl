@@ -182,6 +182,10 @@ end
     byface = Dict(b.piece => b for b in nat)
     @test symeq(byface[lo].Φ, 0)
     Φraw = byface[hi].Φ
+    # a matched flux holding an unevaluated derivative is refused before code generation
+    @variables q(..)
+    dq = Differential(s.X[1])(q(s.X[1]))
+    @test_throws "unevaluated derivative" boundary_conditions(bmap, ctx, s, [[-G[1] + dq]])
     @test !symeq(Φraw, 0)
     # the Dn form N·G - h with N = +1 gives the same matched flux
     Bdn = substitute(N[1] * G[1] - P[1], Dict(N[1] => 1))

@@ -416,5 +416,7 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = 
     end
     owner = mass === nothing ? fill(nothing, length(flux)) : _own_fields(mass, slots)
     _check_conflicts(essential, natural, periodic, vcat(esslabels, natlabels, perlabels), owner)
+    foreach(b -> check_evaluable(b.g), essential)
+    foreach(b -> check_evaluable(b.Φ), natural)
     return essential, natural, periodic
 end
