@@ -46,13 +46,14 @@ end
 PDEBase.get_time(d::LibraryTime) = d.t
 
 """
-A library system preprocessed as `symbolic_discretize` does, with its `VariableMap` and
-`parse_bcs` boundary map. `make_pdesys_compatible` returns a copy, so the shared library
-system is never mutated by `cardinalize_eqs!`.
+A library system preprocessed in `symbolic_discretize`'s order, with its `VariableMap` and
+`parse_bcs` boundary map. `handle_complex` returns a copy with fresh equation vectors, so
+`cardinalize_eqs!` never mutates the shared library system.
 """
 function library_setup(sys)
-    sys, replaced = PDEBase.make_pdesys_compatible(sys)
+    sys, _ = PDEBase.handle_complex(sys)
     PDEBase.cardinalize_eqs!(sys)
+    sys, replaced = PDEBase.make_pdesys_compatible(sys)
     it = findfirst(iv -> Symbol(iv) == :t, sys.ivs)
     v = VariableMap(sys, LibraryTime(it === nothing ? nothing : sys.ivs[it]); replaced_vars = replaced)
     orders = Dict(x => d_orders(x, sys.bcs) for x in all_ivs(v))
@@ -196,6 +197,8 @@ function analyse_logged(sys, v, bmap; ibp = Dict())
 end
 
 const SYSTEMS = PDESystemLibrary.all_systems
+# Snapshot before any preprocessing, to show that the gate never mutates the library.
+const ORIGINAL = [(copy(sys.eqs), copy(sys.bcs)) for sys in SYSTEMS]
 
 @testset "corpus" begin
     @test length(SYSTEMS) == 427
@@ -247,7 +250,6 @@ function check_accepted(name, sys, v, bmap, a, logs)
 end
 
 outcomes = Dict{Symbol, String}()
-original_eqs = [copy(sys.eqs) for sys in SYSTEMS]
 @testset "golden outcome: $(sys.name)" for sys in SYSTEMS
     prepared, v, bmap = library_setup(sys)
     result, logs = analyse_logged(prepared, v, bmap)
@@ -262,7 +264,7 @@ original_eqs = [copy(sys.eqs) for sys in SYSTEMS]
     end
 end
 
-@test all(isequal(sys.eqs, eqs) for (sys, eqs) in zip(SYSTEMS, original_eqs))
+@test all(isequal((sys.eqs, sys.bcs), o) for (sys, o) in zip(SYSTEMS, ORIGINAL))
 
 naccepted = count(==("accepted"), values(outcomes))
 println("StrongForm golden outcomes: $naccepted accepted, $(length(outcomes) - naccepted) rejected")
