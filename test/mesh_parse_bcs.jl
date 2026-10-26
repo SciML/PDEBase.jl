@@ -79,7 +79,7 @@ end
 @testset "mesh traces: time derivatives and ODE variables" begin
     @variables w(..)
     eqs = [heat, Dt(w(t)) ~ -w(t)]
-    bcs = [u(0, x, y) ~ 0, w(0) ~ 1, Dt(u(t, Γ_in)) ~ 1, u(t, Γ_out) ~ w(t)]
+    bcs = [u(0, x, y) ~ 0, w(0) ~ 1, Dt(u(t, Γ_in)) ~ 1, u(t, Γ_out) ~ w(t), Dn_wall(Dn_wall(u(t, Γ_wall))) ~ 0]
     @named pdesys = PDESystem(eqs, bcs, domains, [t, x, y], [u(t, x, y), w(t)], [k, α])
     disc = DummyMeshDiscretization(t, Ref{Any}(nothing))
     @test_throws StopAtBoundaryMap SciMLBase.symbolic_discretize(pdesys, disc)
@@ -91,6 +91,7 @@ end
     outlet = only(bmap[uop][Γ_out])
     @test outlet.kind == Essential()
     @test issetequal(outlet.depvars, [unwrap(u(t, x, y)), unwrap(w(t))])
+    @test only(bmap[uop][Γ_wall]).order == 2
 end
 
 @testset "mesh parse_bcs errors" begin

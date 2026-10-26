@@ -235,6 +235,26 @@ end
     @test same_map(box, endpoint_map; ordered = false, fields = (:u, :x, :depvars, :order))
     @test !same_map(box, endpoint_map; ordered = false)
 
+    # Nested normal derivatives, alone or mixed with the face's coordinate derivative, have
+    # the order of the folded endpoint spelling.
+    Dn_left, Dn_top = NormalDerivative(Γ_left), NormalDerivative(Γ_top)
+    nested = [
+        u(0, x, y) ~ 0, Dn_right(Dn_right(u(t, Γ_right))) ~ 0, Dx(Dn_left(u(t, Γ_left))) ~ 0,
+        Dn_top(Dy(u(t, Γ_top))) ~ 0, Dn_bottom(Dn_bottom(u(t, Γ_bottom))) ~ 0,
+    ]
+    nested_endpoint = [
+        u(0, x, y) ~ 0, Dxx(u(t, 1, y)) ~ 0, -Dxx(u(t, 0, y)) ~ 0,
+        Dyy(u(t, x, 2)) ~ 0, Dyy(u(t, x, 0)) ~ 0,
+    ]
+    bcs, v, orders = prepare(heat2d(nested, rect_domains), BoxBCDiscretization(t))
+    @test orders[unwrap(x)] == [2]
+    box = parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
+    uop = operation(unwrap(u(t, x, y)))
+    @test [b.order for b in box[uop][unwrap(x)]] == [2, 2]
+    @test [b.order for b in box[uop][unwrap(y)]] == [2, 2]
+    bcs, v, orders = prepare(heat2d(nested_endpoint, rect_domains), BoxBCDiscretization(t))
+    @test same_map(box, legacy_parse_bcs(bcs, v, orders); ordered = false, fields = (:u, :x, :depvars, :order))
+
     mismatched = [u(0, x, y) ~ 0, NormalDerivative(Γ_left)(u(t, Γ_right)) ~ 0]
     bcs, v, orders = prepare(heat2d(mismatched, rect_domains), BoxBCDiscretization(t))
     @test_throws ArgumentError parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
