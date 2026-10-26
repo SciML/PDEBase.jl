@@ -174,6 +174,12 @@ end
     for c in (mod(x, 0.5), rem(x, 0.5), clamp(x, 0.2, 0.8))
         @test_throws "is not differentiable" reject(Dt(U1) ~ c * Dx(Dx(U1)))
     end
+    # A jump under a derivative that gets expanded would lose its delta; only the flux keeps it.
+    jump = ifelse(x < 0.5, 1.0, 3.0)
+    for rhs in (Dx(jump * U1), Dx(jump) * Dx(U1), Dx(Dx(jump * U1)))
+        @test_throws "is not differentiable; write the equation in divergence form" reject(Dt(U1) ~ rhs)
+    end
+    @test reject(Dt(U1) ~ Dx(jump * Dx(U1)))[1] isa StrongFormAnalysis
     is_piecewise = PDEBase.StrongForm.is_piecewise
     @test is_piecewise(Symbolics.unwrap(Symbolics.derivative(mod(x, 0.5), x)), Symbolics.unwrap(x))
     @test !is_piecewise(Symbolics.unwrap(Symbolics.derivative(sin(x) * ifelse(y < 0.5, 1, 2), x)), Symbolics.unwrap(x))
@@ -205,6 +211,9 @@ end
         [eq], [U1], [t, x]; t, ibp = Dict((Dt(U1) ~ Dx(Dx(U1))) => Reject())
     )
     @test_throws "matches no equation of the system" analysed([eq], [U1], [t, x]; t, ibp = Dict(2 => Reject()))
+    @test_throws "ibp keys must be Equations or integer indices" analysed(
+        [eq], [U1], [t, x]; t, ibp = Dict((Dt(U1) - (1 + x^2) * Dx(Dx(U1))) => Reject())
+    )
 
     # A coefficient whose derivative simplifies to zero needs no correction.
     eq = Dt(U1) ~ (sin(x)^2 + cos(x)^2) * Dx(Dx(U1))

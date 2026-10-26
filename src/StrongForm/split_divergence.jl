@@ -65,6 +65,24 @@ end
 not_in_divergence_form(term) =
     error("second derivative not in a divergence-compatible position: $term")
 
+not_differentiable(c) =
+    error("coefficient $c is not differentiable; write the equation in divergence form or register the derivative")
+
+differentiable_in(c, x) =
+    is_smooth(c, x) && !is_piecewise(Symbolics.expand_derivatives(Differential(x)(c)), x)
+
+# Every spatial derivative in `ex` gets expanded when it is put into slots; one acting on a jump
+# would silently lose the jump's delta, so its argument must be differentiable.
+function check_expandable(ex, sivs)
+    iscall(ex) || return nothing
+    if is_spatial_derivative(ex, sivs)
+        arg = only(arguments(ex))
+        differentiable_in(arg, operation(ex).x) || not_differentiable(arg)
+    end
+    foreach(a -> check_expandable(a, sivs), arguments(ex))
+    return nothing
+end
+
 """
     split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule()) -> (G, R, corrected)
 
@@ -77,7 +95,9 @@ Under `Reject()` a nonzero correction is an error.
 
 Errors on operators of order three or more, on second derivatives outside a divergence-compatible
 position (inside a nonlinearity, two in one product, or a coefficient depending on `∇u`), and on a
-non-differentiable coefficient that would need the product rule.
+non-differentiable coefficient that would need the product rule or that sits under any other
+derivative which will be expanded (first-order terms, the inner `w′`): only `c⋅w′` in the flux
+stays undifferentiated, so a jump is accepted there alone.
 """
 function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
     sivs = unwrap.(sivs)
@@ -91,6 +111,7 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
         idx = findall(f -> is_spatial_derivative(f, sivs) && spatial_order(f, sivs) >= 2, fs)
         if isempty(idx)
             spatial_order(term, sivs) >= 2 && not_in_divergence_form(term)
+            check_expandable(term, sivs)
             push!(R, term)
             continue
         end
@@ -100,13 +121,12 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule())
         spatial_order(c, sivs) == 0 || not_in_divergence_form(term)
         op, w = operation(Dw), only(arguments(Dw))
         inner = op.order == 1 ? w : unwrap(Differential(op.x, op.order - 1)(w))
+        check_expandable(inner, sivs)
         G[findfirst(isequal(op.x), sivs)] += c * inner
         depends_on(c, op.x) || continue
-        dc = Symbolics.expand_derivatives(Differential(op.x)(c))
-        (is_smooth(c, op.x) && !is_piecewise(dc, op.x)) ||
-            error("coefficient $c is not differentiable; write the equation in divergence form or register the derivative")
+        differentiable_in(c, op.x) || not_differentiable(c)
         push!(needy, term)
-        push!(corrections, -dc * inner)
+        push!(corrections, -Symbolics.expand_derivatives(Differential(op.x)(c)) * inner)
     end
     # Corrections of terms split apart by `expand` may cancel, as for (sin² + cos²)⋅Δu.
     isequal(Symbolics.simplify(sum(corrections; init = Num(0))), Num(0)) && return G, R, false

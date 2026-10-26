@@ -12,6 +12,8 @@ function ibp_policies(ibp, eqs, v::VariableMap)
     policies = Union{Nothing, IBPPolicy}[nothing for _ in eqs]
     residuals = [eq.lhs - eq.rhs for eq in eqs]
     for (key, policy) in ibp
+        key isa Union{Integer, Equation} ||
+            error("ibp keys must be Equations or integer indices, got $key")
         matched = key isa Integer ? filter(==(key), eachindex(eqs)) :
             findall(r -> same_residual(r, flatten(unwrap(key.lhs - key.rhs))), residuals)
         isempty(matched) && error("ibp key $key matches no equation of the system")
@@ -43,7 +45,9 @@ and `boundarymap` from `parse_bcs`. Each equation `e = lhs - rhs` passes the ope
 ([`split_divergence`](@ref)), and is written in [`StateSlots`](@ref) ordered as by
 [`SlotContext`](@ref).
 
-`ibp` maps an equation, or its index, to an [`IBPPolicy`](@ref). Equations are matched by
+`ibp` maps an equation, or its index in the flattened equation list
+(`_flatten_eqs(get_eqs(pdesys))`, the same order as the outputs), to an [`IBPPolicy`](@ref);
+other keys are an error. Equations are matched by
 their residual `lhs - rhs` up to sign, after flattening array variables through
 `replaced_vars(v)`, so a key written before preprocessing still matches. A key that matches no
 equation, or keys giving one equation different policies, are errors. The default is
