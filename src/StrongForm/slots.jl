@@ -1,7 +1,8 @@
 """
-    SlotContext(v::VariableMap; fields = depvars(v), params = v.ps)
+    SlotContext(pdesys, v::VariableMap; fields = declared_fields(pdesys, v), params = v.ps)
 
-How the symbols of a `PDESystem` map to slots: field `f` is `fields[f]`, coordinate `X[d]` is
+How the symbols of `pdesys` map to slots: field `f` is `fields[f]`, by default the `f`-th
+dependent variable in the declared order of `pdesys` (see [`declared_fields`](@ref)), coordinate `X[d]` is
 `indvars(v)[d]`, `T` is the time and `P` holds the parameters in the order of `params`, each
 array parameter contributing its scalar elements in column-major order (`a[1], a[2], …`).
 `Pair` entries `p => default` stand for `p`.
@@ -14,7 +15,7 @@ struct SlotContext
     params::Vector{Any}
     intervals::Any
 end
-function SlotContext(v::VariableMap; fields = depvars(v), params = v.ps)
+function SlotContext(pdesys, v::VariableMap; fields = declared_fields(pdesys, v), params = v.ps)
     ps = Any[]
     for p in params
         p = unwrap(p isa Pair ? p.first : p)
@@ -23,6 +24,19 @@ function SlotContext(v::VariableMap; fields = depvars(v), params = v.ps)
     end
     ops = Any[operation(unwrap(u)) for u in fields]
     return SlotContext(ops, v.args, collect(Any, indvars(v)), v.time, ps, v.intervals)
+end
+
+"""
+    declared_fields(pdesys, v::VariableMap)
+
+The dependent variables of `v` in the order `pdesys` declares them, not the order in which
+`VariableMap` discovers them in the equations. `pdesys` must have been through
+`make_pdesys_compatible`, so that array variables are flattened the same way in both.
+"""
+function declared_fields(pdesys, v::VariableMap)
+    declared = [operation(unwrap(u)) for u in get_dvs(pdesys)]
+    position(u) = something(findfirst(isequal(operation(unwrap(u))), declared), typemax(Int))
+    return sort(collect(depvars(v)); by = position)
 end
 
 _field(ctx::SlotContext, ex) = iscall(ex) ? findfirst(op -> isequal(op, operation(ex)), ctx.ops) : nothing

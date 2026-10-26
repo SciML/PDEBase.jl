@@ -21,7 +21,7 @@ function boxsetup(eqs, bcs, domains, ivs, dvs, ps, t)
     @named sys = PDESystem(eqs, bcs, domains, ivs, dvs, ps)
     v = VariableMap(sys, TimeDisc(t))
     orders = Dict(x => d_orders(x, bcs) for x in all_ivs(v))
-    return v, PDEBase.parse_bcs(bcs, v, orders)
+    return sys, v, PDEBase.parse_bcs(bcs, v, orders)
 end
 
 @testset "match_flux: natural-condition matching table (test_misc.out)" begin
@@ -112,12 +112,12 @@ end
         k * Dy(u(t, x, 1)) + 2u(t, x, 1) ~ 3,
     ]
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0), y ∈ Interval(0.0, 1.0)]
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x, y)) ~ Dx(k * Dx(u(t, x, y))) + Dy(k * Dy(u(t, x, y)))], bcs, domains,
         [t, x, y], [u(t, x, y)], [k => 1.0, h => 2.0], t
     )
     s = StateSlots(1, 2, 2)
-    ctx = SlotContext(v)
+    ctx = SlotContext(sys, v)
     @test isequal(ctx.sivs, Symbolics.unwrap.([x, y]))
     G, U, X, T, P = s.G, s.U[1], s.X, s.T, s.P
     flux = [[-P[1] * G[1], -P[1] * G[2]]]
@@ -149,14 +149,14 @@ end
     Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
     bcs = [u(0, x, y) ~ 0, Dx(u(t, 0, y)) ~ 1, u(t, 1, y) ~ x + y]
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0), y ∈ Interval(0.0, 1.0)]
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x, y)) ~ Dx(Dx(u(t, x, y)) + x * Dy(u(t, x, y))) + Dy(Dy(u(t, x, y)))],
         bcs, domains, [t, x, y], [u(t, x, y)], [], t
     )
     s = StateSlots(1, 2, 0)
     G, X = s.G, s.X
     # conormal on the low x-face is G[1] + X[1] G[2], which is G[1] at X[1] = 0
-    ess, nat, per = boundary_conditions(bmap, SlotContext(v), s, [[-G[1] - X[1] * G[2], -G[2]]])
+    ess, nat, per = boundary_conditions(bmap, SlotContext(sys, v), s, [[-G[1] - X[1] * G[2], -G[2]]])
     @test length(nat) == 1 && symeq(only(nat).Φ, 1)
     @test length(ess) == 1 && symeq(only(ess).g, 1 + X[2])
 end
@@ -167,11 +167,11 @@ end
     Dt, Dx = Differential(t), Differential(x)
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)]
     bcs = [u(0, x) ~ 0, Dx(u(t, 0)) ~ 0, Dx(u(t, 1)) ~ h]
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [h => 2.0], t
     )
     s = StateSlots(1, 1, 1)
-    ctx = SlotContext(v)
+    ctx = SlotContext(sys, v)
     G, N, P = s.G, s.N, s.P
     flux = [[-G[1]]]
     lo, hi = BoxFace(Symbolics.unwrap(x), :lo), BoxFace(Symbolics.unwrap(x), :hi)
@@ -218,45 +218,76 @@ end
     flux = [[-s.G[1]], [-s.G[2]]]
     for bc in (u(t, 0) ~ w(t, 0), u(t, 0) + w(t, 0) ~ 1)
         bcs = [u(0, x) ~ 0, w(0, x) ~ 0, bc]
-        v, bmap = boxsetup(eqs, bcs, domains, [t, x], [u(t, x), w(t, x)], [], t)
+        sys, v, bmap = boxsetup(eqs, bcs, domains, [t, x], [u(t, x), w(t, x)], [], t)
         @test_throws "Dirichlet data depends on another field" boundary_conditions(
-            bmap, SlotContext(v), s, flux
+            bmap, SlotContext(sys, v), s, flux
         )
     end
 end
 
 @testset "periodic" begin
-    @parameters t x
+    @parameters t x y
     @variables u(..) w(..)
     Dt, Dx = Differential(t), Differential(x)
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 2.0)]
     bcs = [u(0, x) ~ 0, u(t, 0) ~ u(t, 2)]
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t
     )
     s = StateSlots(1, 1, 0)
-    ess, nat, per = boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]])
+    ess, nat, per = boundary_conditions(bmap, SlotContext(sys, v), s, [[-s.G[1]]])
     @test isempty(ess) && isempty(nat)
     @test length(per) == 1
     # the same pair written twice, either way round, is one periodic condition
-    v2, bmap2 = boxsetup(
+    sys2, v2, bmap2 = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], [u(0, x) ~ 0, u(t, 0) ~ u(t, 2), u(t, 2) ~ u(t, 0)],
         domains, [t, x], [u(t, x)], [], t
     )
-    @test length(boundary_conditions(bmap2, SlotContext(v2), s, [[-s.G[1]]])[3]) == 1
+    @test length(boundary_conditions(bmap2, SlotContext(sys2, v2), s, [[-s.G[1]]])[3]) == 1
     p = only(per)
     @test p.master == BoxFace(Symbolics.unwrap(x), :lo) &&
         p.mirror == BoxFace(Symbolics.unwrap(x), :hi)
     @test p.field == 1 && p.shift == 2.0
 
+    # boundary data converts between key types
+    lo, hi = BoxFace(Symbolics.unwrap(x), :lo), BoxFace(Symbolics.unwrap(x), :hi)
+    anykey = PeriodicBC{Any}[]
+    push!(anykey, p)
+    @test only(anykey) isa PeriodicBC{Any} && only(anykey).mirror == hi && only(anykey).shift == 2.0
+    ess = EssentialBC{Any}[]
+    push!(ess, EssentialBC(lo, 1, Num(0)))
+    nat = NaturalBC{Any}[]
+    push!(nat, NaturalBC(hi, 1, Num(1)))
+    @test only(ess).piece == lo && only(nat).piece == hi
+
     bcs = [u(0, x) ~ 0, w(0, x) ~ 0, u(t, 0) ~ w(t, 2)]
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(u(t, x))), Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], bcs, domains,
         [t, x], [u(t, x), w(t, x)], [], t
     )
     s = StateSlots(2, 1, 0)
+    # a cross-face condition between two axes is not a periodic pair
+    s2d = StateSlots(1, 2, 0)
+    function crossface(bc)
+        sys2d, v2d, bmap2d = boxsetup(
+            [Dt(u(t, x, y)) ~ Dx(Dx(u(t, x, y))) + Differential(y)(Differential(y)(u(t, x, y)))],
+            [u(0, x, y) ~ 0, bc],
+            [t ∈ Interval(0.0, 1.0), x ∈ Interval(-1.0, 1.0), y ∈ Interval(-1.0, 1.0)], [t, x, y],
+            [u(t, x, y)], [], t
+        )
+        try
+            boundary_conditions(bmap2d, SlotContext(sys2d, v2d), s2d, [[-s2d.G[1], -s2d.G[2]]])
+            return ""
+        catch err
+            return sprint(showerror, err)
+        end
+    end
+    for bc in (u(t, -1, y) ~ u(t, x, 1), Differential(y)(u(t, -1, y)) ~ u(t, x, 1))
+        msg = crossface(bc)
+        @test occursin("on two faces", msg) && !occursin("translation", msg)
+    end
     @test_throws "must equate the same field" boundary_conditions(
-        bmap, SlotContext(v), s, [[-s.G[1]], [-s.G[2]]]
+        bmap, SlotContext(sys, v), s, [[-s.G[1]], [-s.G[2]]]
     )
 end
 
@@ -267,8 +298,8 @@ end
     Dt, Dx = Differential(t), Differential(x)
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)]
     bcs = [u(0, x) ~ 0, u(t, 0) ~ a[1], Dx(u(t, 1)) ~ a[2]]
-    v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [a], t)
-    ctx = SlotContext(v)
+    sys, v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [a], t)
+    ctx = SlotContext(sys, v)
     s = StateSlots(1, 1, length(ctx.params))
     ess, nat, _ = boundary_conditions(bmap, ctx, s, [[-s.G[1]]])
     @test symeq(only(ess).g, s.P[1])
@@ -308,8 +339,8 @@ end
     domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)]
     s = StateSlots(1, 1, 0)
     function classify(bcs)
-        v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
-        return boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]]; mass = [s.Ud[1]])
+        sys, v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
+        return boundary_conditions(bmap, SlotContext(sys, v), s, [[-s.G[1]]]; mass = [s.Ud[1]])
     end
     @test_throws "both give the natural condition of equation 1" classify(
         [u(0, x) ~ 0, Dx(u(t, 0)) ~ 1, Dx(u(t, 0)) ~ 2]
@@ -337,8 +368,8 @@ end
     domains = [x ∈ Interval(0.0, 1.0)]
     s = StateSlots(1, 1, 0)
     function steady(bcs)
-        v, bmap = boxsetup([Dx(Dx(u(x))) ~ 0], bcs, domains, [x], [u(x)], [], nothing)
-        return boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]]; mass = [Num(0)])
+        sys, v, bmap = boxsetup([Dx(Dx(u(x))) ~ 0], bcs, domains, [x], [u(x)], [], nothing)
+        return boundary_conditions(bmap, SlotContext(sys, v), s, [[-s.G[1]]]; mass = [Num(0)])
     end
     @test_throws "impose both an essential and a natural condition on field 1" steady(
         [u(0) ~ 0, Dx(u(0)) ~ 1]
@@ -349,12 +380,12 @@ end
     @test_throws "field 1 is periodic" steady([u(0) ~ u(1), Dx(u(0)) ~ 1])
     # two fields with no time derivatives: the pairing is ambiguous, so the check is skipped
     s2 = StateSlots(2, 1, 0)
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dx(Dx(u(x))) ~ 0, Dx(Dx(w(x))) ~ 0], [u(0) ~ 0, Dx(u(0)) ~ 1, w(1) ~ 0], domains,
         [x], [u(x), w(x)], [], nothing
     )
     ess, nat, _ = boundary_conditions(
-        bmap, SlotContext(v), s2, [[-s2.G[1]], [-s2.G[2]]]; mass = [Num(0), Num(0)]
+        bmap, SlotContext(sys, v), s2, [[-s2.G[1]], [-s2.G[2]]]; mass = [Num(0), Num(0)]
     )
     @test length(ess) == 2 && length(nat) == 1
 end
@@ -367,8 +398,8 @@ end
     s = StateSlots(1, 1, 0)
     # flux of Dt(u) ~ Dx(x * Dx(u))
     function classify(bcs)
-        v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(x * Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
-        return boundary_conditions(bmap, SlotContext(v), s, [[-s.X[1] * s.G[1]]]; mass = [s.Ud[1]])
+        sys, v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(x * Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
+        return boundary_conditions(bmap, SlotContext(sys, v), s, [[-s.X[1] * s.G[1]]]; mass = [s.Ud[1]])
     end
     ess, nat, _ = classify([u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 0, u(t, 1) ~ 0])
     @test only(nat).piece == BoxFace(Symbolics.unwrap(x), :lo) && symeq(only(nat).Φ, 0)
@@ -377,20 +408,20 @@ end
         [u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 1]
     )
     # codex: with constant diffusion the facet flux does not vanish, so x Dx(u) ~ 0 imposes nothing
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], [u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 0], domains, [t, x],
         [u(t, x)], [], t
     )
     @test_throws "reduces to 0 ~ 0 on the face and imposes nothing there" boundary_conditions(
-        bmap, SlotContext(v), s, [[-s.G[1]]]; mass = [s.Ud[1]]
+        bmap, SlotContext(sys, v), s, [[-s.G[1]]]; mass = [s.Ud[1]]
     )
     # codex: Dt(u) ~ Dx(Dx(x u)) has facet flux U at x = 0, which no natural condition prescribes
-    v, bmap = boxsetup(
+    sys, v, bmap = boxsetup(
         [Dt(u(t, x)) ~ Dx(Dx(x * u(t, x)))], [u(0, x) ~ 0, Dx(u(t, 0)) ~ 0], domains, [t, x],
         [u(t, x)], [], t
     )
     @test_throws "conormal gradient coefficients of equation 1 vanish" boundary_conditions(
-        bmap, SlotContext(v), s, [[-s.X[1] * s.G[1] - s.U[1]]]; mass = [s.Ud[1]]
+        bmap, SlotContext(sys, v), s, [[-s.X[1] * s.G[1] - s.U[1]]]; mass = [s.Ud[1]]
     )
 end
 

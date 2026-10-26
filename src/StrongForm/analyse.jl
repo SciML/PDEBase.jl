@@ -50,8 +50,8 @@ helper). Spatial boundary conditions in `boundarymap` are classified by
 and periodic conditions keyed by [`BoxFace`](@ref); initial conditions are skipped.
 """
 function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
-    ctx = SlotContext(v)
-    fields = depvars(v)
+    fields = declared_fields(pdesys, v)
+    ctx = SlotContext(pdesys, v; fields)
     nfields, dim = length(fields), length(ctx.sivs)
     slots = StateSlots(nfields, dim, length(ctx.params))
     allivs = ctx.t === nothing ? ctx.sivs : vcat(ctx.sivs, ctx.t)
@@ -76,7 +76,7 @@ function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
         push!(conormal, [Symbolics.derivative(Φ, g) for g in slots.G])
         foreach(check_evaluable, vcat(mass[end], flux[end], remainder[end], conormal[end]))
     end
-    essential, natural, periodic = boundary_conditions(boundarymap, ctx, slots, flux; mass)
+    essential, natural, periodic = boundary_conditions(boundarymap, ctx, slots, flux; mass, bcs = get_bcs(pdesys))
     isempty(corrected) || @warn "Integration by parts generated product-rule correction terms for equations $(join(corrected, ", ")), so their stiffness matrices are non-symmetric. Write them in divergence form, or pass `ibp = Dict(eq => Weighted(w))` or `Reject()`."
     return StrongFormAnalysis{BoxFace}(
         slots, nfields, dim, strong, mass, flux, remainder, conormal, essential, natural, periodic

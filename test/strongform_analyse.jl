@@ -28,7 +28,6 @@ function analysed(eqs, dvs, ivs; ibp = Dict(), kw...)
     return analyse(sys, v, Dict(); ibp), v
 end
 
-field(v, u) = findfirst(d -> isequal(operation(d), operation(Symbolics.unwrap(u))), depvars(v))
 same(a, b) = isequal(Symbolics.expand(Num(a) - Num(b)), Num(0))
 
 opaque_coefficient(x) = 1 + x^2
@@ -124,7 +123,7 @@ end
     ]
     an, v = analysed(eqs, [U, W], [t, x, y]; t, ps = [du, χ])
     s = an.slots
-    fu, fw = field(v, U), field(v, W)
+    fu, fw = 1, 2  # declared order
     gu, gw = s.G[(2fu - 1):(2fu)], s.G[(2fw - 1):(2fw)]
     @test an.nfields == 2
     @test all(same.(an.flux[1], -s.P[1] .* gu .- s.P[2] .* gw))
@@ -139,8 +138,8 @@ end
     @test same(an.remainder[2], -exp(-an.slots.T) * sin(an.slots.X[1]))
     an, v = analysed([Dt(U1) ~ W1, Dt(W1) ~ Dx(Dx(U1))], [U1, W1], [t, x]; t)
     s = an.slots
-    @test same(an.mass[1], s.Ud[field(v, U1)]) && same(an.mass[2], s.Ud[field(v, W1)])
-    @test same(only(an.flux[2]), -s.G[field(v, U1)])
+    @test same(an.mass[1], s.Ud[1]) && same(an.mass[2], s.Ud[2])
+    @test same(only(an.flux[2]), -s.G[1])
     @test all(e -> reconstruction_error(an, e) < 1.0e-12, 1:2)
 
     # Time-dependent coefficient D(t, x)Δu: a timedep flux and a product-rule correction
@@ -285,6 +284,26 @@ end
     @test_throws "is not differentiable" analysed([Dt(U1) ~ opaque_coefficient(x) * Dx(Dx(U1))], [U1], [t, x]; t)
 end
 
+@testset "Fields follow the declared order, not the order of discovery" begin
+    U1, W1 = u(t, x), w(t, x)
+    eqs = [Dt(W1) ~ Dx(Dx(W1)) + U1, Dt(U1) ~ Dx(2 * Dx(U1))]
+    an, v = analysed(eqs, [U1, W1], [t, x]; t)
+    @test isequal(operation.(Symbolics.unwrap.(depvars(v))), operation.(Symbolics.unwrap.([W1, U1])))
+    s = an.slots
+    @test same(an.mass[1], s.Ud[2]) && same(an.mass[2], s.Ud[1])
+    @test same(only(an.flux[1]), -s.G[2]) && same(only(an.flux[2]), -2s.G[1])
+    @test same(an.remainder[1], -s.U[1])
+    @test all(e -> reconstruction_error(an, e) < 1.0e-12, 1:2)
+
+    # Array variables keep their declared element order after flattening.
+    @variables (q(..))[1:2]
+    Q1, Q2 = q(t, x)[1], q(t, x)[2]
+    an, _ = analysed([Dt(Q2) ~ Dx(Dx(Q2)) + Q1, Dt(Q1) ~ Dx(Dx(Q1))], [q(t, x)], [t, x]; t)
+    s = an.slots
+    @test same(an.mass[1], s.Ud[2]) && same(an.remainder[1], -s.U[1])
+    @test all(e -> reconstruction_error(an, e) < 1.0e-12, 1:2)
+end
+
 @testset "Array parameters get one slot per element" begin
     U1 = u(t, x)
     @parameters ap[1:2]
@@ -309,7 +328,7 @@ function analysed_with_bcs(eqs, dvs, ivs, bcs; ibp = Dict(), kw...)
 end
 
 face(iv, side) = BoxFace(Symbolics.unwrap(iv), side)
-param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotContext(v).params)]
+param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotContext(nothing, v; fields = depvars(v)).params)]
 
 @testset "Boundary conditions through analyse" begin
     U1, W1 = u(t, x), w(t, x)
@@ -370,7 +389,7 @@ param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotCo
     eqs = [Dt(U1) ~ Dx(Dx(U1)), Dt(W1) ~ Dx(2 * Dx(W1)) + U1]
     bcs = [u(0.1, x) ~ 0, w(0.1, x) ~ 0, u(t, 0.1) ~ 0, Dx(w(t, 1.0)) ~ 1]
     an, v = analysed_with_bcs(eqs, [U1, W1], [t, x], bcs; t)
-    @test only(an.essential).field == field(v, U1) && only(an.essential).piece == face(x, :lo)
+    @test only(an.essential).field == 1 && only(an.essential).piece == face(x, :lo)
     nat = only(an.natural)
     @test nat.eq == 2 && nat.piece == face(x, :hi) && same(nat.Φ, -2)
     @test all(e -> reconstruction_error(an, e) < 1.0e-12, 1:2)
@@ -383,10 +402,18 @@ param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotCo
             [u(0.1, x) ~ 1, w(0.1, x) ~ 0, noflux, w(t, 0.1) ~ 0],
         )
         an, v = analysed_with_bcs(eqs, [U1, W1], [t, x], bcs; t)
-        @test only(an.essential).field == field(v, W1)
+        @test only(an.essential).field == 2
         nat = only(an.natural)
         @test nat.eq == 1 && nat.piece == face(x, :lo) && same(nat.Φ, 0)
     end
+
+    # outputs follow the order of the system's bcs, not the boundary map's
+    bcs = [
+        u(0.1, x, y) ~ 0, u(t, x, 1.0) ~ 1, u(t, 0.1, y) ~ 2, u(t, x, 0.1) ~ 3, u(t, 1.0, y) ~ 4,
+    ]
+    an, v = analysed_with_bcs([Dt(U) ~ Dx(Dx(U)) + Dy(Dy(U))], [U], [t, x, y], bcs; t)
+    @test [b.piece for b in an.essential] == [face(y, :hi), face(x, :lo), face(y, :lo), face(x, :hi)]
+    @test all(same.([b.g for b in an.essential], 1:4))
 
     # equation errors come before boundary errors
     @test_throws "third-order" analysed_with_bcs(

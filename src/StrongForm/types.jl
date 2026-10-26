@@ -109,7 +109,9 @@ The strong form of a PDE system in slot form ([`StateSlots`](@ref)). For equatio
 
 where `mass[e]` is the whole time-derivative part `Σ_f m_ef⋅Ud_f`, not a bare coefficient,
 so cross-field mass is representable. `conormal[e]` is `∂(flux[e]⋅N)/∂G`, field-major like
-`G`. Boundary data is keyed by the boundary key type `K`.
+`G`. Field `f` is the `f`-th declared dependent variable of the system (see
+[`declared_fields`](@ref)), whatever order the equations mention them in. Boundary data is
+keyed by the boundary key type `K`.
 
 `mass`, `flux`, `remainder` and `conormal` never hold an unevaluated derivative. `strong` may:
 the strong residual of `∂ₓ(a(x)⋅∂ₓu)` with `a` registered without a derivative rule holds
@@ -129,3 +131,10 @@ struct StrongFormAnalysis{K}
     natural::Vector{NaturalBC{K}}
     periodic::Vector{PeriodicBC{K}}
 end
+
+# Change the boundary-key type, e.g. so a `Vector{PeriodicBC{Any}}` accepts a
+# `PeriodicBC{BoxFace}`.
+Base.convert(::Type{EssentialBC{K}}, b::EssentialBC) where {K} = EssentialBC{K}(b.piece, b.field, b.g)
+Base.convert(::Type{NaturalBC{K}}, b::NaturalBC) where {K} = NaturalBC{K}(b.piece, b.eq, b.Φ)
+Base.convert(::Type{PeriodicBC{K}}, b::PeriodicBC) where {K} =
+    PeriodicBC{K, typeof(b.shift)}(b.master, b.mirror, b.field, b.shift)
