@@ -57,8 +57,8 @@ Equations are not paired with fields here. Boundary conditions are not analysed 
 boundary map holding any spatial condition is an error.
 """
 function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
-    ctx = SlotContext(v)
-    fields = depvars(v)
+    fields = declared_fields(pdesys, v)
+    ctx = SlotContext(pdesys, v; fields)
     nfields, dim = length(fields), length(ctx.sivs)
     slots = StateSlots(nfields, dim, length(ctx.params))
     allivs = ctx.t === nothing ? ctx.sivs : vcat(ctx.sivs, ctx.t)

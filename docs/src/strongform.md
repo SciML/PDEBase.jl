@@ -11,6 +11,7 @@ PDEBase.StrongForm.analyse
 PDEBase.StrongForm.StrongFormAnalysis
 PDEBase.StrongForm.StateSlots
 PDEBase.StrongForm.SlotContext
+PDEBase.StrongForm.declared_fields
 PDEBase.StrongForm.IBPPolicy
 PDEBase.StrongForm.ProductRule
 PDEBase.StrongForm.Weighted
