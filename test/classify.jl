@@ -71,6 +71,38 @@ loc(call) = location(v, classify_call(v, call)[2])
         @test occursin("at distance 0.25", msg)
         msg = errmsg(() -> classify_argument(v, uop, 3, 1.5))
         @test occursin("upper endpoint 2.0", msg)
+
+        function pmap(domain)
+            @named sys = PDESystem(
+                [Dt(p(t, x)) ~ Dx(Dx(p(t, x)))], [p(0, x) ~ 0], [t ∈ Interval(0.0, 1.0), x ∈ domain],
+                [t, x], [p(t, x)]
+            )
+            return VariableMap(sys, ClassifyDiscretization(t))
+        end
+        pop = operation(unwrap(p(t, x)))
+        face(pv, val) = classify_argument(pv, pop, 2, val)
+        X = unwrap(x)
+
+        # The tolerance is 8eps·max(width, |endpoint|) in the coarser precision.
+        @test face(pmap(Interval(0.0, π)), Float32(π)) == BoxFace(X, :hi)
+        @test face(pmap(Interval(0.0, 0.3)), 0.3f0) == BoxFace(X, :hi)
+        @test face(pmap(Interval(1.0e6, 1.0e6 + 1)), 1.0e6 + 1.0e-9) == BoxFace(X, :lo)
+        @test occursin("not on the boundary", errmsg(() -> face(pmap(Interval(1.0e6, 1.0e6 + 1)), 1.0e6 + 1.0e-6)))
+
+        # Infinite endpoints match only exactly, and finite quantities set the tolerance.
+        right = pmap(Interval(0.0, Inf))
+        @test face(right, Inf) == BoxFace(X, :hi)
+        @test face(right, 0.0) == BoxFace(X, :lo)
+        @test occursin("not on the boundary", errmsg(() -> face(right, 5.0)))
+        @test occursin("not on the boundary", errmsg(() -> face(right, -Inf)))
+        left = pmap(Interval(-Inf, 0.0))
+        @test face(left, -Inf) == BoxFace(X, :lo)
+        @test face(left, 0) == BoxFace(X, :hi)
+        @test occursin("not on the boundary", errmsg(() -> face(left, -3.0)))
+        whole = pmap(Interval(-Inf, Inf))
+        @test face(whole, -Inf) == BoxFace(X, :lo)
+        @test face(whole, Inf) == BoxFace(X, :hi)
+        @test occursin("not on the boundary", errmsg(() -> face(whole, 0.0)))
     end
 end
 
@@ -206,6 +238,30 @@ end
         @test occursin("mixes interior calls with traces", errmsg(() -> classify_condition(cv, q(t, 0) ~ q(t, x) + z(t))))
     end
 
+    @testset "variables living on a face" begin
+        @variables q(..) r(..)
+        @named onface = PDESystem(
+            [heat, Dt(q(t, y)) ~ Dy(Dy(q(t, y))), Dt(r(t, x)) ~ Dx(Dx(r(t, x)))],
+            [u(0, x, y) ~ 0, q(0, y) ~ 0, r(0, x) ~ 0], [(x, y) ∈ rect, t ∈ Interval(0.0, 1.0)],
+            [t, x, y], [u(t, x, y), q(t, y), r(t, x)]
+        )
+        fv = VariableMap(onface, ClassifyDiscretization(t))
+        X, Y = unwrap(x), unwrap(y)
+        @test classify_condition(fv, u(t, 0, y) ~ q(t, y)).locations == [BoxFace(X, :lo)]
+        @test classify_condition(fv, u(t, Γ_left) ~ q(t, y)).locations == [BoxFace(X, :lo)]
+        @test classify_condition(fv, Dx(u(t, 1, y)) ~ 2 * q(t, y)).locations == [BoxFace(X, :hi)]
+        @test classify_condition(fv, u(t, x, 0) ~ r(t, x)).locations == [BoxFace(Y, :lo)]
+        @test classify_condition(fv, NormalDerivative(Γ_left)(u(t, Γ_left) + q(t, y)) ~ 0).kind === :boundary
+        @test classify_condition(fv, u(t, 0, y) ~ u(t, 1, y) + q(t, y)).kind === :periodic
+        @test classify_condition(fv, q(0, y) ~ 0).kind === :initial
+        @test classify_condition(fv, q(t, 0) ~ 1).locations == [BoxFace(Y, :lo)]
+        # A face variable on the face it does not live on, or the interior of the face's variable.
+        @test occursin("mixes interior calls with traces", errmsg(() -> classify_condition(fv, u(t, 0, y) ~ r(t, x))))
+        @test occursin("mixes interior calls with traces", errmsg(() -> classify_condition(fv, u(t, 0, y) ~ u(t, x, y))))
+        @test occursin("not on Γ_left", errmsg(() -> classify_condition(fv, NormalDerivative(Γ_left)(u(t, Γ_left) + r(t, x)) ~ 0)))
+        @test occursin("every call is in the interior", errmsg(() -> classify_condition(fv, q(t, y) ~ 0)))
+    end
+
     @testset "traces under scalar factors inside Dn" begin
         Dn_left = NormalDerivative(Γ_left)
         @test class(Dn_left(2 * u(t, Γ_left)) ~ 0).locations == [BoxFace(unwrap(x), :lo)]
@@ -254,6 +310,10 @@ end
         @test boxface(bv, boundarypiece(Ω, :x3_lo)) == BoxFace(unwrap(z), :lo)
         @test boxface(bv, boundarypiece(Ω, :x3_hi)) == BoxFace(unwrap(z), :hi)
         @test classify_condition(bv, r(t, boundarypiece(Ω, :x3_hi)) ~ 0).locations == [BoxFace(unwrap(z), :hi)]
+        msg = errmsg(() -> boxface(bv, BoundaryPiece(Ω, :x5_lo)))
+        @test occursin("axis 5 of a 3-dimensional box", msg)
+        @test occursin(":x3_hi", msg)
+        @test boxface(bv, BoundaryPiece(Ω, :inlet)) === nothing
     end
 
     @testset "split pairings with another variable seen first" begin

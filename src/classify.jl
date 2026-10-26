@@ -72,6 +72,15 @@ function _float_interval(v, iv)
     return T, convert(T, lo), convert(T, hi)
 end
 
+# Whether `val` is the endpoint `e` of an interval of width `width`, to within `8ϵ` relative
+# to `max(width, |e|)`. Infinite endpoints match only exactly, and an infinite width falls
+# back to the magnitude of the finite endpoint.
+function _on_endpoint(val, e, width, ϵ)
+    isfinite(e) || return val == e
+    isfinite(val) || return false
+    return abs(val - e) <= 8 * ϵ * (isfinite(width) ? max(width, abs(e)) : abs(e))
+end
+
 """
     classify_argument(v::VariableMap, u_op, position::Int, arg) -> ArgumentClass
 
@@ -82,9 +91,11 @@ the `position`-th argument of its declared argument list `v.args[u_op]`.
     [`spatial_domain(v)`](@ref spatial_domain)) is a [`Piece`](@ref PDEBase.Piece).
   - A number or numeric constant is converted to the float type of the interval of the
     declared variable `iv`. It is a [`BoxFace`](@ref PDEBase.BoxFace) when it lies within
-    `8eps·width` of an endpoint, so `u(t, π)` on `Interval(0.0, π)` and `u(t, 0.1 + 0.2)` on
-    `Interval(0.0, 0.3)` are on the upper face. Any other number is an error naming the
-    nearest endpoint and the distance to it.
+    `8eps·max(width, |endpoint|)` of an endpoint, where `eps` is that of the coarser of the
+    interval's and the number's float types, so `u(t, π)` and `u(t, Float32(π))` on
+    `Interval(0.0, π)` and `u(t, 0.1 + 0.2)` on `Interval(0.0, 0.3)` are on the upper face.
+    An infinite endpoint matches only an infinite number of the same sign. Any other number
+    is an error naming the nearest endpoint and the distance to it.
   - The declared variable `iv` itself is [`Free`](@ref PDEBase.Free).
   - Anything else is an error that shows the declared argument list.
 """
@@ -110,9 +121,9 @@ function classify_argument(v::VariableMap, u_op, position::Int, arg)
         )
         T, lo, hi = _float_interval(v, iv)
         val = convert(T, arg)
-        tol = 8 * eps(T) * (hi - lo)
-        abs(val - lo) <= tol && return BoxFace(iv, :lo)
-        abs(val - hi) <= tol && return BoxFace(iv, :hi)
+        ϵ = arg isa AbstractFloat ? max(eps(T), T(eps(typeof(arg)))) : eps(T)
+        _on_endpoint(val, lo, hi - lo, ϵ) && return BoxFace(iv, :lo)
+        _on_endpoint(val, hi, hi - lo, ϵ) && return BoxFace(iv, :hi)
         near, side = abs(val - lo) <= abs(val - hi) ? (lo, "lower") : (hi, "upper")
         throw(
             ArgumentError(
@@ -247,6 +258,11 @@ Return the [`BoxFace`](@ref PDEBase.BoxFace) that `piece` is, when it is a face 
 declaration, as in `spatial_domain`: the spatial coordinates of a tuple pairing in tuple
 order, or the spatial interval pairings in the order of the domain list, never the order
 of `indvars(v)`.
+
+A piece is matched to a face by its name, as `boundarypieces` names the faces, so a
+user-built piece with a face's name and a custom geometry, such as part of that face,
+normalises to the whole face. A face name beyond the dimension of the box, as `:x5_lo` on
+a 3D box, is an `ArgumentError` that lists the valid names.
 """
 function boxface(v::VariableMap, piece::BoundaryPiece)
     Ω = spatial_domain(v)
@@ -258,7 +274,14 @@ function boxface(v::VariableMap, piece::BoundaryPiece)
         return nothing
     end
     axis, side = face
-    return BoxFace(_box_axes(v)[axis], side)
+    axes = _box_axes(v)
+    axis <= length(axes) || throw(
+        ArgumentError(
+            "$(piece) names axis $(axis) of a $(length(axes))-dimensional box; valid face names are " *
+                join(map(repr, _box_face_names(length(axes))), ", ")
+        )
+    )
+    return BoxFace(axes[axis], side)
 end
 
 """
@@ -301,31 +324,54 @@ struct ConditionClass
     locations::Vector{Any}
 end
 
+# An interior call of a variable declared with the arguments `args`. It is compatible with,
+# and adds no location to, a condition on box faces that fix variables it does not have, as
+# `q(t, y)` in `u(t, 0, y) ~ q(t, y)`.
+struct _FreeCall
+    args::Any
+end
+
+_compatible(c::_FreeCall, bound) =
+    !isempty(bound) && all(l -> l isa BoxFace && !any(a -> isequal(a, l.iv), c.args), bound)
+
+# The locations in `locs`, with the free calls compatible with the others dropped and the
+# rest replaced by `Interior()`.
+function _resolve_free_calls(locs)
+    bound = filter(l -> !(l isa _FreeCall), locs)
+    any(l -> l isa _FreeCall && !_compatible(l, bound), locs) && push!(bound, Interior())
+    return unique(bound)
+end
+
 # Locations of the dependent-variable calls in `ex`, checking that each normal derivative's
 # piece is the location of every trace it is applied to. A call of a variable with no
 # spatial arguments, such as an ODE variable `w(t)`, has no spatial location and
-# contributes none unless it fixes the time, as `w(0)`.
+# contributes none unless it fixes the time, as `w(0)`. Other interior calls are recorded
+# as `_FreeCall`s, resolved by `_resolve_free_calls`.
 function _call_locations!(locs, v, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return locs
     op = operation(ex)
     if haskey(v.args, op)
         loc = location(v, classify_call(v, ex)[2])
-        loc isa Interior && all(a -> isequal(a, v.time), v.args[op]) && return locs
+        if loc isa Interior
+            all(a -> isequal(a, v.time), v.args[op]) && return locs
+            loc = _FreeCall(v.args[op])
+        end
         push!(locs, loc)
         return locs
     elseif op isa NormalDerivative
         opface = location(v, [Piece(op.piece)])
-        arglocs = unique(_call_locations!(Any[], v, only(arguments(ex))))
-        isempty(arglocs) &&
+        inner = _call_locations!(Any[], v, only(arguments(ex)))
+        all(l -> l isa _FreeCall, inner) &&
             throw(ArgumentError("$(ex) takes a normal derivative of an expression with no trace on $(op.piece)"))
+        arglocs = _resolve_free_calls(push!(inner, opface))
         all(loc -> isequal(loc, opface), arglocs) || throw(
             ArgumentError(
                 "$(ex) takes the normal derivative on $(op.piece) of an expression located at " *
-                    "$(arglocs), which is not on $(op.piece); write the trace on the operator's piece"
+                    "$(filter(l -> !isequal(l, opface), arglocs)), which is not on $(op.piece); write the trace on the operator's piece"
             )
         )
-        append!(locs, arglocs)
+        push!(locs, opface)
         return locs
     end
     for arg in arguments(ex)
@@ -355,13 +401,16 @@ Classify the condition `eq` (an `Equation` or a `Pair`) by the set of
 
 A trace written with a piece that is a face of the box classifies like its endpoint form.
 A call of a variable with no spatial arguments, such as `w(t)`, has no location, so
-`u(t, 0) ~ w(t)` is a boundary condition; `w(0)` is on the lower time face. A
+`u(t, 0) ~ w(t)` is a boundary condition; `w(0)` is on the lower time face. Likewise an
+interior call of a variable that does not have the variables its condition's faces fix,
+as `q(t, y)` in `u(t, 0, y) ~ q(t, y)`, adds no location, while `u(t, 0, y) ~ u(t, x, y)`
+mixes an interior call with a trace. A
 `NormalDerivative(Γa)` applied to an expression whose traces are not all on `Γa` is an
 error.
 """
 function classify_condition(v::VariableMap, eq)
     lhs, rhs = _get_lhs_rhs(eq)
-    locs = unique(_call_locations!(_call_locations!(Any[], v, lhs), v, rhs))
+    locs = _resolve_free_calls(_call_locations!(_call_locations!(Any[], v, lhs), v, rhs))
     isempty(locs) && throw(ArgumentError("condition $(eq) has no call of a dependent variable"))
     any(loc -> loc isa Interior, locs) && throw(
         ArgumentError(
