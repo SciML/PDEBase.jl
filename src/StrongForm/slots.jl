@@ -73,6 +73,7 @@ function _slot_interior(ctx::SlotContext, ex, slots)
     if op isa Differential
         slot = _derivative_slot(ctx, ex, slots)
         slot === nothing || return slot
+        op = Differential(_slot_leaf(ctx, op.x, slots), op.order)
     else
         f = _interior_field(ctx, ex)
         f === nothing || return unwrap(slots.U[f])
@@ -81,11 +82,12 @@ function _slot_interior(ctx::SlotContext, ex, slots)
     return maketerm(typeof(ex), op, args, metadata(ex))
 end
 
-function _leftovers!(found, ex, slotset)
+function _leftovers!(found, ex, slotset, derivatives)
     if iscall(ex)
         op = operation(ex)
-        (op isa Differential || op isa SymbolicUtils.BasicSymbolic) && return push!(found, ex)
-        foreach(a -> _leftovers!(found, a, slotset), arguments(ex))
+        (op isa Differential && !derivatives || op isa SymbolicUtils.BasicSymbolic) &&
+            return push!(found, ex)
+        foreach(a -> _leftovers!(found, a, slotset, derivatives), arguments(ex))
     elseif SymbolicUtils.issym(ex) && !(ex in slotset)
         push!(found, ex)
     end
@@ -93,19 +95,46 @@ function _leftovers!(found, ex, slotset)
 end
 
 """
-    slot_volume(ctx::SlotContext, ex, slots::StateSlots) -> Num
+    slot_volume(ctx::SlotContext, ex, slots::StateSlots; derivatives = false) -> Num
 
 `ex` from a volume equation in slot form: derivatives are expanded, then interior fields become
 `U`, their derivatives `Ud`, `G` and `H`, coordinates `X`, time `T` and parameters `P`. Errors
-on any symbol left over, such as an unregistered coefficient or its derivative. Only for volume
+on any symbol left over, such as an unregistered coefficient. A derivative Symbolics cannot
+evaluate, such as that of a function registered without a derivative rule, is an error too,
+unless `derivatives = true`; it is then kept, in slot coordinates (`Differential(X₁)(a(X₁))`),
+and the result must pass [`check_evaluable`](@ref) before code generation. Only for volume
 equations: a boundary equation must not be derivative-expanded while it holds traces.
 """
-function slot_volume(ctx::SlotContext, ex, slots::StateSlots)
+function slot_volume(ctx::SlotContext, ex, slots::StateSlots; derivatives = false)
     ex = unwrap(Symbolics.expand_derivatives(Symbolics.wrap(ex)))
     out = _slot_interior(ctx, ex, slots)
     slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.Ud, slots.H, slots.X, [slots.T], slots.P)))
-    leftover = unique(_leftovers!(Any[], out, slotset))
+    leftover = unique(_leftovers!(Any[], out, slotset, derivatives))
     isempty(leftover) ||
         error("unresolved symbols $(Num.(leftover)) in $(Num(out)); register the derivative")
     return Num(out)
+end
+
+function _first_derivative(ex)
+    iscall(ex) || return nothing
+    operation(ex) isa Differential && return ex
+    for a in arguments(ex)
+        d = _first_derivative(a)
+        d === nothing || return d
+    end
+    return nothing
+end
+
+"""
+    check_evaluable(ex)
+
+Error if `ex` holds an unevaluated `Differential`, such as the derivative of a coefficient
+registered without a derivative rule; `build_function` would silently compile it to zero.
+Returns `nothing`. Call it on `StrongFormAnalysis.strong` before generating code from it.
+"""
+function check_evaluable(ex)
+    d = _first_derivative(unwrap(ex))
+    d === nothing ||
+        error("unevaluated derivative $(Num(d)) in $(Num(ex)); register the derivative of the coefficient before generating code")
+    return nothing
 end

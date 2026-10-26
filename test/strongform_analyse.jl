@@ -1,6 +1,6 @@
 using PDEBase
 using PDEBase.StrongForm
-using PDEBase.StrongForm: ProductRule, Reject, Weighted, split_divergence
+using PDEBase.StrongForm: ProductRule, Reject, Weighted, check_evaluable, split_divergence
 using IntervalSets: var".."
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs
 using Symbolics
@@ -29,6 +29,9 @@ end
 
 field(v, u) = findfirst(d -> isequal(operation(d), operation(Symbolics.unwrap(u))), depvars(v))
 same(a, b) = isequal(Symbolics.expand(Num(a) - Num(b)), Num(0))
+
+opaque_coefficient(x) = 1 + x^2
+@register_symbolic opaque_coefficient(x)
 
 @parameters k
 @variables t x y
@@ -261,6 +264,24 @@ end
 
     # Derivatives of constants are dropped when distributing.
     @test isequal(PDEBase.StrongForm.distribute_derivatives(Dx(U1 + 2)), Symbolics.unwrap(Dx(U1)))
+end
+
+@testset "Opaque coefficients in divergence form" begin
+    U1 = u(t, x)
+    an, _ = @test_logs analysed([Dt(U1) ~ Dx(opaque_coefficient(x) * Dx(U1))], [U1], [t, x]; t)
+    s = an.slots
+    @test same(only(an.flux[1]), -opaque_coefficient(s.X[1]) * s.G[1])
+    @test isequal(an.remainder[1], Num(0))
+    # The strong residual keeps the derivative of the opaque coefficient, in slot coordinates.
+    rebuilt = an.mass[1] + total_derivative(only(an.flux[1]), 1, s, 1) + an.remainder[1]
+    @test same(an.strong[1], rebuilt)
+    @test_throws r"unevaluated derivative Differential\(X₁, 1\)\(.*opaque_coefficient\(X₁\)\)" check_evaluable(
+        an.strong[1]
+    )
+    @test check_evaluable(only(an.flux[1])) === nothing
+    @test all(ex -> check_evaluable(ex) === nothing, vcat(an.mass, an.remainder, an.conormal...))
+    # In non-divergence form the product rule would need its derivative.
+    @test_throws "is not differentiable" analysed([Dt(U1) ~ opaque_coefficient(x) * Dx(Dx(U1))], [U1], [t, x]; t)
 end
 
 @testset "Array parameters get one slot per element" begin
