@@ -145,6 +145,33 @@ PDEBase.get_eqvar
 PDEBase.add_metadata!
 ```
 
+## Supported Conditions
+
+The [SciMLBase PDE interface](https://docs.sciml.ai/SciMLBase/dev/interfaces/PDE/)
+asks each discretizer package to document its supported geometries and its
+Dirichlet, Neumann, Robin, periodic, interface and other boundary-condition
+classes. `supported_conditions` gives that documentation one machine-readable
+place. PDEBase never calls it during discretization; it is for documentation and
+introspection, and unsupported input should still be rejected by
+`interface_errors` or `check_boundarymap`. The default declares nothing, which
+means unknown rather than unsupported.
+
+```julia
+PDEBase.supported_conditions(::MyDiscretization) = PDEBase.SupportedConditions(
+    geometries = (:box,), dirichlet = true, neumann = true, robin = true,
+    periodic = true, interface = true
+)
+```
+
+`show(stdout, MIME"text/markdown"(), PDEBase.supported_conditions(MyDiscretization()))`
+prints the declaration as a Markdown table that can be pasted into, or generated
+for, the discretizer's documentation.
+
+```@docs
+PDEBase.supported_conditions
+PDEBase.SupportedConditions
+```
+
 ## Solution Interface
 
 `solve` on the problem returned by `discretize` gives the user a solution expressed in the
