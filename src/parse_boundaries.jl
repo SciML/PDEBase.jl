@@ -667,29 +667,28 @@ end
 
 # The classifier's counterpart of the rules of `generate_boundary_matching_rules`, with the
 # same rule order: for each dependent variable `u` and each of its arguments `x`, a call
-# of `u` on the face of `x` matches with order `d` when it is the argument of
-# `Differential(x)^d` for `d ∈ reverse(orders[x])` (or of a `NormalDerivative` on that
-# face, for `d = 1`), then with order `d ∈ reverse(orders[t])` when it is the argument of
-# `Differential(t)` for a spatial `x`, and then with order 0 wherever it appears.
+# of `u` on the face of `x` matches with order `d` when its derivative order in `x` (see
+# `_face_order`) is `d ∈ reverse(orders[x])`, then with order `d ∈ reverse(orders[t])` when
+# it is the argument of `Differential(t)` for a spatial `x`, and then with order 0 wherever
+# it appears.
 function _face_matcher(v::VariableMap, orders)
     # Constructed as the rule dictionaries are, so that it iterates in their order.
     keyorder = Dict([operation(u) => Dict([x => nothing for x in all_ivs(u, v)]) for u in v.ū])
     candidates = [(op, x) for (op, xs) in keyorder for x in keys(xs)]
     return function (term, side)
-        calls = _calls_with_parents!(Tuple{Any, Any}[], term, nothing, v)
+        calls = _calls_with_parents!(Tuple{Any, Any}[], term, (), v)
         found = []
         for (op, x) in candidates
             face = BoxFace(x, side)
-            parents = [p for (p, call) in calls if isequal(operation(call), op) && isequal(_face_location(v, call), face)]
-            isempty(parents) && continue
+            chains = [c for (c, call) in calls if isequal(operation(call), op) && isequal(_face_location(v, call), face)]
+            isempty(chains) && continue
             u = _face_call(v, op, x, v.intervals[x][side === :lo ? 1 : 2])
             for d in reverse(orders[x])
-                any(p -> isequal(p, Differential(x)^d) || (d == 1 && _is_face_normal(v, p, face)), parents) &&
-                    push!(found, (u, x, d))
+                any(c -> _face_order(v, c, x, face) == d, chains) && push!(found, (u, x, d))
             end
             if v.time !== nothing && x !== v.time
                 for d in reverse(orders[v.time])
-                    any(p -> isequal(p, Differential(v.time)), parents) && push!(found, (u, x, d))
+                    any(c -> !isempty(c) && isequal(first(c), Differential(v.time)), chains) && push!(found, (u, x, d))
                 end
             end
             push!(found, (u, x, 0))
@@ -707,7 +706,7 @@ _face_call(v, op, x, val) = op(substitute.(v.args[op], (x => val,))...)
 function _snap_endpoints(bc, v::VariableMap)
     lhs, rhs = _get_lhs_rhs(bc)
     rules = Dict()
-    for (_, call) in _calls_with_parents!(_calls_with_parents!(Tuple{Any, Any}[], lhs, nothing, v), rhs, nothing, v)
+    for (_, call) in _calls_with_parents!(_calls_with_parents!(Tuple{Any, Any}[], lhs, (), v), rhs, (), v)
         any(_ispiece, arguments(call)) && continue
         face = _face_location(v, call)
         face isa BoxFace || continue
@@ -721,14 +720,39 @@ end
 
 _is_face_normal(v, op, face) = op isa NormalDerivative && isequal(location(v, [Piece(op.piece)]), face)
 
-# Every call of a dependent variable in `ex`, with the operation it is an argument of.
-function _calls_with_parents!(found, ex, parent, v)
+# The derivative order in `x` of a call on `face`, given the operations enclosing it,
+# innermost first. Without a normal derivative it is the order of the call's immediate
+# `Differential(x, d)`, as the substitution rules match `Differential(x)^d` applied to the
+# call, and 0 otherwise. A run of derivatives in `x` and normal derivatives on `face`
+# directly enclosing the call adds up, each normal derivative counting 1, as nested
+# `Differential(x)`s fold into one `Differential(x, d)` in the endpoint spelling.
+function _face_order(v, chain, x, face)
+    isempty(chain) && return 0
+    inx(op) = op isa Differential && isequal(op.x, x)
+    total, normal = 0, false
+    for op in chain
+        if inx(op)
+            total += op.order
+        elseif _is_face_normal(v, op, face)
+            total += 1
+            normal = true
+        else
+            break
+        end
+    end
+    normal && return total
+    return inx(first(chain)) ? first(chain).order : 0
+end
+
+# Every call of a dependent variable in `ex`, with the operations enclosing it, innermost
+# first.
+function _calls_with_parents!(found, ex, enclosing, v)
     ex = safe_unwrap(ex)
     iscall(ex) || return found
     op = operation(ex)
-    haskey(v.args, op) && push!(found, (parent, ex))
+    haskey(v.args, op) && push!(found, (enclosing, ex))
     for arg in arguments(ex)
-        _calls_with_parents!(found, arg, op, v)
+        _calls_with_parents!(found, arg, (op, enclosing...), v)
     end
     return found
 end
