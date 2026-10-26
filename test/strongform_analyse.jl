@@ -375,6 +375,19 @@ param_slot(an, v, p) = an.slots.P[findfirst(isequal(Symbolics.unwrap(p)), SlotCo
     @test nat.eq == 2 && nat.piece == face(x, :hi) && same(nat.Φ, -2)
     @test all(e -> reconstruction_error(an, e) < 1.0e-12, 1:2)
 
+    # Keller–Segel: no-flux on u and Dirichlet on w share a face, in either order
+    eqs = [Dt(U1) ~ Dx(Dx(U1) - U1 * Dx(W1)), Dt(W1) ~ Dx(Dx(W1)) + U1 - W1]
+    noflux = Dx(u(t, 0.1)) - u(t, 0.1) * Dx(w(t, 0.1)) ~ 0
+    for bcs in (
+            [u(0.1, x) ~ 1, w(0.1, x) ~ 0, w(t, 0.1) ~ 0, noflux],
+            [u(0.1, x) ~ 1, w(0.1, x) ~ 0, noflux, w(t, 0.1) ~ 0],
+        )
+        an, v = analysed_with_bcs(eqs, [U1, W1], [t, x], bcs; t)
+        @test only(an.essential).field == field(v, W1)
+        nat = only(an.natural)
+        @test nat.eq == 1 && nat.piece == face(x, :lo) && same(nat.Φ, 0)
+    end
+
     # equation errors come before boundary errors
     @test_throws "third-order" analysed_with_bcs(
         [Dt(U1) ~ Dx(Dx(Dx(U1)))], [U1], [t, x], [u(0.1, x) ~ 0, u(t, 0.1)^2 ~ 1]; t

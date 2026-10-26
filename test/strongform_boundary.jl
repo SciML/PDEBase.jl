@@ -195,6 +195,10 @@ end
     @test_throws "time derivative of a trace" slot_condition(Dt(u(t, 0)) ~ 0, lo, ctx, s)
     @test_throws "order 2" slot_condition(Dx(Dx(u(t, 0))) ~ 0, lo, ctx, s)
     @test_throws "nested derivative" slot_condition(Dx(Dt(u(t, 0))) ~ 0, lo, ctx, s)
+    @variables z
+    @test_throws "derivative in z, which is not an independent variable" slot_condition(
+        Differential(z)(u(t, 0)) ~ 0, lo, ctx, s
+    )
     @test_throws "derivative of an expression containing a trace" slot_condition(
         Dx(u(t, 0)^2) ~ 0, lo, ctx, s
     )
@@ -293,7 +297,7 @@ end
     s = StateSlots(1, 1, 0)
     function classify(bcs)
         v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
-        return boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]])
+        return boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]]; mass = [s.Ud[1]])
     end
     @test_throws "both give the natural condition of equation 1" classify(
         [u(0, x) ~ 0, Dx(u(t, 0)) ~ 1, Dx(u(t, 0)) ~ 2]
@@ -302,6 +306,13 @@ end
         [u(0, x) ~ 0, u(t, 0) ~ 1, Dx(u(t, 0)) ~ 2]
     )
     @test_throws "both fix field 1" classify([u(0, x) ~ 0, u(t, 0) ~ 1, u(t, 0) ~ 2])
+    # periodic faces take no other condition on the field
+    @test_throws "field 1 is periodic on BoxFace(x, :lo)" classify(
+        [u(0, x) ~ 0, u(t, 0) ~ u(t, 1), Dx(u(t, 0)) ~ 1]
+    )
+    @test_throws "field 1 is periodic on BoxFace(x, :hi)" classify(
+        [u(0, x) ~ 0, u(t, 0) ~ u(t, 1), u(t, 1) ~ 3]
+    )
     # one condition per face is fine
     ess, nat, _ = classify([u(0, x) ~ 0, u(t, 0) ~ 1, Dx(u(t, 1)) ~ 2])
     @test length(ess) == 1 && length(nat) == 1

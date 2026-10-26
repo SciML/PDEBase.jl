@@ -75,8 +75,11 @@ function _slot_operator(ctx::SlotContext, op::Differential, ex, face, slots)
     end
     _on_face(ctx, inner, f, face) || return ex
     d = findfirst(x -> isequal(x, op.x), ctx.sivs)
-    d === nothing &&
-        error("time derivative of a trace is not supported in a boundary condition: $(wrap(ex))")
+    if d === nothing
+        ctx.t !== nothing && isequal(op.x, ctx.t) &&
+            error("time derivative of a trace is not supported in a boundary condition: $(wrap(ex))")
+        error("derivative in $(op.x), which is not an independent variable of the system, in a boundary condition: $(wrap(ex))")
+    end
     op.order == 1 ||
         error("derivative of order $(op.order) in a boundary condition is not supported: $(wrap(ex))")
     return unwrap(slots.G[(f - 1) * length(ctx.sivs) + d])
@@ -287,32 +290,72 @@ function _route_on_face(B, flux, faceflux, face, n, slots, label)
     return route_natural(B, faceflux, n, slots; label)
 end
 
-_gradient_fields(B, slots, dim) =
-    [f for f in eachindex(slots.U) if _depends(B, slots.G[((f - 1) * dim + 1):(f * dim)])]
+"The field whose time derivative alone appears in `mass`, or `nothing`."
+function _own_field(mass, slots)
+    owned = [f for f in eachindex(slots.Ud) if _depends(mass, [slots.Ud[f]])]
+    return length(owned) == 1 ? only(owned) : nothing
+end
+
+# Conflicts between the classified conditions, each given with its label. An equation's own
+# field is decided by `_own_field`; an equation without one (an algebraic row) is not checked
+# against essential or periodic conditions, since the discretizer owns its pairing.
+function _check_conflicts(essential, natural, periodic, labels, owner)
+    conflict(i, j, what) = error("boundary conditions $(labels[i]) and $(labels[j]) $what")
+    ess = [(b.piece, b.field) for b in essential]
+    nat = [(b.piece, b.eq) for b in natural]
+    offset = length(essential)
+    for i in eachindex(ess), j in (i + 1):length(ess)
+        ess[i] == ess[j] && conflict(i, j, "both fix field $(ess[i][2])")
+    end
+    for i in eachindex(nat), j in (i + 1):length(nat)
+        nat[i] == nat[j] &&
+            conflict(offset + i, offset + j, "both give the natural condition of equation $(nat[i][2])")
+    end
+    for i in eachindex(ess), j in eachindex(nat)
+        ess[i][1] == nat[j][1] && owner[nat[j][2]] == ess[i][2] &&
+            conflict(i, offset + j, "impose both an essential and a natural condition on field $(ess[i][2])")
+    end
+    poffset = offset + length(natural)
+    for (k, p) in enumerate(periodic), face in (p.master, p.mirror)
+        for i in eachindex(ess)
+            ess[i] == (face, p.field) &&
+                conflict(poffset + k, i, "conflict: field $(p.field) is periodic on $face")
+        end
+        for j in eachindex(nat)
+            nat[j][1] == face && owner[nat[j][2]] == p.field &&
+                conflict(poffset + k, offset + j, "conflict: field $(p.field) is periodic on $face")
+        end
+    end
+    return nothing
+end
 
 """
-    boundary_conditions(boundarymap, ctx::SlotContext, slots, flux)
+    boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = nothing)
         -> (essential, natural, periodic)
 
 Classify every spatial boundary condition of a `parse_bcs` boundary map. A gradient-free
 condition is essential for the field `parse_bcs` filed it under; any other is routed to the
-equation whose conormal flux it matches. `flux[e]` is equation `e`'s flux vector in slots.
+equation whose conormal flux it matches. `flux[e]` is equation `e`'s flux vector and `mass[e]`
+its time-derivative part, in slots.
+
 Errors if two conditions fix the same field, or give the same equation's natural condition, on
-one face, or if one face has both an essential and a natural condition on the same field.
+one face. With `mass`, an equation's own field is the one whose time derivative alone it
+contains; then it is also an error to give a face both an essential condition on a field and a
+natural condition for that field's equation, or to give either kind of condition on a face of a
+field's periodic pair.
 """
-function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux)
+function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = nothing)
     essential = EssentialBC{BoxFace}[]
     natural = NaturalBC{BoxFace}[]
     periodic = PeriodicBC{BoxFace}[]
-    dim = length(ctx.sivs)
-    fixed = Dict{Tuple{BoxFace, Int}, String}()        # (face, field) => essential condition
-    fluxed = Dict{Tuple{BoxFace, Int}, String}()       # (face, eq) => natural condition
-    graded = Dict{Tuple{BoxFace, Int}, String}()       # (face, field) => natural condition
+    esslabels, natlabels, perlabels = String[], String[], String[]
     for (op, bykey) in boundarymap, (x, bs) in bykey
         ctx.t !== nothing && isequal(x, ctx.t) && continue
         for b in bs
             if b isa InterfaceBoundary
-                isupper(b) || push!(periodic, periodic_condition(b, ctx))
+                isupper(b) && continue
+                push!(periodic, periodic_condition(b, ctx))
+                push!(perlabels, string(b.eq))
                 continue
             end
             b isa Union{LowerBoundary, UpperBoundary} ||
@@ -323,26 +366,17 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux)
             if _depends(B, slots.G)
                 faceflux = [restrict_to_face.(G, (face,), (ctx,), (slots,)) for G in flux]
                 e, Φ = _route_on_face(B, flux, faceflux, face, face_normal(face, ctx.sivs), slots, label)
-                haskey(fluxed, (face, e)) &&
-                    error("boundary conditions $(fluxed[(face, e)]) and $label both give the natural condition of equation $e")
-                fluxed[(face, e)] = label
-                for f in _gradient_fields(B, slots, dim)
-                    haskey(fixed, (face, f)) &&
-                        error("boundary conditions $(fixed[(face, f)]) and $label impose both an essential and a natural condition on field $f")
-                    graded[(face, f)] = label
-                end
                 push!(natural, NaturalBC(face, e, Φ))
+                push!(natlabels, label)
             else
                 f = findfirst(o -> isequal(o, op), ctx.ops)
                 f, g = essential_condition(B, slots; field = f, label)
-                haskey(fixed, (face, f)) &&
-                    error("boundary conditions $(fixed[(face, f)]) and $label both fix field $f")
-                haskey(graded, (face, f)) &&
-                    error("boundary conditions $(graded[(face, f)]) and $label impose both an essential and a natural condition on field $f")
-                fixed[(face, f)] = label
                 push!(essential, EssentialBC(face, f, g))
+                push!(esslabels, label)
             end
         end
     end
+    owner = mass === nothing ? fill(nothing, length(flux)) : [_own_field(m, slots) for m in mass]
+    _check_conflicts(essential, natural, periodic, vcat(esslabels, natlabels, perlabels), owner)
     return essential, natural, periodic
 end
