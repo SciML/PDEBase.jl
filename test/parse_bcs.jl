@@ -16,9 +16,10 @@ struct BoxBCDiscretization <: PDEBase.AbstractBoxDiscretization
 end
 PDEBase.get_time(disc::Union{GenericBCDiscretization, BoxBCDiscretization}) = disc.time
 
-# The steps `symbolic_discretize` runs before `parse_bcs`.
-function prepare(pdesys, disc)
-    pdesys = PDEBase.lower_boundaries(pdesys, disc)
+# The steps `symbolic_discretize` runs before `parse_bcs`. With `lower = false` the
+# `lower_boundaries` hook is skipped, so that traces reach `parse_bcs` as written.
+function prepare(pdesys, disc; lower = true)
+    lower && (pdesys = PDEBase.lower_boundaries(pdesys, disc))
     pdesys, _ = PDEBase.handle_complex(pdesys)
     PDEBase.cardinalize_eqs!(pdesys)
     pdesys, replaced = PDEBase.make_pdesys_compatible(pdesys)
@@ -225,9 +226,9 @@ end
         u(0, x, y) ~ 0, u(t, 0, y) ~ 0, Dx(u(t, 1, y)) ~ 0,
         -2Dy(u(t, x, 0)) ~ 1, Dy(u(t, x, 2)) ~ sin(t),
     ]
-    bcs, v, orders = prepare(heat2d(traced, rect_domains), BoxBCDiscretization(t))
+    bcs, v, orders = prepare(heat2d(traced, rect_domains), BoxBCDiscretization(t); lower = false)
     box = parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
-    bcs, v, orders = prepare(heat2d(endpoint, rect_domains), BoxBCDiscretization(t))
+    bcs, v, orders = prepare(heat2d(endpoint, rect_domains), BoxBCDiscretization(t); lower = false)
     # `eq` is the condition as written and `indvars` holds the trace's piece. A Robin
     # condition is left out: its `order` is that of whichever term of the sum comes first,
     # and the two spellings need not sort their terms alike.
@@ -246,16 +247,16 @@ end
         u(0, x, y) ~ 0, Dxx(u(t, 1, y)) ~ 0, -Dxx(u(t, 0, y)) ~ 0,
         Dyy(u(t, x, 2)) ~ 0, Dyy(u(t, x, 0)) ~ 0,
     ]
-    bcs, v, orders = prepare(heat2d(nested, rect_domains), BoxBCDiscretization(t))
+    bcs, v, orders = prepare(heat2d(nested, rect_domains), BoxBCDiscretization(t); lower = false)
     @test orders[unwrap(x)] == [2]
     box = parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
     uop = operation(unwrap(u(t, x, y)))
     @test [b.order for b in box[uop][unwrap(x)]] == [2, 2]
     @test [b.order for b in box[uop][unwrap(y)]] == [2, 2]
-    bcs, v, orders = prepare(heat2d(nested_endpoint, rect_domains), BoxBCDiscretization(t))
+    bcs, v, orders = prepare(heat2d(nested_endpoint, rect_domains), BoxBCDiscretization(t); lower = false)
     @test same_map(box, legacy_parse_bcs(bcs, v, orders); ordered = false, fields = (:u, :x, :depvars, :order))
 
     mismatched = [u(0, x, y) ~ 0, NormalDerivative(Γ_left)(u(t, Γ_right)) ~ 0]
-    bcs, v, orders = prepare(heat2d(mismatched, rect_domains), BoxBCDiscretization(t))
+    bcs, v, orders = prepare(heat2d(mismatched, rect_domains), BoxBCDiscretization(t); lower = false)
     @test_throws ArgumentError parse_bcs(bcs, v, orders, BoxBCDiscretization(t))
 end
