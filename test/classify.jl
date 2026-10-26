@@ -402,5 +402,13 @@ end
         @test d_orders(x, [Dn(Dx(u(t, Γ_left))) ~ 0], v) == [2]
         @test d_orders(Γ_left, [Dn(Dx(u(t, Γ_left))) ~ 0]) == [1]
         @test d_orders(y, [Dn(Dy(Dy(u(t, Γ_left)))) ~ 0], v) == [2]
+        # Normal derivatives count along each term, not summed across siblings.
+        @variables w2(..)
+        @test d_orders(Γ_left, [Dt(Dn(u(t, Γ_left)) + Dn(w2(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(Γ_left, [Dt(Dn(u(t, Γ_left))) ~ 0, Dt(Dn(w2(t, Γ_left))) ~ 0]) == [1]
+        @test d_orders(Γ_left, [Dx(Dn(u(t, Γ_left)) + Dn(Dn(u(t, Γ_left)))) ~ 0]) == [2, 1]
+        @test d_orders(x, [Dx(Dn(u(t, Γ_left)) + Dn(Dn(u(t, Γ_left)))) ~ 0], v) == [3, 2]
+        @test d_orders(x, [Dx(Dn(u(t, Γ_left)) + Dx(u(t, 0, y))) ~ 0], v) == [2]
+        @test d_orders(t, [Dt(Dn(u(t, Γ_left)) + Dt(u(t, Γ_left))) ~ 0]) == [2, 1]
     end
 end
