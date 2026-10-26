@@ -5,7 +5,8 @@ How the symbols of `pdesys` map to slots: field `f` is `fields[f]`, by default t
 dependent variable in the declared order of `pdesys` (see [`declared_fields`](@ref)), coordinate `X[d]` is
 `indvars(v)[d]`, `T` is the time and `P` holds the parameters in the order of `params`, each
 array parameter contributing its scalar elements in column-major order (`a[1], a[2], …`).
-`Pair` entries `p => default` stand for `p`.
+`Pair` entries `p => default` stand for `p`. Boundary traces are located with the classifier
+([`PDEBase.classify_call`](@ref), [`PDEBase.location`](@ref)) on `v`.
 """
 struct SlotContext
     ops::Vector{Any}
@@ -14,6 +15,7 @@ struct SlotContext
     t::Any
     params::Vector{Any}
     intervals::Any
+    v::VariableMap
 end
 function SlotContext(pdesys, v::VariableMap; fields = declared_fields(pdesys, v), params = v.ps)
     ps = Any[]
@@ -23,7 +25,7 @@ function SlotContext(pdesys, v::VariableMap; fields = declared_fields(pdesys, v)
             push!(ps, p)
     end
     ops = Any[operation(unwrap(u)) for u in fields]
-    return SlotContext(ops, v.args, collect(Any, indvars(v)), v.time, ps, v.intervals)
+    return SlotContext(ops, v.args, collect(Any, indvars(v)), v.time, ps, v.intervals, v)
 end
 
 """

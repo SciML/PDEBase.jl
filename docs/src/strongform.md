@@ -37,7 +37,6 @@ proportional to) or periodic. Traces are put into slots without ever being deriv
 `pair_equations` is the helper a discretizer uses to give each equation its test field.
 
 ```@docs
-PDEBase.StrongForm.BoxFace
 PDEBase.StrongForm.boundary_conditions
 PDEBase.StrongForm.slot_condition
 PDEBase.StrongForm.restrict_to_face

@@ -1,6 +1,7 @@
 using PDEBase
 using PDEBase.StrongForm
-using PDEBase.StrongForm: BoxFace, ProductRule, Reject, SlotContext, Weighted, check_evaluable,
+using PDEBase: BoxFace
+using PDEBase.StrongForm: ProductRule, Reject, SlotContext, Weighted, check_evaluable,
     split_divergence
 using IntervalSets: var".."
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs

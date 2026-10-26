@@ -47,7 +47,10 @@ Under [`Weighted`](@ref)`(w)` the whole analysis is of the weighted equation `wâ
 Equations are not paired with fields here ([`pair_equations`](@ref) is the discretizer's
 helper). Spatial boundary conditions in `boundarymap` are classified by
 [`boundary_conditions`](@ref) into essential, natural (matched against the slot-form fluxes)
-and periodic conditions keyed by [`BoxFace`](@ref); initial conditions are skipped.
+and periodic conditions keyed by `PDEBase.BoxFace` on a box face and by `BoundaryPiece` on any
+other piece; initial conditions are skipped. In place of the `parse_bcs` map, `boundarymap` may
+be a list of condition equations, such as `get_bcs(pdesys)`, which are located with the
+classifier; this is the form for traces on the pieces of a mesh boundary.
 """
 function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
     fields = declared_fields(pdesys, v)
@@ -78,7 +81,9 @@ function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
     end
     essential, natural, periodic = boundary_conditions(boundarymap, ctx, slots, flux; mass, bcs = get_bcs(pdesys))
     isempty(corrected) || @warn "Integration by parts generated product-rule correction terms for equations $(join(corrected, ", ")), so their stiffness matrices are non-symmetric. Write them in divergence form, or pass `ibp = Dict(eq => Weighted(w))` or `Reject()`."
-    return StrongFormAnalysis{BoxFace}(
+    return StrongFormAnalysis{_bc_key(essential)}(
         slots, nfields, dim, strong, mass, flux, remainder, conormal, essential, natural, periodic
     )
 end
+
+_bc_key(::AbstractVector{EssentialBC{K}}) where {K} = K
