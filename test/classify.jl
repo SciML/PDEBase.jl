@@ -217,6 +217,68 @@ end
     end
 end
 
+@testset "boxface follows the declared axis order" begin
+    @variables q(..)
+    disc = ClassifyDiscretization(t)
+    left(bv) = boundarypiece(spatial_domain(bv), :left)
+
+    @testset "space-time pairing" begin
+        @named st = PDESystem(
+            [heat], [u(0, x, y) ~ 0], [(t, x, y) ∈ DomainSets.ProductDomain(0.0 .. 1.0, 0.0 .. 1.0, 0.0 .. 2.0)],
+            [t, x, y], [u(t, x, y)]
+        )
+        sv = VariableMap(st, disc)
+        Γ = left(sv)
+        @test boxface(sv, Γ) == BoxFace(unwrap(x), :lo)
+        @test boxface(sv, boundarypiece(spatial_domain(sv), :top)) == BoxFace(unwrap(y), :hi)
+        @test location(sv, classify_call(sv, u(t, Γ))[2]) == BoxFace(unwrap(x), :lo)
+        @test isequal(location(sv, classify_call(sv, u(t, Γ))[2]), location(sv, classify_call(sv, u(t, 0, y))[2]))
+        bc = classify_condition(sv, u(t, Γ) ~ 0)
+        @test bc.kind === :boundary
+        @test bc.locations == [BoxFace(unwrap(x), :lo)]
+        @test d_orders(x, [NormalDerivative(Γ)(u(t, Γ)) ~ 0], sv) == [1]
+        @test d_orders(t, [NormalDerivative(Γ)(u(t, Γ)) ~ 0], sv) == Int[]
+    end
+
+    @testset "rectangle and interval make a 3D box" begin
+        @parameters z
+        @variables r(..)
+        @named box3 = PDESystem(
+            [Dt(r(t, x, y, z)) ~ Dx(Dx(r(t, x, y, z)))], [r(0, x, y, z) ~ 0],
+            [(x, y) ∈ rect, z ∈ Interval(0.0, 3.0), t ∈ Interval(0.0, 1.0)], [t, x, y, z], [r(t, x, y, z)]
+        )
+        bv = VariableMap(box3, disc)
+        Ω = spatial_domain(bv)
+        @test boxface(bv, boundarypiece(Ω, :x1_lo)) == BoxFace(unwrap(x), :lo)
+        @test boxface(bv, boundarypiece(Ω, :x2_hi)) == BoxFace(unwrap(y), :hi)
+        @test boxface(bv, boundarypiece(Ω, :x3_lo)) == BoxFace(unwrap(z), :lo)
+        @test boxface(bv, boundarypiece(Ω, :x3_hi)) == BoxFace(unwrap(z), :hi)
+        @test classify_condition(bv, r(t, boundarypiece(Ω, :x3_hi)) ~ 0).locations == [BoxFace(unwrap(z), :hi)]
+    end
+
+    @testset "split pairings with another variable seen first" begin
+        @named split = PDESystem(
+            [Dt(q(t, y)) ~ Dy(Dy(q(t, y))), heat], [q(0, y) ~ 0, u(0, x, y) ~ 0],
+            [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0), y ∈ Interval(0.0, 2.0)], [t, x, y],
+            [q(t, y), u(t, x, y)]
+        )
+        pv = VariableMap(split, disc)
+        @test boxface(pv, left(pv)) == BoxFace(unwrap(x), :lo)
+        @test boxface(pv, boundarypiece(spatial_domain(pv), :bottom)) == BoxFace(unwrap(y), :lo)
+    end
+
+    @testset "swapped argument order on a tuple pairing" begin
+        swapped = Dt(u(t, y, x)) ~ Dx(Dx(u(t, y, x)))
+        @named sw = PDESystem(
+            [swapped], [u(0, y, x) ~ 0], [(x, y) ∈ rect, t ∈ Interval(0.0, 1.0)], [t, x, y], [u(t, y, x)]
+        )
+        wv = VariableMap(sw, disc)
+        @test boxface(wv, left(wv)) == BoxFace(unwrap(x), :lo)
+        @test classify_condition(wv, u(t, Γ_left) ~ 0).locations == classify_condition(wv, u(t, y, 0) ~ 0).locations
+        @test classify_condition(wv, u(t, Γ_bottom) ~ 0).locations == [BoxFace(unwrap(y), :lo)]
+    end
+end
+
 @testset "substitute_traces" begin
     k, α = 2, 3
     Dn = NormalDerivative(Γ_left)
