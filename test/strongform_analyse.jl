@@ -180,6 +180,17 @@ end
         @test_throws "is not differentiable; write the equation in divergence form" reject(Dt(U1) ~ rhs)
     end
     @test reject(Dt(U1) ~ Dx(jump * Dx(U1)))[1] isa StrongFormAnalysis
+    # The same holds for a mass coefficient.
+    @test_throws "is not differentiable" reject(Dx(jump) * Dt(U1) ~ Dx(Dx(U1)))
+    @test_throws "is not differentiable" reject(Dt(U1) + Dx(jump) * Dt(U1) ~ 0)
+    @test_throws r"^expression .* is not differentiable" reject(Dt(U1) ~ Dx(sign(U1)) + Dx(Dx(U1)))
+    # Continuous non-smooth coefficients still cannot take the product rule (M1).
+    @test_throws r"^coefficient .* is not differentiable" reject(Dt(U1) ~ abs(x - 0.5) * Dx(Dx(U1)))
+    # Continuous non-smooth fluxes of the state may be differentiated; correct almost everywhere.
+    for flux in (abs(U1), U1 * abs(U1), max(U1, 0)^2)
+        an, _ = @test_logs reject(Dt(U1) ~ Dx(flux) + Dx(Dx(U1)))
+        @test reconstruction_error(an, 1) < 1.0e-12
+    end
     is_piecewise = PDEBase.StrongForm.is_piecewise
     @test is_piecewise(Symbolics.unwrap(Symbolics.derivative(mod(x, 0.5), x)), Symbolics.unwrap(x))
     @test !is_piecewise(Symbolics.unwrap(Symbolics.derivative(sin(x) * ifelse(y < 0.5, 1, 2), x)), Symbolics.unwrap(x))

@@ -28,6 +28,6 @@ export analyse
 
 @public StateSlots, IBPPolicy, ProductRule, Weighted, Reject, EssentialBC, NaturalBC,
     PeriodicBC, StrongFormAnalysis, check_whitelist, split_time, split_divergence,
-    distribute_derivatives, NONSMOOTH_FUNCTIONS, SlotContext, slot_volume
+    distribute_derivatives, NONSMOOTH_FUNCTIONS, DISCONTINUOUS_FUNCTIONS, SlotContext, slot_volume
 
 end # module StrongForm
