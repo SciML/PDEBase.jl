@@ -62,18 +62,34 @@ catch e
     nothing
 end
 
+# The pieces of the traces and of the normal-derivative operators in `ex`.
+function _pieces!(pieces, ex)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return pieces
+    operation(ex) isa NormalDerivative && push!(pieces, operation(ex).piece)
+    for a in arguments(ex)
+        _ispiece(a) ? push!(pieces, unwrap_const(safe_unwrap(a))) : _pieces!(pieces, a)
+    end
+    return pieces
+end
+
+# The conditions holding a trace or a normal derivative, out of nested condition vectors.
+_trace_conditions(bc::Union{Equation, Pair}) = _has_trace(bc) ? Any[bc] : Any[]
+_trace_conditions(bcs::AbstractVector) = reduce(vcat, map(_trace_conditions, bcs); init = Any[])
+_trace_conditions(_) = Any[]
+
 # The time variable, when the caller gives none: the independent variable (or `nothing`)
-# whose removal makes the spatial domain the parent of every traced piece, as the classifier
-# sees it. Two candidates can fit the domain when intervals coincide, as `t` and `x` on
-# `Interval(0, 1)`; then the one under which every trace call classifies wins, and after that
-# the one declared by a pairing of its own.
-function _infer_time(pdesys, calls)
-    pieces = unique(unwrap_const(safe_unwrap(a)) for c in calls for a in arguments(c) if _ispiece(a))
+# whose removal makes the spatial domain the parent of every piece in the conditions, as the
+# classifier sees it. Two candidates can fit the domain when intervals coincide, as `t` and
+# `x` on `Interval(0, 1)`; then the one under which every condition classifies wins, and after
+# that the one declared by a pairing of its own.
+function _infer_time(pdesys, conds)
+    pieces = unique(foldl((ps, bc) -> foldl(_pieces!, _get_lhs_rhs(bc); init = ps), conds; init = Any[]))
     function fit(τ)
         v = _or_nothing(() -> VariableMap(pdesys, _BoxTime(τ)))
         Ω = v === nothing ? nothing : _or_nothing(() -> spatial_domain(v))
         Ω !== nothing && all(p -> isequal(parent(p), Ω), pieces) || return 0
-        return _or_nothing(() -> (foreach(c -> classify_call(v, c), calls); true)) === nothing ? 1 : 2
+        return _or_nothing(() -> (foreach(bc -> classify_condition(v, bc), conds); true)) === nothing ? 1 : 2
     end
     candidates = Any[nothing; map(safe_unwrap, get_ivs(pdesys))]
     scores = map(fit, candidates)
@@ -197,7 +213,7 @@ function to_box_bcs(pdesys::PDESystem; time = nothing)
     any(_has_trace, bcs) || return pdesys
     calls = _trace_calls!(Any[], bcs)
     _check_trace_types(calls)
-    time === nothing && (time = _infer_time(pdesys, calls))
+    time === nothing && (time = _infer_time(pdesys, _trace_conditions(bcs)))
     v = VariableMap(pdesys, _BoxTime(time))
     return PDESystem(
         get_eqs(pdesys), map(bc -> _lower_bc(v, bc), bcs), get_domain(pdesys), get_ivs(pdesys),

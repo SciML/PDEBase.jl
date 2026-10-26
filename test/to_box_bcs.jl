@@ -212,6 +212,12 @@ end
         [Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], [w(0, x) ~ 0, w(Γ_lo) ~ 0], [t ∈ line, x ∈ line], [t, x], [w(t, x)]
     )
     @test occursin("pass it as to_box_bcs(pdesys; time = t)", errmsg(() -> to_box_bcs(ambiguous)))
+    # A normal derivative of an endpoint-form operand carries the only piece; it decides.
+    @named dn_only = PDESystem(
+        [Dt(w(t, x)) ~ Dx(Dx(w(t, x)))], [w(0, x) ~ 0, NormalDerivative(Γ_lo)(w(t, 0)) ~ 0],
+        [t ∈ line, x ∈ line], [t, x], [w(t, x)]
+    )
+    @test bcs_equal(lowered_bcs(dn_only), [w(0, x) ~ 0, -Dx(w(t, 0)) ~ 0])
     @test occursin("trace is missing the time argument", errmsg(() -> to_box_bcs(ambiguous; time = t)))
 end
 
