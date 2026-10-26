@@ -150,6 +150,6 @@ end
         @test haskey(Base.Docs.meta(PDEBase.StrongForm), Base.Docs.Binding(PDEBase.StrongForm, name))
         isdefined(Base, :ispublic) && @test Base.ispublic(PDEBase.StrongForm, name)
     end
-    @test isempty(intersect(names(PDEBase), (:StrongForm, api...)))
+    @test !any(name -> Base.isexported(PDEBase, name), (:StrongForm, api...))
     @test [name for name in api if Base.isexported(PDEBase.StrongForm, name)] == [:analyse]
 end
