@@ -1,7 +1,7 @@
 using PDEBase, ModelingToolkit, Symbolics, SciMLBase, Test
 using DomainSets: Interval, Rectangle, (..)
 using PDEBase: BoxFace, PieceBoundary
-using PDEBase.StrongForm: analyse, StateSlots, SlotContext, StrongFormAnalysis, EssentialBC, PeriodicBC,
+using PDEBase.StrongForm: analyse, StateSlots, SlotContext, StrongFormAnalysis, EssentialBC, NaturalBC, PeriodicBC,
     boundary_conditions, slot_condition, restrict_to_face
 
 struct PieceBoxDisc <: PDEBase.AbstractBoxDiscretization
@@ -88,7 +88,7 @@ Dn(Γ) = NormalDerivative(Γ)
     @test length(an.natural) == 3 && all(b -> symeq(b.Φ, ref[face[b.piece]]), an.natural)
     @test only(an.essential).piece == Γb && symeq(only(an.essential).g, only(reference.essential).g)
 
-    ctx = SlotContext(v)
+    ctx = SlotContext(system(dxform), v)
     @test symeq(slot_condition(dnform[2], BoxFace(Symbolics.unwrap(x), :lo), ctx, s), -s.G[1] - P[2])
     @test symeq(slot_condition(dnform[2], Γl, ctx, s), -s.G[1] - P[2])
     # a box-face piece restricts its coordinate like its face
@@ -114,13 +114,13 @@ end
             e isa StopAfterAnalysis || rethrow()
         end
         bmap, v = disc.captured[]
-        return analyse(sys, v, bmap), v, bmap
+        return analyse(sys, v, bmap), v, bmap, sys
     end
     bcs = [
         u(0, x, y) ~ 0, u(t, inlet) ~ sin(t) * x, Dn(wall)(u(t, wall)) ~ h,
         k * Dn(outlet)(u(t, outlet)) + 2u(t, outlet) ~ 3,
     ]
-    an, v, bmap = meshanalyse(heat(k), bcs)
+    an, v, bmap, msys = meshanalyse(heat(k), bcs)
     @test only(bmap[operation(Symbolics.unwrap(u(t, x, y)))][wall]) isa PieceBoundary
     s = an.slots
     U, X, T, N, P = s.U[1], s.X, s.T, s.N, s.P
@@ -134,7 +134,7 @@ end
     @test symeq(nat[wall].Φ, -P[1] * P[2])
     # Robin: facet bilinear plus facet source
     @test symeq(nat[outlet].Φ, 2U - 3)
-    ctx = SlotContext(v)
+    ctx = SlotContext(msys, v)
     @test symeq(slot_condition(bcs[3], wall, ctx, s), N[1] * s.G[1] + N[2] * s.G[2] - P[2])
     @test isequal(restrict_to_face(X[1], wall, ctx, s), X[1])
 
@@ -192,11 +192,16 @@ end
         )
     )
     s = StateSlots(1, 2, 2)
-    ess, nat, per = boundary_conditions(bmap, SlotContext(v), s, [[-s.P[1] * s.G[1], -s.P[1] * s.G[2]]])
+    ess, nat, per = boundary_conditions(bmap, SlotContext(sys, v), s, [[-s.P[1] * s.G[1], -s.P[1] * s.G[2]]])
     K = Union{BoxFace, typeof(notch)}
     @test eltype(ess) == EssentialBC{K} && eltype(per) == PeriodicBC{K}
     @test only(ess).piece == BoxFace(Symbolics.unwrap(y), :lo)
     @test only(nat).piece == notch && symeq(only(nat).Φ, -s.P[1] * s.P[2])
     p = only(per)
     @test p.master == BoxFace(Symbolics.unwrap(x), :lo) && p.mirror == BoxFace(Symbolics.unwrap(x), :hi)
+    # conditions convert between key types, so outputs keyed by one key type join a mixed set
+    @test convert(EssentialBC{K}, EssentialBC(notch, 1, Num(0))) isa EssentialBC{K}
+    @test convert(NaturalBC{K}, NaturalBC(notch, 1, Num(0))).piece == notch
+    @test convert(PeriodicBC{K}, PeriodicBC(p.master, p.mirror, 1, 1.0)) isa PeriodicBC{K, Float64}
+    @test_throws MethodError convert(EssentialBC{BoxFace}, EssentialBC(notch, 1, Num(0)))
 end
