@@ -179,6 +179,10 @@ interface, a discretizer:
     `(sol::PDENoTimeSolution{T, N, S, D})(args...; dv = nothing)` for evaluation at
     arbitrary points, dispatching on its own `D` so that discretizers do not collide.
 
+```@docs
+PDEBase.make_pdesys_compatible
+```
+
 `make_pdesys_compatible` flattens array-valued dependent variables before discretization.
 Use `replaced_vars(v::VariableMap)` to translate between each generated scalar variable
 and the original indexed variable. Its dictionary maps flattened scalar variables to
