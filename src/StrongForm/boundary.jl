@@ -111,14 +111,17 @@ The residual `eq.lhs - eq.rhs` of a boundary condition on `face` in slot form: e
 endpoint value. Errors if a trace or any other unslotted symbol remains. Only trace-free
 subexpressions are derivative-expanded (spec §3.3 trap).
 """
-function slot_condition(eq::Equation, face, ctx::SlotContext, slots)
+slot_condition(eq::Equation, face, ctx::SlotContext, slots) =
+    restrict_to_face(_slot_unrestricted(eq, face, ctx, slots), face, ctx, slots)
+
+function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     B = _slot_substitute(ctx, unwrap(eq.lhs - eq.rhs), face, slots)
     _assert_no_trace(ctx, B, eq, face)
     slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.X, [slots.T], slots.N, slots.P)))
     leftover = unique(_leftovers!(Any[], B, slotset, false))
     isempty(leftover) ||
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $face; declare them as parameters or register the derivative")
-    return restrict_to_face(Num(B), face, ctx, slots)
+    return Num(B)
 end
 
 """
@@ -190,6 +193,17 @@ function _is_normal_derivative(B, n, slots)
     blocks = [aB[((f - 1) * dim + 1):(f * dim)] for f in eachindex(slots.U)]
     nonzero = filter(blk -> !all(_iszero, blk), blocks)
     return length(nonzero) == 1 && _numerically_proportional(only(nonzero), Num.(n))
+end
+
+# A condition written with a coefficient that vanishes on the face, such as r²∂ᵣu ~ 0 at r = 0:
+# it is homogeneous there, so it is the zero natural condition of the one equation whose volume
+# conormal it matches.
+function _route_vanishing(Bvolume, flux, n, slots, label)
+    matches = filter(e -> match_flux(_conormal_flux(flux[e], n), Bvolume, slots) !== nothing, eachindex(flux))
+    length(matches) == 1 && return only(matches)
+    isempty(matches) &&
+        error("boundary condition $label is not a conormal condition for any equation's flux; write the normal derivative")
+    return error("boundary condition $label is a conormal condition for the fluxes of equations $(matches[1]) and $(matches[2]); the routing is ambiguous")
 end
 
 _gradcoefs(ex, slots) = [Symbolics.derivative(ex, gi) for gi in slots.G]
@@ -290,15 +304,27 @@ function _route_on_face(B, flux, faceflux, face, n, slots, label)
     return route_natural(B, faceflux, n, slots; label)
 end
 
-"The field whose time derivative alone appears in `mass`, or `nothing`."
-function _own_field(mass, slots)
-    owned = [f for f in eachindex(slots.Ud) if _depends(mass, [slots.Ud[f]])]
-    return length(owned) == 1 ? only(owned) : nothing
+# Each equation's own field: the unique field whose time derivative its mass contains, then by
+# forced completion while exactly one equation and one field are left (a steady single-field
+# problem, or the last algebraic row). `nothing` where the pairing stays ambiguous.
+function _own_fields(mass, slots)
+    owner = Union{Int, Nothing}[]
+    for m in mass
+        owned = [f for f in eachindex(slots.Ud) if _depends(m, [slots.Ud[f]])]
+        push!(owner, length(owned) == 1 ? only(owned) : nothing)
+    end
+    while true
+        open_eqs = findall(isnothing, owner)
+        free = setdiff(eachindex(slots.U), filter(!isnothing, owner))
+        (length(open_eqs) == 1 && length(free) == 1) || break
+        owner[only(open_eqs)] = only(free)
+    end
+    return owner
 end
 
 # Conflicts between the classified conditions, each given with its label. An equation's own
-# field is decided by `_own_field`; an equation without one (an algebraic row) is not checked
-# against essential or periodic conditions, since the discretizer owns its pairing.
+# field is decided by `_own_fields`; an equation without one is not checked against essential
+# or periodic conditions, since the discretizer owns its pairing.
 function _check_conflicts(essential, natural, periodic, labels, owner)
     conflict(i, j, what) = error("boundary conditions $(labels[i]) and $(labels[j]) $what")
     ess = [(b.piece, b.field) for b in essential]
@@ -340,7 +366,9 @@ its time-derivative part, in slots.
 
 Errors if two conditions fix the same field, or give the same equation's natural condition, on
 one face. With `mass`, an equation's own field is the one whose time derivative alone it
-contains; then it is also an error to give a face both an essential condition on a field and a
+contains, or the one left over when a single equation and a single field remain unpaired (a
+steady single-field problem); where the pairing stays ambiguous these checks are skipped.
+Otherwise it is also an error to give a face both an essential condition on a field and a
 natural condition for that field's equation, or to give either kind of condition on a face of a
 field's periodic pair.
 """
@@ -354,16 +382,26 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = 
         for b in bs
             if b isa InterfaceBoundary
                 isupper(b) && continue
-                push!(periodic, periodic_condition(b, ctx))
+                p = periodic_condition(b, ctx)
+                any(q -> (q.master, q.mirror, q.field) == (p.master, p.mirror, p.field), periodic) &&
+                    continue
+                push!(periodic, p)
                 push!(perlabels, string(b.eq))
                 continue
             end
             b isa Union{LowerBoundary, UpperBoundary} ||
                 error("boundary condition $(b.eq) relates derivatives on two faces; only u(.., x_lo, ..) ~ u(.., x_hi, ..) periodic pairs are supported")
             face = boundary_face(b)
-            B = slot_condition(b.eq, face, ctx, slots)
+            Bvolume = _slot_unrestricted(b.eq, face, ctx, slots)
+            B = restrict_to_face(Bvolume, face, ctx, slots)
             label = "$(b.eq) on $face"
-            if _depends(B, slots.G)
+            if _depends(Bvolume, slots.G) && _iszero(B)
+                e = _route_vanishing(Bvolume, flux, face_normal(face, ctx.sivs), slots, label)
+                push!(natural, NaturalBC(face, e, Num(0)))
+                push!(natlabels, label)
+            elseif !_depends(B, vcat(slots.G, slots.U)) && !_iszero(B)
+                error("the condition $label reduces to a nonzero constant on the face and cannot be imposed")
+            elseif _depends(B, slots.G)
                 faceflux = [restrict_to_face.(G, (face,), (ctx,), (slots,)) for G in flux]
                 e, Φ = _route_on_face(B, flux, faceflux, face, face_normal(face, ctx.sivs), slots, label)
                 push!(natural, NaturalBC(face, e, Φ))
@@ -376,7 +414,7 @@ function boundary_conditions(boundarymap, ctx::SlotContext, slots, flux; mass = 
             end
         end
     end
-    owner = mass === nothing ? fill(nothing, length(flux)) : [_own_field(m, slots) for m in mass]
+    owner = mass === nothing ? fill(nothing, length(flux)) : _own_fields(mass, slots)
     _check_conflicts(essential, natural, periodic, vcat(esslabels, natlabels, perlabels), owner)
     return essential, natural, periodic
 end

@@ -234,6 +234,12 @@ end
     ess, nat, per = boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]])
     @test isempty(ess) && isempty(nat)
     @test length(per) == 1
+    # the same pair written twice, either way round, is one periodic condition
+    v2, bmap2 = boxsetup(
+        [Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], [u(0, x) ~ 0, u(t, 0) ~ u(t, 2), u(t, 2) ~ u(t, 0)],
+        domains, [t, x], [u(t, x)], [], t
+    )
+    @test length(boundary_conditions(bmap2, SlotContext(v2), s, [[-s.G[1]]])[3]) == 1
     p = only(per)
     @test p.master == BoxFace(Symbolics.unwrap(x), :lo) &&
         p.mirror == BoxFace(Symbolics.unwrap(x), :hi)
@@ -284,6 +290,8 @@ end
     nat = only(an.natural)
     @test nat.piece == BoxFace(Symbolics.unwrap(r), :lo) && nat.eq == 1 && symeq(nat.Φ, 0)
     @test only(an.essential).piece == BoxFace(Symbolics.unwrap(r), :hi)
+    an = weighted([u(0, r) ~ 1, r^2 * Dr(u(t, 0)) ~ 0, u(t, 1) ~ 0])
+    @test only(an.natural).piece == BoxFace(Symbolics.unwrap(r), :lo) && symeq(only(an.natural).Φ, 0)
     @test_throws "the conormal flux of equation 1 vanishes identically" weighted(
         [u(0, r) ~ 1, Dr(u(t, 0)) ~ 1, u(t, 1) ~ 0]
     )
@@ -316,6 +324,54 @@ end
     # one condition per face is fine
     ess, nat, _ = classify([u(0, x) ~ 0, u(t, 0) ~ 1, Dx(u(t, 1)) ~ 2])
     @test length(ess) == 1 && length(nat) == 1
+end
+
+@testset "steady systems: own fields by forced completion" begin
+    @parameters x
+    @variables u(..) w(..)
+    Dx = Differential(x)
+    domains = [x ∈ Interval(0.0, 1.0)]
+    s = StateSlots(1, 1, 0)
+    function steady(bcs)
+        v, bmap = boxsetup([Dx(Dx(u(x))) ~ 0], bcs, domains, [x], [u(x)], [], nothing)
+        return boundary_conditions(bmap, SlotContext(v), s, [[-s.G[1]]]; mass = [Num(0)])
+    end
+    @test_throws "impose both an essential and a natural condition on field 1" steady(
+        [u(0) ~ 0, Dx(u(0)) ~ 1]
+    )
+    @test_throws "impose both an essential and a natural condition on field 1" steady(
+        [u(0) ~ 0, Dx(u(0)) + u(0) ~ 1]
+    )
+    @test_throws "field 1 is periodic" steady([u(0) ~ u(1), Dx(u(0)) ~ 1])
+    # two fields with no time derivatives: the pairing is ambiguous, so the check is skipped
+    s2 = StateSlots(2, 1, 0)
+    v, bmap = boxsetup(
+        [Dx(Dx(u(x))) ~ 0, Dx(Dx(w(x))) ~ 0], [u(0) ~ 0, Dx(u(0)) ~ 1, w(1) ~ 0], domains,
+        [x], [u(x), w(x)], [], nothing
+    )
+    ess, nat, _ = boundary_conditions(
+        bmap, SlotContext(v), s2, [[-s2.G[1]], [-s2.G[2]]]; mass = [Num(0), Num(0)]
+    )
+    @test length(ess) == 2 && length(nat) == 1
+end
+
+@testset "coefficients vanishing on the face in the condition itself" begin
+    @parameters t x
+    @variables u(..)
+    Dt, Dx = Differential(t), Differential(x)
+    domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)]
+    s = StateSlots(1, 1, 0)
+    # flux of Dt(u) ~ Dx(x * Dx(u))
+    function classify(bcs)
+        v, bmap = boxsetup([Dt(u(t, x)) ~ Dx(x * Dx(u(t, x)))], bcs, domains, [t, x], [u(t, x)], [], t)
+        return boundary_conditions(bmap, SlotContext(v), s, [[-s.X[1] * s.G[1]]]; mass = [s.Ud[1]])
+    end
+    ess, nat, _ = classify([u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 0, u(t, 1) ~ 0])
+    @test only(nat).piece == BoxFace(Symbolics.unwrap(x), :lo) && symeq(only(nat).Φ, 0)
+    @test only(ess).piece == BoxFace(Symbolics.unwrap(x), :hi)
+    @test_throws "reduces to a nonzero constant on the face" classify(
+        [u(0, x) ~ 0, x * Dx(u(t, 0)) ~ 1]
+    )
 end
 
 @testset "pairing (spec §5.4)" begin
