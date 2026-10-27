@@ -100,3 +100,10 @@ end
         @test Base.ispublic(PDEBase, :StrongForm)
     end
 end
+
+@testset "parsed_boundary_map public API" begin
+    @test hasdocstring(PDEBase, :parsed_boundary_map)
+    if CAN_QUERY_PUBLIC
+        @test Base.ispublic(PDEBase, :parsed_boundary_map)
+    end
+end
