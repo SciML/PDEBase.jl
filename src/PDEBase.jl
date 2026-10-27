@@ -97,6 +97,7 @@ Concrete state is returned by `construct_disc_state` and is updated in place by
 """
 abstract type AbstractDiscretizationState end
 
+include("fallbacks.jl")
 include("symbolic_utils.jl")
 include("utils.jl")
 include("variable_map.jl")
@@ -117,6 +118,8 @@ export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMappi
 export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
     LowerBoundary, UpperBoundary, InterfaceBoundary,
     HigherOrderInterfaceBoundary
+
+export BoundaryPiece, boundarypiece, boundarypieces, NormalDerivative
 
 export get_time
 export count_differentials, differential_order, has_derivatives, find_derivative, d_orders,
