@@ -25,7 +25,7 @@ cardinalize_eqs!(pdesys)
 pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 ```
 
-**`lower_boundaries`**: Rewrites boundary conditions into the form the discretization consumes. The default returns the system unchanged.
+**`lower_boundaries`**: Rewrites boundary conditions into the form the discretization consumes. The default returns the system unchanged; for an `AbstractBoxDiscretization` it is `to_box_bcs`, which rewrites trace conditions on box faces into endpoint form.
 
 **`handle_complex`**: Splits complex-valued equations into real and imaginary parts.
 
