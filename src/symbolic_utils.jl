@@ -112,8 +112,13 @@ end
 
 """
     differential_order(eq, x)
+    differential_order(eq, x, v::VariableMap)
 
 Returns a set of all differential orders present in the equation with respect to variable `x`.
+
+A [`NormalDerivative`](@ref) is order 1 in the normal direction of its piece: when `x` is
+that [`BoundaryPiece`](@ref), and, given the variable map `v`, when the piece is the face
+of the box on which `x` is fixed (see [`boxface`](@ref PDEBase.boxface)).
 
 # Arguments
 - `eq`: A symbolic equation or expression to analyze
@@ -127,23 +132,60 @@ A set of integers representing all differential orders found in the equation (ex
 differential_order(Dx(Dx(u)) ~ 0, x) == Set([2])
 ```
 """
-function differential_order(eq, x)
+function differential_order(eq, x, v = nothing)
     orders = Set{Int}()
-    _differential_order!(orders, eq, x)
+    _differential_order!(orders, eq, x, v)
     return filter(!iszero, orders)
 end
 
 # Internal helper to avoid allocations from closures
-function _differential_order!(orders::Set{Int}, eq, x)
+function _differential_order!(orders::Set{Int}, eq, x, v = nothing)
     if iscall(eq)
         op = operation(eq)
-        if op isa Differential
+        if op isa NormalDerivative || (op isa Differential && _has_normal_derivative(eq))
+            _path_orders!(orders, eq, x, v, 0)
+        elseif op isa Differential
             push!(orders, count_differentials(eq, x))
         else
             for ch in arguments(eq)
-                _differential_order!(orders, ch, x)
+                _differential_order!(orders, ch, x, v)
             end
         end
+    end
+    return nothing
+end
+
+# A normal derivative is first order in the normal direction of its piece: under the piece
+# itself as the key, or, given a `VariableMap`, in the variable of the box face it is.
+function _normal_derivative_order(op, x, v)
+    x isa BoundaryPiece && return Int(isequal(op.piece, x))
+    v === nothing && return 0
+    face = boxface(v, op.piece)
+    return Int(face !== nothing && isequal(face.iv, x))
+end
+
+_has_normal_derivative(term) =
+    iscall(term) && (operation(term) isa NormalDerivative || any(_has_normal_derivative, arguments(term)))
+
+# The orders of `term` along each path from its root to a call of a dependent variable (a
+# call of a symbolic function, as `u(t, Γ)`): `acc` plus the `Differential` orders in `x` and
+# the matching normal derivatives on the path, so that sibling terms do not add up. Paths
+# ending at a number, a parameter or an independent variable record nothing, so a constant
+# factor inside a normal derivative does not add an order. Used only when `term` holds a
+# normal derivative; without one, `count_differentials` keeps the established results.
+function _path_orders!(orders::Set{Int}, term, x, v, acc::Int)
+    iscall(term) || return nothing
+    op = operation(term)
+    if op isa SymbolicUtils.BasicSymbolic
+        push!(orders, acc)
+        return nothing
+    elseif op isa Differential
+        acc += isequal(op.x, x) ? op.order : 0
+    elseif op isa NormalDerivative
+        acc += _normal_derivative_order(op, x, v)
+    end
+    for arg in arguments(term)
+        _path_orders!(orders, arg, x, v, acc)
     end
     return nothing
 end
