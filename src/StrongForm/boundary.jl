@@ -417,8 +417,9 @@ Classify every spatial boundary condition of a `parse_bcs` boundary map: the end
 a box discretization's map, keyed by their `PDEBase.BoxFace`, and the `PieceBoundary` entries
 of a mesh discretization's map, keyed by their `BoundaryPiece`; a mixed map gives a union key
 type. Each output vector lists its conditions in the order of `bcs`, the system's boundary
-conditions; without `bcs` the order is that of the boundary map. Which condition wins at a
-corner is the discretizer's choice. A gradient-free condition is essential for the field
+conditions, duplicates across distinct faces or pieces included and none ranked or dropped;
+without `bcs` the order is that of the boundary map. Which essential condition wins where
+faces or pieces meet is the discretizer's choice. A gradient-free condition is essential for the field
 `parse_bcs` filed it under; any other is routed to the equation whose conormal flux it matches,
 with the normal `±e_iv` on a box face (or on a piece that is a face of the box) and the
 symbolic normal slots `N` on any other piece. `flux[e]` is equation `e`'s flux vector and
