@@ -523,21 +523,24 @@ function generate_boundary_matching_rules(v, orders)
     return (lower, upper)
 end
 """
+    parse_bcs(bcs, v::VariableMap, orders, disc::AbstractDiscretization)
     parse_bcs(bcs, v::VariableMap, orders)
-    parse_bcs(bcs, v::VariableMap, orders, disc::AbstractEquationSystemDiscretization)
 
-Creates a map of boundaries for each variable to be used later when discretizing the boundary condition equations.
+Create the boundary map of a `PDESystem`'s boundary and initial conditions, used later when
+discretizing the boundary condition equations. Public but not exported, so call it as
+`PDEBase.parse_bcs`. `symbolic_discretize` calls the four-argument form; the three-argument
+form is kept for compatibility and equals the method for a plain
+`AbstractEquationSystemDiscretization`.
 
-The map is keyed `boundarymap[operation(u)][key]`. For an interval endpoint the key is the
-independent variable whose endpoint it is, and initial conditions are under the time
-variable. `orders[x]` lists the derivative orders in `x` that appear in `bcs`.
+The map is `boundarymap[operation(u)][key]`, a vector of boundary objects for each dependent
+variable `u`. `orders[x]` lists the derivative orders in `x` that appear in `bcs`. The
+four-argument form dispatches on the discretization family:
 
-The method for `disc` dispatches on the discretization family:
-
-  - `AbstractEquationSystemDiscretization` (the default): the same as the three-argument
-    form, which matches each condition by substituting interval endpoints.
-  - `AbstractBoxDiscretization`: the same boundary objects, found by classifying each call
-    of a dependent variable with [`classify_call`](@ref) and
+  - `AbstractEquationSystemDiscretization` (the default): matches each condition by
+    substituting interval endpoints. The key is the independent variable whose endpoint the
+    condition is on, and initial conditions are under the time variable.
+  - `AbstractBoxDiscretization`: the same keys and boundary objects as the default, found by
+    classifying each call of a dependent variable with [`classify_call`](@ref) and
     [`location`](@ref PDEBase.location). An endpoint within the tolerance of
     [`classify_argument`](@ref) counts as the endpoint, and a trace `u(t, Γ)` on a face of
     a box is the same face as its endpoint spelling.
