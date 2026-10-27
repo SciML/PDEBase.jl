@@ -57,6 +57,49 @@ The `PDESystem` supplied to the protocol is expected to satisfy these rules:
 in each dependent variable's argument signature. A discretizer should use the
 accessors rather than infer dimension order from a field layout.
 
+## [Using PDEBase without subtyping](@id no_subtype)
+
+Everything above is an opt-in convenience. SciMLBase's extension contract asks a
+discretizer package only to implement `SciMLBase.discretize(sys, discretizer, args...;
+kwargs...)` and, optionally, `SciMLBase.symbolic_discretize`; subtyping
+`SciMLBase.AbstractDiscretization` is an optional marker, not a requirement. The
+hierarchy of `AbstractEquationSystemDiscretization`, `AbstractBoxDiscretization` and
+`AbstractMeshDiscretization`, together with the default hooks and the shared
+`symbolic_discretize` driver that calls them, is for packages that want that driver.
+A package that owns its own algorithm hierarchy may instead extend `SciMLBase.discretize`
+on its own types and call the following functions directly. None of them takes a
+discretization object, so none requires a PDEBase or SciMLBase supertype:
+
+  - [`to_box_bcs`](@ref)`(pdesys; time)` rewrites trace conditions on the faces of an
+    interval or box into endpoint form. `lower_boundaries(pdesys, disc)` is the hook version
+    that the shared driver calls; for an `AbstractBoxDiscretization` it is `to_box_bcs` with
+    `get_time(disc)`.
+  - [`classify_argument`](@ref), [`classify_call`](@ref) and [`classify_condition`](@ref)
+    classify the arguments of a dependent-variable call and the kind of a condition from a
+    `VariableMap`; [`substitute_traces`](@ref) and [`assert_no_traces`](@ref) rewrite and
+    check traces.
+  - [`PDEBase.StrongForm.analyse`](@ref)`(pdesys, v, boundarymap; ibp)` analyses the strong
+    form of a preprocessed system given its `VariableMap` and boundary map.
+  - [`PDEBase.parse_bcs`](@ref)`(bcs, v, orders)` is the three-argument form that builds
+    the boundary map from a `VariableMap` and the derivative orders of
+    [`d_orders`](@ref); the four-argument forms that take a discretization select the box
+    or mesh behavior.
+  - [`PDEBase.supported_conditions`](@ref) is extended on your own type
+    (`PDEBase.supported_conditions(::MyAlgorithm) = SupportedConditions(...)`); it is only
+    documentation and is never called by PDEBase.
+  - [`PDEBase.differential_unknowns`](@ref), [`PDEBase.brown_init_offenders`](@ref),
+    [`PDEBase.dae_operating_point`](@ref) and [`PDEBase.time_derivative_order`](@ref) are
+    the DAE helpers; they take a system, unknowns and a time, not a discretization.
+
+`VariableMap(pdesys, disc)` only calls [`get_time`](@ref) on `disc`, so a plain struct with a
+`PDEBase.get_time` method serves as its second argument; `VariableMap(pdesys)` builds a map
+with no time variable. `test/no_subtype.jl` runs this path end to end.
+
+The one function in this family that does need the opt-in is
+[`PDEBase.parsed_boundary_map`](@ref): it is typed on `AbstractEquationSystemDiscretization`
+because it runs the shared driver's hooks (`lower_boundaries`, `interface_errors`,
+`check_boundarymap` and the four-argument `parse_bcs`) on that object.
+
 ## Abstract Types
 
 Discretizers should subtype one of the output categories and the supporting
