@@ -81,6 +81,17 @@ function apply_lhs_rhs(f, eqs)
     end
 end
 
+"""
+    make_pdesys_compatible(pdesys::PDESystem) -> (pdesys, replaced_vars)
+
+Flatten the array-valued dependent variables of `pdesys` into scalar variables, rewriting its
+equations, boundary conditions and unknowns. Returns the new system and a `Dict` mapping each
+flattened scalar variable to the original indexed variable, the `replaced_vars` that
+`VariableMap(pdesys, disc; replaced_vars)` records. Systems without array-valued dependent
+variables come back with an empty map. `symbolic_discretize` calls it before building the
+`VariableMap`; discretizers that run their own pipeline, such as one calling
+`StrongForm.analyse`, must too.
+"""
 function make_pdesys_compatible(pdesys::PDESystem)
     eqs = get_eqs(pdesys)
     bcs = get_bcs(pdesys)

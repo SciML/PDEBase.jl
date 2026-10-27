@@ -1,0 +1,156 @@
+"""
+    SlotContext(pdesys, v::VariableMap; fields = declared_fields(pdesys, v), params = v.ps)
+
+How the symbols of `pdesys` map to slots: field `f` is `fields[f]`, by default the `f`-th
+dependent variable in the declared order of `pdesys` (see [`declared_fields`](@ref)), coordinate `X[d]` is
+`indvars(v)[d]`, `T` is the time and `P` holds the parameters in the order of `params`, each
+array parameter contributing its scalar elements in column-major order (`a[1], a[2], …`).
+`Pair` entries `p => default` stand for `p`. Boundary traces are located with the classifier
+([`PDEBase.classify_call`](@ref), [`PDEBase.location`](@ref)) on `v`.
+"""
+struct SlotContext
+    ops::Vector{Any}
+    args::Any
+    sivs::Vector{Any}
+    t::Any
+    params::Vector{Any}
+    intervals::Any
+    v::VariableMap
+end
+function SlotContext(pdesys, v::VariableMap; fields = declared_fields(pdesys, v), params = v.ps)
+    ps = Any[]
+    for p in params
+        p = unwrap(p isa Pair ? p.first : p)
+        symtype(p) <: AbstractArray ? append!(ps, unwrap.(vec(collect(Symbolics.scalarize(p))))) :
+            push!(ps, p)
+    end
+    ops = Any[operation(unwrap(u)) for u in fields]
+    return SlotContext(ops, v.args, collect(Any, indvars(v)), v.time, ps, v.intervals, v)
+end
+
+"""
+    declared_fields(pdesys, v::VariableMap)
+
+The dependent variables of `v` in the order `pdesys` declares them, not the order in which
+`VariableMap` discovers them in the equations. `pdesys` must have been through
+`make_pdesys_compatible`, so that array variables are flattened the same way in both.
+"""
+function declared_fields(pdesys, v::VariableMap)
+    declared = [operation(unwrap(u)) for u in get_dvs(pdesys)]
+    position(u) = something(findfirst(isequal(operation(unwrap(u))), declared), typemax(Int))
+    return sort(collect(depvars(v)); by = position)
+end
+
+_field(ctx::SlotContext, ex) = iscall(ex) ? findfirst(op -> isequal(op, operation(ex)), ctx.ops) : nothing
+
+"Field index of `ex` if it is a field called at its declared (interior) arguments."
+function _interior_field(ctx::SlotContext, ex)
+    f = _field(ctx, ex)
+    f === nothing && return nothing
+    return isequal(collect(arguments(ex)), collect(ctx.args[ctx.ops[f]])) ? f : nothing
+end
+
+function _slot_leaf(ctx::SlotContext, ex, slots)
+    d = findfirst(x -> isequal(x, ex), ctx.sivs)
+    d === nothing || return unwrap(slots.X[d])
+    ctx.t !== nothing && isequal(ex, ctx.t) && return unwrap(slots.T)
+    j = findfirst(p -> isequal(p, ex), ctx.params)
+    j === nothing || return unwrap(slots.P[j])
+    return ex
+end
+
+hessian_index(f, d, e, dim) = ((f - 1) * dim + d - 1) * dim + e
+
+"Slot of a derivative of an interior field: `Ud`, `G` or `H`; `nothing` for anything else."
+function _derivative_slot(ctx::SlotContext, ex, slots)
+    op, inner, dim = operation(ex), only(arguments(ex)), length(ctx.sivs)
+    e = findfirst(isequal(op.x), ctx.sivs)
+    f = _interior_field(ctx, inner)
+    if f !== nothing
+        ctx.t !== nothing && isequal(op.x, ctx.t) && op.order == 1 && return unwrap(slots.Ud[f])
+        e === nothing && return nothing
+        op.order == 1 && return unwrap(slots.G[(f - 1) * dim + e])
+        op.order == 2 && return unwrap(slots.H[hessian_index(f, e, e, dim)])
+        return nothing
+    end
+    (e !== nothing && op.order == 1 && iscall(inner) && operation(inner) isa Differential) ||
+        return nothing
+    d = findfirst(isequal(operation(inner).x), ctx.sivs)
+    f = _interior_field(ctx, only(arguments(inner)))
+    (d === nothing || f === nothing || operation(inner).order != 1) && return nothing
+    return unwrap(slots.H[hessian_index(f, d, e, dim)])
+end
+
+function _slot_interior(ctx::SlotContext, ex, slots)
+    iscall(ex) || return _slot_leaf(ctx, ex, slots)
+    j = findfirst(p -> isequal(p, ex), ctx.params)
+    j === nothing || return unwrap(slots.P[j])
+    op = operation(ex)
+    if op isa Differential
+        slot = _derivative_slot(ctx, ex, slots)
+        slot === nothing || return slot
+        op = Differential(_slot_leaf(ctx, op.x, slots), op.order)
+    else
+        f = _interior_field(ctx, ex)
+        f === nothing || return unwrap(slots.U[f])
+    end
+    args = map(a -> _slot_interior(ctx, a, slots), arguments(ex))
+    return maketerm(typeof(ex), op, args, metadata(ex))
+end
+
+function _leftovers!(found, ex, slotset, derivatives)
+    if iscall(ex)
+        op = operation(ex)
+        (op isa Differential && !derivatives || op isa SymbolicUtils.BasicSymbolic) &&
+            return push!(found, ex)
+        foreach(a -> _leftovers!(found, a, slotset, derivatives), arguments(ex))
+    elseif SymbolicUtils.issym(ex) && !(ex in slotset)
+        push!(found, ex)
+    end
+    return found
+end
+
+"""
+    slot_volume(ctx::SlotContext, ex, slots::StateSlots; derivatives = false) -> Num
+
+`ex` from a volume equation in slot form: derivatives are expanded, then interior fields become
+`U`, their derivatives `Ud`, `G` and `H`, coordinates `X`, time `T` and parameters `P`. Errors
+on any symbol left over, such as an unregistered coefficient. A derivative Symbolics cannot
+evaluate, such as that of a function registered without a derivative rule, is an error too,
+unless `derivatives = true`; it is then kept, in slot coordinates (`Differential(X₁)(a(X₁))`),
+and the result must pass [`check_evaluable`](@ref) before code generation. Only for volume
+equations: a boundary equation must not be derivative-expanded while it holds traces.
+"""
+function slot_volume(ctx::SlotContext, ex, slots::StateSlots; derivatives = false)
+    ex = unwrap(Symbolics.expand_derivatives(Symbolics.wrap(ex)))
+    out = _slot_interior(ctx, ex, slots)
+    slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.Ud, slots.H, slots.X, [slots.T], slots.P)))
+    leftover = unique(_leftovers!(Any[], out, slotset, derivatives))
+    isempty(leftover) ||
+        error("unresolved symbols $(Num.(leftover)) in $(Num(out)); register the derivative")
+    return Num(out)
+end
+
+function _first_derivative(ex)
+    iscall(ex) || return nothing
+    operation(ex) isa Differential && return ex
+    for a in arguments(ex)
+        d = _first_derivative(a)
+        d === nothing || return d
+    end
+    return nothing
+end
+
+"""
+    check_evaluable(ex)
+
+Error if `ex` holds an unevaluated `Differential`, such as the derivative of a coefficient
+registered without a derivative rule; `build_function` would silently compile it to zero.
+Returns `nothing`. Call it on `StrongFormAnalysis.strong` before generating code from it.
+"""
+function check_evaluable(ex)
+    d = _first_derivative(unwrap(ex))
+    d === nothing ||
+        error("unevaluated derivative $(Num(d)) in $(Num(ex)); register the derivative of the coefficient before generating code")
+    return nothing
+end
