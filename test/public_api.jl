@@ -80,6 +80,8 @@ end
         :get_eqvar,
         :add_metadata!,
         :make_pdesys_compatible,
+        :supported_conditions,
+        :SupportedConditions,
     )
 
     for name in developer_api
