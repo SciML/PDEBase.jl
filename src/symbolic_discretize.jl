@@ -20,30 +20,49 @@ function cardinalize_eqs!(pdesys)
     return
 end
 
-function SciMLBase.symbolic_discretize(
+"""
+    parsed_boundary_map(pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true)
+
+Run the analysis half of `symbolic_discretize` without discretizing: `lower_boundaries`,
+complex splitting, cardinalization, `make_pdesys_compatible`, `VariableMap`,
+`interface_errors`, `parse_bcs` and `check_boundarymap`. Returns the named tuple
+`(; boundarymap, v, pdesys, complexmap)`, where `pdesys` is the lowered, compatible system the
+discretization hooks see, `v` its `VariableMap` and `boundarymap` the parsed boundary
+conditions (including initial conditions) of each variable; `complexmap` is the map
+`handle_complex` returns. The `pdesys` argument is not
+mutated. `symbolic_discretize` calls this function, so both see the same boundary map.
+
+`checks` is accepted for symmetry with `symbolic_discretize` and is not used by the
+analysis.
+"""
+function parsed_boundary_map(
         pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
     )
     pdesys = lower_boundaries(pdesys, discretization)
-    t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
     pdesys = cardinalize_eqs(pdesys)
     pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 
-    ############################
-    # System Parsing and Transformation
-    ############################
     # Parse the variables in to the right form and store useful information about the system
     v = VariableMap(pdesys, discretization, replaced_vars = replaced_vars)
     # Check for basic interface errors
     interface_errors(pdesys, v, discretization)
-    # Extract tspan
-    tspan = t !== nothing ? v.intervals[t] : nothing
     # Find the derivative orders in the bcs
     bcorders = Dict(map(x -> x => d_orders(x, get_bcs(pdesys), v), all_ivs(v)))
     # Create a map of each variable to their boundary conditions including initial conditions
     boundarymap = parse_bcs(get_bcs(pdesys), v, bcorders, discretization)
     # Check that the boundary map is valid
     check_boundarymap(boundarymap, v, discretization)
+    return (; boundarymap, v, pdesys, complexmap)
+end
+
+function SciMLBase.symbolic_discretize(
+        pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
+    )
+    t = get_time(discretization)
+    (; boundarymap, v, pdesys, complexmap) = parsed_boundary_map(pdesys, discretization; checks)
+    # Extract tspan
+    tspan = t !== nothing ? v.intervals[t] : nothing
 
     # Transform system so that it is compatible with the discretization
     if should_transform(pdesys, discretization, boundarymap)
