@@ -178,6 +178,6 @@ export to_box_bcs
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
-    add_metadata!, make_pdesys_compatible, StrongForm
+    add_metadata!, make_pdesys_compatible, StrongForm, supported_conditions, SupportedConditions
 
 end # module PDEBase
