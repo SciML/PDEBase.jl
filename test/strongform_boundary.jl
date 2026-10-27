@@ -1,6 +1,7 @@
 using PDEBase, ModelingToolkit, Symbolics, Test
 using DomainSets: Interval
-using PDEBase.StrongForm: analyse, Weighted, StateSlots, SlotContext, BoxFace, EssentialBC, NaturalBC, PeriodicBC,
+using PDEBase: BoxFace
+using PDEBase.StrongForm: analyse, Weighted, StateSlots, SlotContext, EssentialBC, NaturalBC, PeriodicBC,
     match_flux, slot_condition, route_natural, essential_condition, periodic_condition,
     boundary_conditions, pair_equations
 

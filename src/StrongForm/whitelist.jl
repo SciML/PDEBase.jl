@@ -37,9 +37,7 @@ function check_whitelist(ex, ivs, depvars)
     args = arguments(ex)
     if op isa Differential
         any(iv -> isequal(op.x, iv), unwrap.(ivs)) || unsupported(op)
-    elseif nameof(typeof(op)) === :NormalDerivative
-        # NormalDerivative is not in Symbolics yet; once it is, also check that the
-        # operator's piece is the trace's piece.
+    elseif op isa NormalDerivative
         iscall(only(args)) && is_state(only(args), depvars) || unsupported(op)
     elseif op isa Function
         op === ifelse || op === getindex || has_derivative_rules(op, args, a -> is_state(a, depvars)) || unsupported(op)
