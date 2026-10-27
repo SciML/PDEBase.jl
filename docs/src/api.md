@@ -174,6 +174,7 @@ For detailed documentation of interface functions, see [Developer Extension API]
 
 | Function | Purpose |
 |----------|---------|
+| `parsed_boundary_map` | Parse and check the boundary map without discretizing |
 | `lower_boundaries` | Rewrite boundary conditions for the discretizer |
 | `interface_errors` | Check PDESystem compatibility |
 | `check_boundarymap` | Validate boundary conditions |
@@ -243,3 +244,15 @@ For detailed documentation of interface functions, see [Developer Extension API]
 | `ex2term(term, v)` | Convert to term variable |
 | `safe_unwrap(x)` | Unwrap Num types |
 | `recursive_unwrap(ex)` | Recursively unwrap |
+
+## DAE Support
+
+Helpers for building a `DAEProblem` from a discretized system without `mtkcompile`.
+
+```@docs
+PDEBase.BrownFullBasicInitUnsafeError
+PDEBase.brown_init_offenders
+PDEBase.differential_unknowns
+PDEBase.dae_operating_point
+PDEBase.time_derivative_order
+```

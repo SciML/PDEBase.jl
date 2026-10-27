@@ -8,7 +8,7 @@ import Symbolics
 import SymbolicUtils
 using ModelingToolkitBase: PDESystem, ProblemTypeCtx, System, get_bcs, get_connector_type,
     get_domain, get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
-    get_systems, get_unknowns, mtkcompile
+    get_systems, get_unknowns, initialization_equations, mtkcompile
 using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
     ODEFunction, ODEProblem
@@ -135,6 +135,7 @@ include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
 include("StrongForm/StrongForm.jl")
+include("dae_support.jl")
 include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
@@ -171,13 +172,18 @@ export to_box_bcs
 # Syntactic boundary-condition classification.
 @public BCKind, Essential, Natural, Robin, bckind
 
+# Analysis half of `symbolic_discretize`, for tools that need the boundary map only.
+@public parsed_boundary_map
+
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
-@public lower_boundaries, interface_errors, check_boundarymap, should_transform,
+@public parse_bcs, lower_boundaries, interface_errors, check_boundarymap, should_transform,
     transform_pde_system!, split_ics_bcs,
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
-    add_metadata!, make_pdesys_compatible, StrongForm
+    add_metadata!, make_pdesys_compatible, StrongForm, supported_conditions, SupportedConditions,
+    BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
+    dae_operating_point, time_derivative_order
 
 end # module PDEBase

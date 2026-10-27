@@ -103,12 +103,24 @@ input. `should_transform` must be a pure decision for the supplied system;
 `transform_pde_system!` is called only when it returns `true` and must return the
 system consumed by later hooks.
 
+`parse_bcs` builds the boundary map that `check_boundarymap` and `split_ics_bcs` receive.
+Its four-argument form dispatches on the discretization family.
+
 ```@docs
+PDEBase.parse_bcs
 PDEBase.lower_boundaries
 PDEBase.interface_errors
 PDEBase.check_boundarymap
 PDEBase.should_transform
 PDEBase.transform_pde_system!
+```
+
+`parsed_boundary_map` runs the analysis steps above, up to and including
+`check_boundarymap`, without discretizing, for tools that only need the parsed boundary
+map. `symbolic_discretize` calls it.
+
+```@docs
+PDEBase.parsed_boundary_map
 ```
 
 ## Construction
@@ -154,6 +166,33 @@ PDEBase.get_discvars
 PDEBase.get_system_unknowns
 PDEBase.get_eqvar
 PDEBase.add_metadata!
+```
+
+## Supported Conditions
+
+The [SciMLBase PDE interface](https://docs.sciml.ai/SciMLBase/dev/interfaces/PDE/)
+asks each discretizer package to document its supported geometries and its
+Dirichlet, Neumann, Robin, periodic, interface and other boundary-condition
+classes. `supported_conditions` gives that documentation one machine-readable
+place. PDEBase never calls it during discretization; it is for documentation and
+introspection, and unsupported input should still be rejected by
+`interface_errors` or `check_boundarymap`. The default declares nothing, which
+means unknown rather than unsupported.
+
+```julia
+PDEBase.supported_conditions(::MyDiscretization) = PDEBase.SupportedConditions(
+    geometries = (:box,), dirichlet = true, neumann = true, robin = true,
+    periodic = true, interface = true
+)
+```
+
+`show(stdout, MIME"text/markdown"(), PDEBase.supported_conditions(MyDiscretization()))`
+prints the declaration as a Markdown table that can be pasted into, or generated
+for, the discretizer's documentation.
+
+```@docs
+PDEBase.supported_conditions
+PDEBase.SupportedConditions
 ```
 
 ## Solution Interface

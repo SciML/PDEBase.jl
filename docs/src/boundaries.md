@@ -204,7 +204,7 @@ all_boundaries = flatten_vardict(boundarymap)
 
 ## Parsing Boundary Conditions
 
-The `parse_bcs` function (internal) processes the raw boundary conditions from the PDESystem.
+The `parse_bcs` function (public, qualified as `PDEBase.parse_bcs`) processes the raw boundary conditions from the PDESystem.
 `symbolic_discretize` calls `parse_bcs(bcs, v, orders, discretization)`, which dispatches on
 the discretization family: an `AbstractBoxDiscretization` finds each condition's face by
 classifying its calls with `classify_call`, an `AbstractMeshDiscretization` builds a
