@@ -1,187 +1,72 @@
-# Domain Types for Unstructured Meshes
+# [Domains](@id domains)
 
-PDEBase.jl provides abstract types and interfaces for working with discretized domains (meshes) from various FEM/FVM/DG frameworks.
+A `MeshDomain` lets a `PDESystem` be posed on an unstructured mesh. PDEBase defines
+the type and a five-function interface; mesh backends (for example a Ferrite adapter)
+add the methods for their mesh type.
 
-## Overview
+The mesh carries no coordinate names. The domain pairing `(x, y) ∈ Ω` binds them:
+tuple position `i` names coordinate component `i` of the mesh, and `VariableMap`
+checks that the tuple has `meshdim(mesh)` entries. `spatial_domain(v)` returns the
+mesh domain (or, for analytic problems, the domain of the spatial coordinates).
 
-While `DomainSets.jl` provides analytical domain descriptions (intervals, products, set operations), many PDE solvers work with numerical meshes that may not have analytical descriptions. PDEBase provides types to bridge this gap.
-
-## Type Hierarchy
-
-```
-DomainSets.Domain{T}
-    AbstractDiscretizedDomain{T}
-        MeshDomain{T,M}
-```
-
-## Abstract Types
-
-### AbstractDiscretizedDomain
-
-```@docs
-PDEBase.AbstractDiscretizedDomain
+```julia
+Ω = MeshDomain(grid)
+domains = [(x, y) ∈ Ω, t ∈ Interval(0.0, 1.0)]
 ```
 
-## Concrete Types
+A tuple pairing on a `Rectangle` or another product of intervals also fills
+`v.intervals` per axis, so box discretizers accept `(x, y) ∈ Rectangle(...)`.
 
-### MeshDomain
+## Types
 
 ```@docs
 PDEBase.MeshDomain
+PDEBase.Region
+PDEBase.regions
+PDEBase.spatial_domain
 ```
 
-The `MeshDomain` type wraps mesh objects from external libraries and provides:
-- Storage for the underlying mesh
-- Named boundary region markers
-- A common interface for PDEBase operations
-
-### Example Usage
-
-```julia
-using PDEBase
-
-# Assume `grid` is a mesh object from an external library (Ferrite, Gridap, etc.)
-# Create a MeshDomain wrapper
-domain = MeshDomain(grid)
-
-# Mark boundary regions
-mark_boundary!(domain, "inlet", inlet_facets)
-mark_boundary!(domain, "outlet", outlet_facets)
-mark_boundary!(domain, "wall", wall_facets)
-
-# Access boundary markers
-markers = get_boundary_markers(domain)
-# markers["inlet"] => inlet_facets
-
-# Access the underlying mesh
-mesh = get_mesh(domain)
-```
-
-## Boundary Regions
-
-PDEBase provides types for referencing named boundary regions on domains.
-
-### BoundaryRegion
+## Backend interface
 
 ```@docs
-PDEBase.BoundaryRegion
+PDEBase.meshdim
+PDEBase.facetset_names
+PDEBase.cellset_names
+PDEBase.contains_point
+PDEBase.backend_mesh
 ```
 
-Use `BoundaryRegion` to reference named boundaries when specifying boundary conditions:
+## Boundary pieces and condition kinds
 
-```julia
-using PDEBase
-
-domain = MeshDomain(grid)
-mark_boundary!(domain, "left", left_faces)
-mark_boundary!(domain, "right", right_faces)
-
-# Create boundary region references
-left_boundary = BoundaryRegion(domain, "left")
-right_boundary = BoundaryRegion(domain, "right")
-
-# These can be used in boundary condition specifications
-# (syntax depends on downstream discretization package)
-```
-
-### ConditionalBoundary
+`boundarypiece(Ω, name)` returns the facet set `name` of the mesh as a `BoundaryPiece`
+with no geometry, `boundarypieces(Ω)` returns one per facet set, and
+`DomainSets.boundary(Ω)` is their `UnionDomain`. `PDEBase.bckind` classifies a
+condition on traces by its syntax.
 
 ```@docs
-PDEBase.ConditionalBoundary
+PDEBase.BCKind
+PDEBase.Essential
+PDEBase.Natural
+PDEBase.Robin
+PDEBase.bckind
 ```
 
-Use `ConditionalBoundary` when boundaries are defined by conditions rather than explicit markers:
+## Design notes
 
-```julia
-using PDEBase, Symbolics
-@parameters x y
+The mesh-domain types build on the proposal in
+[PDEBase.jl#61](https://github.com/SciML/PDEBase.jl/pull/61), whose domain wrapper,
+named boundary regions and discretization hierarchy shaped this design; its two commits
+are the base of this branch. The design here differs in three ways.
 
-# For analytical domains, select boundaries by condition
-domain = (x in Interval(0, 1)) * (y in Interval(0, 1))
-left_bc = ConditionalBoundary(domain, [x ~ 0])
-right_bc = ConditionalBoundary(domain, [x ~ 1])
-```
-
-## Interface Functions
-
-### Mesh Access
-
-```@docs
-PDEBase.get_mesh
-```
-
-### Boundary Markers
-
-```@docs
-PDEBase.get_boundary_markers
-PDEBase.mark_boundary!
-```
-
-### Boundary Region Access
-
-```@docs
-PDEBase.get_parent_domain
-PDEBase.get_boundary_name
-PDEBase.get_condition
-```
-
-## Integration with External Mesh Libraries
-
-### Ferrite.jl
-
-```julia
-using Ferrite, PDEBase
-
-# Create a Ferrite grid
-grid = generate_grid(Quadrilateral, (10, 10))
-
-# Wrap in MeshDomain
-domain = MeshDomain(grid)
-
-# Use Ferrite's face sets as boundary markers
-mark_boundary!(domain, "left", getfacetset(grid, "left"))
-mark_boundary!(domain, "right", getfacetset(grid, "right"))
-```
-
-### Gridap.jl
-
-```julia
-using Gridap, PDEBase
-
-# Create a Gridap model
-model = CartesianDiscreteModel((0,1,0,1), (10,10))
-
-# Wrap in MeshDomain
-domain = MeshDomain(model)
-
-# Use boundary tags
-mark_boundary!(domain, "boundary", "boundary")
-```
-
-### GMSH Import
-
-```julia
-using Gmsh, PDEBase
-
-# Load mesh from GMSH
-gmsh.initialize()
-gmsh.open("domain.msh")
-# ... extract mesh data ...
-
-# Wrap mesh with boundary markers from GMSH physical groups
-domain = MeshDomain(mesh_data)
-for (name, tag) in gmsh_physical_groups
-    mark_boundary!(domain, name, tag)
-end
-```
-
-## Design Notes
-
-The domain types in PDEBase are intentionally minimal and abstract. The philosophy is:
-
-1. **Framework-agnostic**: PDEBase doesn't depend on any specific mesh library
-2. **Type wrapper**: `MeshDomain` stores mesh objects opaquely; framework-specific packages interpret them
-3. **Named boundaries**: Support for named boundary regions enables clean BC specification
-4. **Extensible**: Downstream packages can subtype `AbstractDiscretizedDomain` for specialized needs
-
-For actual mesh operations (element iteration, DOF mapping, assembly), users should use the native APIs of their mesh library, accessed via `get_mesh()`.
+- Named facet sets and cell sets are read from the mesh through the interface
+  ([`PDEBase.facetset_names`](@ref), [`PDEBase.cellset_names`](@ref)), not stored as
+  markers on the domain. A mesh is the single source of truth for its sets, so a domain
+  cannot disagree with its mesh, and a backend that already builds sets from predicates
+  (for example Ferrite's `addfacetset!`) needs nothing more.
+- A named piece of the boundary is a [`BoundaryPiece`](@ref), a `DomainSets.Domain` that
+  can appear as an argument of a trace `u(t, Γ)`, so boundary conditions are written in
+  the same syntax on a box and on a mesh.
+- PDEBase makes no assumption about the discretization method. It does not assume a
+  weak form, a set of fields, a quadrature rule for each part of a weak form, an ansatz
+  for each field, or that the problem is linear. Those choices belong to the discretizer,
+  which reads the `PDESystem` and the mesh through the interface above.

@@ -7,10 +7,8 @@ pages = [
     ],
     "Types" => [
         "VariableMap" => "variablemap.md",
-        "Mesh Domains" => "mesh_domain.md",
+        "Domains" => "domains.md",
         "Boundary Conditions" => "boundaries.md",
-        "Domain Types" => "domains.md",
-        "Variational Methods" => "variational.md",
     ],
     "API Reference" => "api.md",
 ]
