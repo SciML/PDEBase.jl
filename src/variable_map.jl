@@ -160,6 +160,12 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
             intervals[x] = (DomainSets.infimum(axis), DomainSets.supremum(axis))
         end
     end
+    # A MeshDomain names no coordinates, so `(y, x) ∈ Ω` makes y mesh coordinate 1 whatever the
+    # argument order of the dependent variables is. Box systems keep the argument order.
+    spatial_axes = _declared_order(x̄, domain)
+    if any(p -> p.domain isa MeshDomain, domain)
+        x̄ = Any[spatial_axes; filter(x -> !any(a -> isequal(a, x), spatial_axes), x̄)]
+    end
     nspace = length(x̄)
     args = [operation(u) => arguments(u) for u in ū]
     x̄2dim = [x̄[i] => i for i in 1:nspace]
@@ -167,7 +173,7 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     return VariableMap(
         ū, x̄, ps, time, Dict(intervals), Dict(args),
         depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars, domains,
-        _declared_order(x̄, domain)
+        spatial_axes
     )
 end
 
