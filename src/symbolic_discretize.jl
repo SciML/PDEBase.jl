@@ -9,6 +9,7 @@ end
 function SciMLBase.symbolic_discretize(
         pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
     )
+    pdesys = lower_boundaries(pdesys, discretization)
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
     cardinalize_eqs!(pdesys)
@@ -24,9 +25,9 @@ function SciMLBase.symbolic_discretize(
     # Extract tspan
     tspan = t !== nothing ? v.intervals[t] : nothing
     # Find the derivative orders in the bcs
-    bcorders = Dict(map(x -> x => d_orders(x, get_bcs(pdesys)), all_ivs(v)))
+    bcorders = Dict(map(x -> x => d_orders(x, get_bcs(pdesys), v), all_ivs(v)))
     # Create a map of each variable to their boundary conditions including initial conditions
-    boundarymap = parse_bcs(get_bcs(pdesys), v, bcorders)
+    boundarymap = parse_bcs(get_bcs(pdesys), v, bcorders, discretization)
     # Check that the boundary map is valid
     check_boundarymap(boundarymap, v, discretization)
 
@@ -57,18 +58,7 @@ function SciMLBase.symbolic_discretize(
     derivweights = construct_differential_discretizer(pdesys, s, discretization, orders)
 
     # Separate bcs and ics
-    ics = t === nothing ? [] :
-        mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
-
-    bcmap = Dict(
-        map(collect(keys(boundarymap))) do u
-            u => Dict(
-                map(indvars(v)) do x
-                    x => boundarymap[u][x]
-                end
-            )
-        end
-    )
+    ics, bcmap = split_ics_bcs(boundarymap, v, discretization)
 
     ####
     # Loop over equations, Discretizing them and their dependent variables' boundary conditions

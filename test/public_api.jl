@@ -49,12 +49,21 @@ end
     end
 end
 
+@testset "Boundary types" begin
+    for name in (:LowerBoundary, :UpperBoundary, :InterfaceBoundary, :HigherOrderInterfaceBoundary, :PieceBoundary)
+        @test hasdocstring(PDEBase, name)
+        @test Base.isexported(PDEBase, name)
+    end
+end
+
 @testset "Developer extension API" begin
     developer_api = (
+        :lower_boundaries,
         :interface_errors,
         :check_boundarymap,
         :should_transform,
         :transform_pde_system!,
+        :split_ics_bcs,
         :construct_disc_state,
         :construct_discrete_space,
         :construct_var_equation_mapping,
