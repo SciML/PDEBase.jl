@@ -4,6 +4,7 @@ pages = [
     "Interface" => [
         "Developer Extension API" => "interface.md",
         "Discretization Workflow" => "workflow.md",
+        "Strong-Form Analysis" => "strongform.md",
     ],
     "Types" => [
         "VariableMap" => "variablemap.md",
