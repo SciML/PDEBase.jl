@@ -114,3 +114,26 @@ end
     )
     @test_throws ArgumentError SciMLBase.symbolic_discretize(endpoint, DummyMeshDiscretization(t, Ref{Any}(nothing)))
 end
+
+@testset "a MeshDomain pairing numbers the coordinates by tuple position" begin
+    swapped = [(y, x) ∈ Ω, t ∈ Interval(0.0, 1.0)]
+    eq = Dt(u(t, x, y)) ~ k * (Dx(Dx(u(t, x, y))) + Dy(Dy(u(t, x, y))))
+    @named pdesys = PDESystem([eq], Equation[], swapped, [t, x, y], [u(t, x, y)], [k])
+    v = VariableMap(pdesys, DummyMeshDiscretization(t, Ref{Any}(nothing)))
+    @test isequal(collect(indvars(v)), [y, x])
+    @test isequal(v.spatial_axes, [y, x])
+    ctx = PDEBase.StrongForm.SlotContext(pdesys, v)
+    @test isequal(ctx.sivs, [y, x])
+    @test findfirst(isequal(x), ctx.sivs) == 2
+
+    straight = [(x, y) ∈ Ω, t ∈ Interval(0.0, 1.0)]
+    @named pdesys2 = PDESystem([eq], Equation[], straight, [t, x, y], [u(t, x, y)], [k])
+    v2 = VariableMap(pdesys2, DummyMeshDiscretization(t, Ref{Any}(nothing)))
+    @test isequal(collect(indvars(v2)), [x, y])
+
+    box = [(y, x) ∈ DomainSets.ProductDomain(Interval(0.0, 1.0), Interval(0.0, 2.0)), t ∈ Interval(0.0, 1.0)]
+    @named pdesys3 = PDESystem([eq], Equation[], box, [t, x, y], [u(t, x, y)], [k])
+    v3 = VariableMap(pdesys3, DummyMeshDiscretization(t, Ref{Any}(nothing)))
+    @test isequal(collect(indvars(v3)), [x, y])
+    @test isequal(v3.spatial_axes, [y, x])
+end
