@@ -88,6 +88,23 @@ end
     ) === nothing
 end
 
+@testset "symbolic_discretize does not mutate the user's equations" begin
+    @parameters t x
+    @variables u(..)
+    Dt = Differential(t)
+    Dxx = Differential(x)^2
+    eq = Dt(u(t, x)) ~ Dxx(u(t, x))
+    bcs = [u(0, x) ~ sinpi(x), u(t, 0) ~ 0, u(t, 1) ~ 0]
+    pdesys = PDESystem(
+        [eq], bcs, [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [u(t, x)]; name = :heat
+    )
+    symbolic_discretize(pdesys, ResidualDiscretization())
+    @test isequal(only(pdesys.eqs), eq)
+    cardinal = PDEBase.cardinalize_eqs(pdesys)
+    @test isequal(only(pdesys.eqs), eq)
+    @test isequal(only(cardinal.eqs), eq.lhs - eq.rhs ~ 0)
+end
+
 @testset "Optimization-system replaced variable map" begin
     @parameters x
     @variables u(..)[1:2]
