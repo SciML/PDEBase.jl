@@ -111,6 +111,14 @@ PDEBase.should_transform
 PDEBase.transform_pde_system!
 ```
 
+`parsed_boundary_map` runs the analysis steps above, up to and including
+`check_boundarymap`, without discretizing, for tools that only need the parsed boundary
+map. `symbolic_discretize` calls it.
+
+```@docs
+PDEBase.parsed_boundary_map
+```
+
 ## Construction
 
 Construction hooks establish the values shared by every equation visit. The

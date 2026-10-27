@@ -174,6 +174,7 @@ For detailed documentation of interface functions, see [Developer Extension API]
 
 | Function | Purpose |
 |----------|---------|
+| `parsed_boundary_map` | Parse and check the boundary map without discretizing |
 | `lower_boundaries` | Rewrite boundary conditions for the discretizer |
 | `interface_errors` | Check PDESystem compatibility |
 | `check_boundarymap` | Validate boundary conditions |

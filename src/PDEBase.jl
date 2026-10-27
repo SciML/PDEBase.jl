@@ -171,6 +171,9 @@ export to_box_bcs
 # Syntactic boundary-condition classification.
 @public BCKind, Essential, Natural, Robin, bckind
 
+# Analysis half of `symbolic_discretize`, for tools that need the boundary map only.
+@public parsed_boundary_map
+
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
 @public lower_boundaries, interface_errors, check_boundarymap, should_transform,
