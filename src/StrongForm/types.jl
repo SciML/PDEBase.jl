@@ -111,7 +111,9 @@ where `mass[e]` is the whole time-derivative part `Σ_f m_ef⋅Ud_f`, not a bare
 so cross-field mass is representable. `conormal[e]` is `∂(flux[e]⋅N)/∂G`, field-major like
 `G`. Field `f` is the `f`-th declared dependent variable of the system (see
 [`declared_fields`](@ref)), whatever order the equations mention them in. Boundary data is
-keyed by the boundary key type `K`.
+keyed by the boundary key type `K`. `essential`, `natural` and `periodic` list their
+conditions in the order of the system's boundary conditions; the analysis ranks nothing, so
+which essential condition wins where faces meet is the discretizer's choice.
 
 `mass`, `flux`, `remainder` and `conormal` never hold an unevaluated derivative. `strong` may:
 the strong residual of `∂ₓ(a(x)⋅∂ₓu)` with `a` registered without a derivative rule holds
