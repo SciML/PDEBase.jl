@@ -103,7 +103,11 @@ input. `should_transform` must be a pure decision for the supplied system;
 `transform_pde_system!` is called only when it returns `true` and must return the
 system consumed by later hooks.
 
+`parse_bcs` builds the boundary map that `check_boundarymap` and `split_ics_bcs` receive.
+Its four-argument form dispatches on the discretization family.
+
 ```@docs
+PDEBase.parse_bcs
 PDEBase.lower_boundaries
 PDEBase.interface_errors
 PDEBase.check_boundarymap
