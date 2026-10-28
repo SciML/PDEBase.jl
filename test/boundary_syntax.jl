@@ -184,6 +184,12 @@ end
             @test isless(Γa, Γb) != isless(Γb, Γa)
             @test isless(Γa, Γc) != isless(Γc, Γa)
 
+            # mixed-type ordering, as older SymbolicUtils does via `typeof(a) < typeof(b)`
+            PT = typeof(Γa)
+            @test isless(Float64, PT) && !isless(PT, Float64)
+            @test isless(Int, PT) && !isless(PT, Int)
+            @test !isless(PT, PT)
+
             # regression: equal parents that print differently once broke transitivity
             pa = BoundaryPiece(DomainSets.Rectangle(0 .. 1, 0 .. 1), :wall)
             pb = BoundaryPiece(DomainSets.Rectangle(0.0 .. 1.0, 0.0 .. 1.0), :wall)
