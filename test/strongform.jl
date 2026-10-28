@@ -49,7 +49,7 @@ end
 
     @variables z
     integral = Integral(x in ClosedInterval(0, 1))
-    @test_throws "operator Integral(x, 0 .. 1) is not supported by the strong-form analysis" check_whitelist(
+    @test_throws r"operator Integral\(x, 0 ?\.\. ?1\) is not supported by the strong-form analysis" check_whitelist(
         Dt(U) - integral(U), ivs, dvs
     )
     @test_throws "operator Differential(z, 1) is not supported by the strong-form analysis" check_whitelist(
