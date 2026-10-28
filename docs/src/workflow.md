@@ -19,10 +19,13 @@ The `symbolic_discretize` function orchestrates the entire discretization proces
 ### Phase 1: Preprocessing
 
 ```julia
+pdesys = lower_boundaries(pdesys, discretization)
 pdesys, complexmap = handle_complex(pdesys)
 cardinalize_eqs!(pdesys)
 pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 ```
+
+**`lower_boundaries`**: Rewrites boundary conditions into the form the discretization consumes. The default returns the system unchanged.
 
 **`handle_complex`**: Splits complex-valued equations into real and imaginary parts.
 
@@ -111,16 +114,11 @@ derivweights = construct_differential_discretizer(pdesys, s, discretization, ord
 ### Phase 7: Initial Condition Processing
 
 ```julia
-ics = t === nothing ? [] : mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
-
-bcmap = Dict(map(collect(keys(boundarymap))) do u
-    u => Dict(map(indvars(v)) do x
-        x => boundarymap[u][x]
-    end)
-end)
+ics, bcmap = split_ics_bcs(boundarymap, v, discretization)
 ```
 
-Separates initial conditions (on time) from spatial boundary conditions.
+**`split_ics_bcs`**: Separates initial conditions (on time) from spatial boundary conditions. The default
+collects `boundarymap[u][t]` as `ics` and keys `bcmap` by the spatial variables in `indvars(v)`.
 
 ### Phase 8: Equation Discretization Loop
 
@@ -176,6 +174,7 @@ PDESystem
     ▼
 ┌─────────────────────────────────────┐
 │  Preprocessing                      │
+│  - lower_boundaries                 │
 │  - handle_complex                   │
 │  - cardinalize_eqs!                 │
 │  - make_pdesys_compatible           │

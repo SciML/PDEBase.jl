@@ -18,6 +18,10 @@ inspect the symbolic variables without selecting a discretization.
 - `x2i`: Dictionary mapping independent variables to their dimension indices
 - `i2x`: Dictionary mapping dimension indices to independent variables
 - `replaced_vars`: Dictionary of variable substitutions/replacements
+- `domains`: Dictionary mapping each independent variable to the raw domain pairing that
+  declares it. A tuple pairing `(x, y) ∈ Ω` is entered once for each of its variables.
+- `spatial_axes`: The spatial independent variables in the order the domain list declares
+  them, which is the axis order of the spatial box (see [`spatial_domain`](@ref)).
 
 # Constructors
 - `VariableMap(pdesys)`: Build a map without a discretization.
@@ -44,6 +48,69 @@ struct VariableMap
     x2i::Any
     i2x::Any
     replaced_vars::Any
+    domains::Any
+    spatial_axes::Any
+end
+
+function VariableMap(ū, x̄, ps, time, intervals, args, depvar_ops, x2i, i2x, replaced_vars)
+    return VariableMap(
+        ū, x̄, ps, time, intervals, args, depvar_ops, x2i, i2x, replaced_vars,
+        Dict{Any, Any}(), Any[]
+    )
+end
+
+# The variables of `x̄` in the order the pairings of `domain` name them.
+function _declared_order(x̄, domain)
+    axes = Any[]
+    for pairing in domain
+        coords = _pairing_coordinates(pairing)
+        for c in (coords === nothing ? [safe_unwrap(pairing.variables)] : coords)
+            i = findfirst(x -> isequal(safe_unwrap(x), c), x̄)
+            i === nothing || any(a -> isequal(a, x̄[i]), axes) || push!(axes, x̄[i])
+        end
+    end
+    return axes
+end
+
+# The coordinates named by a tuple pairing `(x, y) ∈ Ω`, or `nothing` for a scalar pairing.
+function _pairing_coordinates(pairing)
+    vars = safe_unwrap(pairing.variables)
+    vars isa Union{Tuple, AbstractVector} && return collect(map(safe_unwrap, vars))
+    if iscall(vars) && operation(vars) === tuple
+        return collect(arguments(vars))
+    end
+    return nothing
+end
+
+function _check_mesh_pairing(pairing, ncoords)
+    d = pairing.domain
+    d isa MeshDomain || return nothing
+    n = meshdim(d.mesh)
+    n == ncoords || throw(
+        ArgumentError(
+            "domain MeshDomain of a $(typeof(d.mesh)) mesh has $n coordinates but the pairing " *
+                "names $ncoords; write one coordinate per mesh dimension, e.g. (x, y) ∈ Ω for a 2D mesh"
+        )
+    )
+    return nothing
+end
+
+_is_interval_product(d) =
+    d isa DomainSets.ProductDomain && all(c -> c isa DomainSets.AbstractInterval, DomainSets.components(d))
+
+# The pairing declaring `x` and, for a tuple pairing, the position of `x` in the tuple.
+function _find_pairing(x, domain)
+    x = safe_unwrap(x)
+    for pairing in domain
+        coords = _pairing_coordinates(pairing)
+        if coords === nothing
+            isequal(x, safe_unwrap(pairing.variables)) && return pairing, nothing
+        else
+            i = findfirst(c -> isequal(x, c), coords)
+            i === nothing || return pairing, i
+        end
+    end
+    return nothing, nothing
 end
 
 function VariableMap(pdesys, disc; replaced_vars = Dict())
@@ -62,7 +129,11 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     flat_eqs = _flatten_eqs(eqs)
     flat_bcs = _flatten_bcs(bcs)
     # Get all dependent variables in the correct type
-    alldepvars = get_all_depvars([flat_eqs; flat_bcs], depvar_ops)
+    # A trace `u(t, Γ)` has a domain in place of its spatial arguments; it declares nothing.
+    alldepvars = filter(
+        u -> !any(x -> unwrap_const(x) isa DomainSets.Domain, arguments(u)),
+        get_all_depvars([flat_eqs; flat_bcs], depvar_ops)
+    )
     # Filter out boundaries
     ū = filter(u -> !any(x -> unwrap_const(x) isa Number, arguments(u)), alldepvars)
     # Get all independent variables in the correct type
@@ -77,27 +148,100 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     )
     allivs = collect(filter(x -> !(unwrap_const(x) isa Number), reduce(union, map(arguments, ivorder))))
     x̄ = remove(allivs, time)
-    intervals = Dict(
-        map(allivs) do x
-            idx = findfirst(d -> isequal(safe_unwrap(x), safe_unwrap(d.variables)), domain)
-            if idx === nothing
-                error("Could not find domain for variable $x. Available domains: $([d.variables for d in domain])")
-            end
-            xdomain = domain[idx]
-            x => (DomainSets.infimum(xdomain.domain), DomainSets.supremum(xdomain.domain))
+    for pairing in domain
+        coords = _pairing_coordinates(pairing)
+        _check_mesh_pairing(pairing, coords === nothing ? 1 : length(coords))
+    end
+    intervals = Dict()
+    domains = Dict{Any, Any}()
+    for x in allivs
+        pairing, i = _find_pairing(x, domain)
+        if pairing === nothing
+            error("Could not find domain for variable $x. Available domains: $([d.variables for d in domain])")
         end
-    )
+        domains[x] = pairing
+        xdomain = pairing.domain
+        if i === nothing
+            xdomain isa MeshDomain && continue
+            intervals[x] = (DomainSets.infimum(xdomain), DomainSets.supremum(xdomain))
+        elseif _is_interval_product(xdomain)
+            axis = DomainSets.components(xdomain)[i]
+            intervals[x] = (DomainSets.infimum(axis), DomainSets.supremum(axis))
+        end
+    end
     nspace = length(x̄)
     args = [operation(u) => arguments(u) for u in ū]
     x̄2dim = [x̄[i] => i for i in 1:nspace]
     dim2x̄ = [i => x̄[i] for i in 1:nspace]
     return VariableMap(
         ū, x̄, ps, time, Dict(intervals), Dict(args),
-        depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars
+        depvar_ops, Dict(x̄2dim), Dict(dim2x̄), replaced_vars, domains,
+        _declared_order(x̄, domain)
     )
 end
 
 VariableMap(pdesys) = VariableMap(pdesys, nothing)
+
+"""
+    spatial_domain(v::VariableMap)
+
+Return the domain of the spatial coordinates `indvars(v)`, or `nothing` when there are none.
+
+When one pairing declares exactly the spatial coordinates, as `(x, y) ∈ Ω` or
+`x ∈ Interval(0, 1)`, its domain is returned as given. Otherwise, when every spatial
+coordinate has an interval (its own interval pairing, or its axis of a box pairing that also
+names time, as in `(t, x) ∈ Rectangle(...)`), the result is the interval of a single
+coordinate or the `DomainSets.ProductDomain` of the intervals.
+
+The axes of that box follow the user's declaration, never the order of `indvars(v)`, which
+comes from the argument order of the dependent variables: for one tuple pairing they are its
+coordinates in tuple order with time dropped, and for split pairings
+`[t ∈ It, x ∈ Ix, y ∈ Iy]` they are the spatial pairings in the order of the domain list, so
+the box is `Rectangle(Ix, Iy)`.
+Throws an `ArgumentError` for a `MeshDomain` pairing that also names a non-spatial
+coordinate, and when the spatial coordinates are declared by more than one pairing and at
+least one of them is not an interval or interval product, for example a `MeshDomain` for
+`(x, y)` and an interval for `z`.
+"""
+function spatial_domain(v::VariableMap)
+    isempty(v.x̄) && return nothing
+    axes = _box_axes(v)
+    isempty(axes) && throw(
+        ArgumentError("this VariableMap was built without its domain pairings, so it has no spatial domain")
+    )
+    pairings = unique(x -> objectid(v.domains[x]), axes)
+    if length(pairings) == 1
+        pairing = v.domains[only(pairings)]
+        coords = _pairing_coordinates(pairing)
+        (coords === nothing || length(coords) == length(axes)) && return pairing.domain
+        pairing.domain isa MeshDomain && throw(
+            ArgumentError(
+                "the MeshDomain pairing $(pairing) also names coordinates that are not spatial " *
+                    "variables of the system (such as time); pair only the spatial coordinates with a MeshDomain"
+            )
+        )
+    end
+    if all(x -> haskey(v.intervals, x), axes)
+        intervals = map(x -> _axis_domain(v.domains[x], x), axes)
+        return length(intervals) == 1 ? only(intervals) : DomainSets.ProductDomain(intervals...)
+    end
+    throw(
+        ArgumentError(
+            "the spatial variables $(v.x̄) are declared by more than one domain pairing " *
+                "($([v.domains[x] for x in pairings])) and not all of them are intervals; " *
+                "declare the spatial coordinates with one pairing, e.g. (x, y) ∈ Ω"
+        )
+    )
+end
+
+# The spatial variables in box axis order: axis `i` of `spatial_domain(v)` is `_box_axes(v)[i]`.
+_box_axes(v::VariableMap) = v.spatial_axes
+
+function _axis_domain(pairing, x)
+    coords = _pairing_coordinates(pairing)
+    coords === nothing && return pairing.domain
+    return DomainSets.components(pairing.domain)[findfirst(c -> isequal(safe_unwrap(x), c), coords)]
+end
 
 function update_varmap!(v, newdv)
     push!(v.ū, newdv)

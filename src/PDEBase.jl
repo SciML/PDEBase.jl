@@ -32,6 +32,30 @@ hooks documented in the [Developer Extension API](@ref developer_extension_api).
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
 
 """
+    AbstractBoxDiscretization <: AbstractEquationSystemDiscretization
+
+Supertype for equation-system discretizations whose spatial domain is an
+interval or a product of intervals, such as finite difference and
+pseudospectral methods.
+
+Boundary conditions reach these discretizations in endpoint-substituted form,
+for example `u(t, 0, y)` on the lower `x` face; `lower_boundaries` is the hook
+that rewrites other boundary spellings into that form.
+"""
+abstract type AbstractBoxDiscretization <: AbstractEquationSystemDiscretization end
+
+"""
+    AbstractMeshDiscretization <: AbstractEquationSystemDiscretization
+
+Supertype for equation-system discretizations whose spatial domain is a
+general mesh, such as finite element methods.
+
+Boundary conditions for these discretizations are keyed by named boundary
+pieces of the mesh rather than by interval endpoints.
+"""
+abstract type AbstractMeshDiscretization <: AbstractEquationSystemDiscretization end
+
+"""
     AbstractOptimizationSystemDiscretization <: AbstractDiscretization
 
 Supertype for discretizations that lower a `PDESystem` into an optimization
@@ -97,8 +121,10 @@ Concrete state is returned by `construct_disc_state` and is updated in place by
 """
 abstract type AbstractDiscretizationState end
 
+include("fallbacks.jl")
 include("symbolic_utils.jl")
 include("utils.jl")
+include("mesh_domain.jl")
 include("variable_map.jl")
 include("interface_defaults.jl")
 include("discretization_state.jl")
@@ -112,11 +138,14 @@ include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
     AbstractDifferentialDiscretizer, AbstractDiscretizationState,
-    AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization
+    AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization,
+    AbstractBoxDiscretization, AbstractMeshDiscretization
 
 export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
     LowerBoundary, UpperBoundary, InterfaceBoundary,
     HigherOrderInterfaceBoundary
+
+export BoundaryPiece, boundarypiece, boundarypieces, NormalDerivative
 
 export get_time
 export count_differentials, differential_order, has_derivatives, find_derivative, d_orders,
@@ -124,17 +153,26 @@ export count_differentials, differential_order, has_derivatives, find_derivative
     get_all_depvars, split_terms, split_additive_terms, subsmatch, ex2term, safe_unwrap,
     recursive_unwrap, flatten_vardict, filter_interfaces, isperiodic, isinterface,
     haslowerupper, has_interfaces, isupper
-export VariableMap
+export VariableMap, spatial_domain
+export MeshDomain, Region, regions
 export ivs, all_ivs, depvar, depvars, indvars, replaced_vars, x2i
 export PeriodicMap
 
+# Mesh-domain interface, implemented by mesh backends.
+@public meshdim, facetset_names, cellset_names, contains_point, backend_mesh
+
+# Syntactic boundary-condition classification.
+@public BCKind, Essential, Natural, Robin, bckind
+
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
-@public interface_errors, check_boundarymap, should_transform, transform_pde_system!,
+@public lower_boundaries, interface_errors, check_boundarymap, should_transform,
+    transform_pde_system!, split_ics_bcs,
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
     add_metadata!, BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
-    dae_operating_point, time_derivative_order, make_pdesys_compatible, StrongForm
+    dae_operating_point, time_derivative_order, make_pdesys_compatible, StrongForm,
+    supported_conditions, SupportedConditions
 
 end # module PDEBase

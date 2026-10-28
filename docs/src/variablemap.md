@@ -20,6 +20,8 @@ struct VariableMap
     x2i         # Spatial variable to index mapping
     i2x         # Index to spatial variable mapping
     replaced_vars  # Variables replaced during preprocessing
+    domains     # Raw domain pairing per independent variable: Dict(x => (x, y) ∈ Ω)
+    spatial_axes   # Spatial variables in declared order: the axis order of spatial_domain(v)
 end
 ```
 
