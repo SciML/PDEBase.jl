@@ -17,9 +17,10 @@ const FOURTH = "fourth-order operator needs a mixed or C¹ formulation"
 
 # Expected outcomes. Every system not listed here is accepted. The 7 higher-order systems are
 # rejected for a feature with no milestone (spec §10.5), so their acceptance is @test_broken.
+# gen1..gen3 mix third- and fourth-order terms, and the highest order is the one reported.
 const REJECTED = Dict(
-    :adv3 => THIRD, :advdiff3 => THIRD, :gen1 => THIRD, :gen2 => THIRD, :gen3 => THIRD,
-    :diff4 => FOURTH, :advdiffno3 => FOURTH,
+    :adv3 => THIRD, :advdiff3 => THIRD, :diff4 => FOURTH, :advdiffno3 => FOURTH,
+    :gen1 => FOURTH, :gen2 => FOURTH, :gen3 => FOURTH,
 )
 # Periodic-only systems: the analysis accepts them with `PeriodicBC`s. Only the Ferrite backend
 # rejects them before M4, so they are not @test_broken here.
