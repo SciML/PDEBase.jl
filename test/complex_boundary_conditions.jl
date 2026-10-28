@@ -177,6 +177,30 @@ using Test
         )
     end
 
+    @testset "Untyped complex conditions on mixed derivatives split exactly" begin
+        exp0 = SymbolicUtils.term(exp, 0)
+        equations = [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))]
+        system = split(equations, [Dt(Dx(ψ(t, 0))) ~ exp(im * t), ψ(t, 1) ~ 0])
+        @test same_equations(
+            PDEBase.get_bcs(system), [
+                Dt(Dx(Reψ(t, 0))) ~ exp0 * cos(t),
+                Dt(Dx(Imψ(t, 0))) ~ exp0 * sin(t),
+                Reψ(t, 1) ~ 0,
+                Imψ(t, 1) ~ 0,
+            ]
+        )
+
+        system = split(equations, [exp(im * t) ~ Dt(Dx(ψ(t, 0))), ψ(t, 1) ~ 0])
+        @test same_equations(
+            PDEBase.get_bcs(system), [
+                exp0 * cos(t) ~ Dt(Dx(Reψ(t, 0))),
+                exp0 * sin(t) ~ Dt(Dx(Imψ(t, 0))),
+                Reψ(t, 1) ~ 0,
+                Imψ(t, 1) ~ 0,
+            ]
+        )
+    end
+
     @testset "Pre-split pair with dependent-variable data is rejected" begin
         # `Dx(ψ(t, 1)) ~ im*ψ(t, 1)` pre-splits to `[Dx(ψ) ~ 0, 0 ~ ψ]`: the
         # `0 ~` side carries a dependent variable, so no unique reconstruction

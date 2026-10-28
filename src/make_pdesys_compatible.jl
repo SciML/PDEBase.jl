@@ -202,11 +202,7 @@ function _dv_application(term, dependent_operations)
     term = safe_unwrap(term)
     iscall(term) || return false
     op = operation(term)
-    if op isa Differential
-        arg = safe_unwrap(first(arguments(term)))
-        return iscall(arg) &&
-            any(o -> isequal(operation(arg), o), dependent_operations)
-    end
+    op isa Differential && return _dv_application(first(arguments(term)), dependent_operations)
     return any(o -> isequal(op, o), dependent_operations)
 end
 
