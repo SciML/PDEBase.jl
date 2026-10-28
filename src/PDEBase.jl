@@ -8,7 +8,7 @@ import Symbolics
 import SymbolicUtils
 using ModelingToolkitBase: PDESystem, ProblemTypeCtx, System, get_bcs, get_connector_type,
     get_domain, get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
-    get_systems, get_unknowns, mtkcompile
+    get_systems, get_unknowns, initialization_equations, mtkcompile
 using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
     ODEFunction, ODEProblem
@@ -133,6 +133,7 @@ include("parse_boundaries.jl")
 include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
+include("dae_support.jl")
 include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
@@ -175,6 +176,7 @@ export classify_argument, classify_call, classify_condition, substitute_traces, 
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
-    add_metadata!
+    add_metadata!, BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
+    dae_operating_point, time_derivative_order
 
 end # module PDEBase
