@@ -19,12 +19,30 @@ end
     end
 end
 
+@testset "Mesh-domain API" begin
+    for name in (:MeshDomain, :Region, :regions, :spatial_domain)
+        @test hasdocstring(PDEBase, name)
+        @test Base.isexported(PDEBase, name)
+    end
+    for name in (
+            :meshdim, :facetset_names, :cellset_names, :contains_point, :backend_mesh,
+            :BCKind, :Essential, :Natural, :Robin, :bckind,
+        )
+        @test hasdocstring(PDEBase, name)
+        if CAN_QUERY_PUBLIC
+            @test Base.ispublic(PDEBase, name)
+        end
+    end
+end
+
 @testset "Developer extension API" begin
     developer_api = (
+        :lower_boundaries,
         :interface_errors,
         :check_boundarymap,
         :should_transform,
         :transform_pde_system!,
+        :split_ics_bcs,
         :construct_disc_state,
         :construct_discrete_space,
         :construct_var_equation_mapping,
@@ -38,6 +56,8 @@ end
         :get_eqvar,
         :add_metadata!,
         :make_pdesys_compatible,
+        :supported_conditions,
+        :SupportedConditions,
     )
 
     for name in developer_api

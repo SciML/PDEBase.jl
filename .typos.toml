@@ -68,6 +68,8 @@ kwargs = "kwargs"
 ND = "ND"
 nd = "nd"
 MTK = "MTK"
+# Interval variables in docs and tests (Ix, Iy, It)
+Iy = "Iy"
 ODE = "ODE"
 PDE = "PDE"
 SDE = "SDE"
