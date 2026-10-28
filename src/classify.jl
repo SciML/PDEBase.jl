@@ -270,8 +270,8 @@ end
     boxface(v::VariableMap, piece::BoundaryPiece) -> Union{BoxFace, Nothing}
 
 Return the [`BoxFace`](@ref PDEBase.BoxFace) that `piece` is, when it is a face of the box
-`spatial_domain(v)` (a `DomainSets.HyperRectangle`, with pieces from
-[`boundarypieces`](@ref)), and `nothing` otherwise. The axes of the box follow the domain
+`spatial_domain(v)` (a `DomainSets.HyperRectangle`, or an interval in one dimension, with
+pieces from [`boundarypieces`](@ref)), and `nothing` otherwise. The axes of the box follow the domain
 declaration, as in `spatial_domain`: the spatial coordinates of a tuple pairing in tuple
 order, or the spatial interval pairings in the order of the domain list, never the order
 of `indvars(v)`.
@@ -283,7 +283,8 @@ a 3D box, is an `ArgumentError` that lists the valid names.
 """
 function boxface(v::VariableMap, piece::BoundaryPiece)
     Ω = spatial_domain(v)
-    Ω isa DomainSets.HyperRectangle && isequal(parent(piece), Ω) || return nothing
+    Ω isa Union{DomainSets.HyperRectangle, DomainSets.AbstractInterval} && isequal(parent(piece), Ω) ||
+        return nothing
     face = try
         _box_face(piece)
     catch e

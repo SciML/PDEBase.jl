@@ -36,7 +36,10 @@ end
 end
 
 @testset "Argument classifier API" begin
-    for name in (:classify_argument, :classify_call, :classify_condition, :substitute_traces, :assert_no_traces)
+    for name in (
+            :classify_argument, :classify_call, :classify_condition, :substitute_traces, :assert_no_traces,
+            :to_box_bcs,
+        )
         @test hasdocstring(PDEBase, name)
         @test Base.isexported(PDEBase, name)
     end

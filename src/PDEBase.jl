@@ -127,6 +127,7 @@ include("utils.jl")
 include("mesh_domain.jl")
 include("variable_map.jl")
 include("classify.jl")
+include("box_lowering.jl")
 include("interface_defaults.jl")
 include("discretization_state.jl")
 include("parse_boundaries.jl")
@@ -159,6 +160,7 @@ export MeshDomain, Region, regions
 export ivs, all_ivs, depvar, depvars, indvars, replaced_vars, x2i
 export PeriodicMap
 export classify_argument, classify_call, classify_condition, substitute_traces, assert_no_traces
+export to_box_bcs
 
 # Argument classes, locations and condition classes returned by the classifier. Their
 # names are generic, so they stay qualified.
