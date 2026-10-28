@@ -61,6 +61,7 @@ end
 
 @testset "Developer extension API" begin
     developer_api = (
+        :parse_bcs,
         :lower_boundaries,
         :interface_errors,
         :check_boundarymap,
@@ -90,6 +91,13 @@ end
         if CAN_QUERY_PUBLIC
             @test Base.ispublic(PDEBase, name)
         end
+    end
+
+    @test !Base.isexported(PDEBase, :parse_bcs)
+
+    # The names a mesh discretization's `parse_bcs` map is built from are public already.
+    for name in (:PieceBoundary, :BoundaryPiece, :boundarypieces, :bckind, :BCKind, :Essential, :Natural, :Robin)
+        @test hasdocstring(PDEBase, name)
     end
 
     @test !hasdocstring(PDEBase, :not_a_pdebase_name)
