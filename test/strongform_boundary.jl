@@ -333,6 +333,29 @@ end
     )
 end
 
+@testset "essential conditions keep the order of bcs" begin
+    @parameters x y
+    @variables u(..)
+    Dx, Dy = Differential(x), Differential(y)
+    s = StateSlots(1, 2, 0)
+    function essentials(bcs)
+        sys, v, bmap = boxsetup(
+            [Dx(Dx(u(x, y))) + Dy(Dy(u(x, y))) ~ 0], bcs, [x ∈ Interval(0.0, 1.0), y ∈ Interval(0.0, 1.0)],
+            [x, y], [u(x, y)], [], nothing
+        )
+        ess, _, _ = boundary_conditions(bmap, SlotContext(sys, v), s, [[-s.G[1], -s.G[2]]]; bcs)
+        return [(b.piece, b.g) for b in ess]
+    end
+    left, bottom, right, top = (u(0, y) ~ 1), (u(x, 0) ~ 2), (u(1, y) ~ 3), (u(x, 1) ~ 4)
+    faces = [BoxFace(x, :lo), BoxFace(y, :lo), BoxFace(x, :hi), BoxFace(y, :hi)]
+    # every condition is kept, in the listed order, whichever way round they are listed
+    @test essentials([left, bottom, right, top]) == collect(zip(faces, 1:4))
+    @test essentials([top, right, bottom, left]) == collect(zip(reverse(faces), 4:-1:1))
+    # the conditions meeting at a corner both come back, in the listed order
+    @test essentials([bottom, left]) == [(faces[2], 2), (faces[1], 1)]
+    @test essentials([left, bottom]) == [(faces[1], 1), (faces[2], 2)]
+end
+
 @testset "over-specified faces" begin
     @parameters t x
     @variables u(..)
