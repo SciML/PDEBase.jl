@@ -66,7 +66,16 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     # Filter out boundaries
     ū = filter(u -> !any(x -> unwrap_const(x) isa Number, arguments(u)), alldepvars)
     # Get all independent variables in the correct type
-    allivs = collect(filter(x -> !(unwrap_const(x) isa Number), reduce(union, map(arguments, alldepvars))))
+    # `alldepvars` comes out of a `Set`, whose order differs between Julia versions; the order of
+    # `x̄` follows the order of `depvars`, a call with all its arguments symbolic before a boundary
+    # call of the same variable, and the printed arguments last.
+    ivorder = sort(
+        alldepvars; by = u -> (
+            something(findfirst(op -> isequal(op, operation(u)), depvar_ops), length(depvar_ops) + 1),
+            count(x -> unwrap_const(x) isa Number, arguments(u)), string(arguments(u)),
+        )
+    )
+    allivs = collect(filter(x -> !(unwrap_const(x) isa Number), reduce(union, map(arguments, ivorder))))
     x̄ = remove(allivs, time)
     intervals = Dict(
         map(allivs) do x
