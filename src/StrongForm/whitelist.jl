@@ -7,10 +7,10 @@ end
 differentiates_in(ex, s) = iscall(ex) &&
     (operation(ex) isa Differential && isequal(operation(ex).x, s) || any(a -> differentiates_in(a, s), arguments(ex)))
 
-# Probes each state-carrying argument with its own fresh symbol and leaves the others (array
-# indices, Bool conditions) in place, so the call keeps its argument shapes.
-function has_derivative_rules(op, args, depvars)
-    probed = findall(a -> !(symtype(a) <: Bool) && is_state(a, depvars), args)
+# Probes each non-Bool argument selected by `probe` with its own fresh symbol and leaves the
+# others (array indices, Bool conditions) in place, so the call keeps its argument shapes.
+function has_derivative_rules(op, args, probe)
+    probed = findall(a -> !(symtype(a) <: Bool) && probe(a), args)
     fresh = Any[i in probed ? unwrap(Symbolics.variable(gensym())) : args[i] for i in eachindex(args)]
     call = op(Symbolics.wrap.(fresh)...)
     return all(i -> !differentiates_in(unwrap(Symbolics.derivative(call, fresh[i])), fresh[i]), probed)
@@ -42,7 +42,7 @@ function check_whitelist(ex, ivs, depvars)
         # operator's piece is the trace's piece.
         iscall(only(args)) && is_state(only(args), depvars) || unsupported(op)
     elseif op isa Function
-        op === ifelse || op === getindex || has_derivative_rules(op, args, depvars) || unsupported(op)
+        op === ifelse || op === getindex || has_derivative_rules(op, args, a -> is_state(a, depvars)) || unsupported(op)
     elseif op isa SymbolicUtils.BasicSymbolic
         # A symbolic function such as `k(..)` has no derivative rule; it may only be a
         # coefficient of the coordinates, never a law of the state.

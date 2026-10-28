@@ -109,7 +109,14 @@ The strong form of a PDE system in slot form ([`StateSlots`](@ref)). For equatio
 
 where `mass[e]` is the whole time-derivative part `Σ_f m_ef⋅Ud_f`, not a bare coefficient,
 so cross-field mass is representable. `conormal[e]` is `∂(flux[e]⋅N)/∂G`, field-major like
-`G`. Boundary data is keyed by the boundary key type `K`.
+`G`. Field `f` is the `f`-th declared dependent variable of the system (see
+[`declared_fields`](@ref)), whatever order the equations mention them in. Boundary data is
+keyed by the boundary key type `K`.
+
+`mass`, `flux`, `remainder` and `conormal` never hold an unevaluated derivative. `strong` may:
+the strong residual of `∂ₓ(a(x)⋅∂ₓu)` with `a` registered without a derivative rule holds
+`Differential(X₁)(a(X₁))`. Consumers must call [`check_evaluable`](@ref) on it before
+`build_function`, which would compile such a derivative to zero.
 """
 struct StrongFormAnalysis{K}
     slots::StateSlots

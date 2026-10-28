@@ -24,7 +24,8 @@ end
 
 Stage a of the strong-form analysis. Expands the residual `e = lhs - rhs` of `eq` (an
 `Equation` or a residual expression) and splits it into `mass[f]`, the coefficient of `∂ₜu_f`
-for each `u_f` in `depvars`, and `spatial`, the vector of remaining additive terms, so that
+for each `u_f` in `depvars`, and `spatial`, the vector of remaining additive terms (with
+derivatives distributed over sums, see [`distribute_derivatives`](@ref)), so that
 `e = Σ_f mass[f]⋅∂ₜu_f + sum(spatial)`. `t` is `nothing` for a steady problem.
 
 Errors on a term that is second order in time, not of the form coefficient × `∂ₜu_f`
@@ -35,7 +36,7 @@ split_time(eq::Equation, depvars, t) = split_time(eq.lhs - eq.rhs, depvars, t)
 function split_time(ex, depvars, t)
     mass = Num[0 for _ in depvars]
     spatial = Num[]
-    for term in addterms(unwrap(Symbolics.expand(ex)))
+    for term in addterms(unwrap(Symbolics.expand(distribute_derivatives(Symbolics.expand(ex)))))
         order = t === nothing ? 0 : time_order(term, t)
         if order == 0
             push!(spatial, term)
