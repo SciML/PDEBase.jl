@@ -11,6 +11,12 @@ function _replace_ops(term, op_map)
     if iscall(term_unwrapped)
         old_op = operation(term_unwrapped)
         args = arguments(term_unwrapped)
+        if old_op === complex && length(args) == 2
+            # `complex(re, im)` only accepts Real-typed arguments, so a
+            # substitution that makes an argument complex cannot rebuild the
+            # term; `complex(a, b)` is `a + b*im` arithmetic.
+            return _replace_ops(args[1], op_map) + im * _replace_ops(args[2], op_map)
+        end
         new_args = [_replace_ops(a, op_map) for a in args]
         if haskey(op_map, old_op)
             new_op = op_map[old_op]
@@ -27,6 +33,7 @@ function _replace_ops(term, op_map)
 end
 
 _dependent_variable_term(dv) = safe_unwrap(dv)
+_dependent_variable_term(dv::Symbolics.Arr) = unwrap(dv)
 _dependent_variable_term(dv::Complex{Num}) = only(arguments(unwrap(real(dv))))
 
 function _rename_complex_typed_components(term, redvmaps, imdvmaps)
@@ -166,6 +173,150 @@ function _split_complex_components(term, preserve_differentials = false)
     return real(term), imag(term)
 end
 
+_is_false_constant(term) = unwrap_const(safe_unwrap(term)) === false
+
+function _dependent_variable_instances!(found, term, dependent_operations)
+    term = safe_unwrap(term)
+    if iscall(term)
+        any(op -> isequal(operation(term), op), dependent_operations) && push!(found, term)
+        foreach(arg -> _dependent_variable_instances!(found, arg, dependent_operations), arguments(term))
+    end
+    return found
+end
+
+function _same_dependent_variable_instances(eq1, eq2, dependent_operations)
+    instances(eq) = unique(
+        vcat(
+            _dependent_variable_instances!(Any[], eq.lhs, dependent_operations),
+            _dependent_variable_instances!(Any[], eq.rhs, dependent_operations)
+        )
+    )
+    first_instances, second_instances = instances(eq1), instances(eq2)
+    return !isempty(first_instances) && length(first_instances) == length(second_instances) &&
+        all(x -> any(y -> isequal(x, y), second_instances), first_instances)
+end
+
+_is_zero_constant(term) = isequal(unwrap_const(safe_unwrap(term)), 0)
+
+function _dv_application(term, dependent_operations)
+    term = safe_unwrap(term)
+    iscall(term) || return false
+    op = operation(term)
+    if op isa Differential
+        arg = safe_unwrap(first(arguments(term)))
+        return iscall(arg) &&
+            any(o -> isequal(operation(arg), o), dependent_operations)
+    end
+    return any(o -> isequal(op, o), dependent_operations)
+end
+
+_dv_free(term, dependent_operations) =
+    isempty(_dependent_variable_instances!(Any[], term, dependent_operations))
+
+const _MARKER_HINT = isdefined(Symbolics, :split_complex_equation) ?
+    " or build the condition with `Symbolics.split_complex_equation`" : ""
+
+_presplit_bc_error() = ArgumentError(
+    "Symbolics has pre-split a complex boundary condition before PDEBase can verify its meaning, " *
+        "or a `0 ~` condition was nested inside a boundary group. Declare the dependent " *
+        "variable as `::Complex`" * _MARKER_HINT * " to preserve complex boundary expressions; " *
+        "if these are real boundary conditions, pass them un-nested."
+)
+
+# Symbolics rewrites a complex `lhs ~ rhs` over real-typed variables to
+# `[real(lhs) ~ real(rhs), imag(lhs) ~ imag(rhs)]`; for a real-typed `lhs`
+# the imaginary half carries a literal `0` left-hand side. A nested pair
+# `[L ~ a, 0 ~ b]` where `L` is a single dependent-variable application,
+# possibly under a `Differential`, and neither `a` nor `b` mentions a
+# dependent variable can only have come from splitting `L(ψ) ~ a + i b` — as
+# a real grouping `0 ~ b` constrains no unknown — so it is rebuilt as that
+# equation. A `[0 ~ a, 0 ~ b]` pair is a real grouping when both members
+# mention a dependent variable, and the split of a residual-form complex
+# condition (`0 ~ ψ(t, 0) - exp(im*t)` pre-splits to `[0 ~ ψ - cos(t),
+# 0 ~ -sin(t)]`) when exactly one member is free of dependent variables —
+# as a real grouping such a member constrains no unknown — so it is rebuilt
+# as `0 ~ a + i b` and split downstream. Returns `nothing` when neither
+# reading applies.
+function _rebuild_presplit_pair(eq1, eq2, dependent_operations)
+    if _is_zero_constant(eq1.lhs)
+        free1 = _dv_free(eq1.rhs, dependent_operations)
+        free2 = _dv_free(eq2.rhs, dependent_operations)
+        free1 && free2 && throw(_presplit_bc_error())
+        return free1 ⊻ free2 ? Equation(0, eq1.rhs + im * eq2.rhs) : nothing
+    elseif _dv_application(eq1.lhs, dependent_operations) &&
+            _dv_free(eq1.rhs, dependent_operations) &&
+            _dv_free(eq2.rhs, dependent_operations)
+        return Equation(eq1.lhs, eq1.rhs + im * eq2.rhs)
+    end
+    return nothing
+end
+
+_flip_equation(eq) = Equation(eq.rhs, eq.lhs)
+
+_constrains_unknown(eq, dependent_operations) =
+    !(_dv_free(eq.lhs, dependent_operations) && _dv_free(eq.rhs, dependent_operations))
+
+# A condition written with the field on the right, `exp(im*t) ~ ψ(t, 0)` or
+# `ψ(t, 0) - exp(im*t) ~ 0`, pre-splits to the mirror image `[a ~ L, b ~ 0]`
+# or `[a ~ 0, b ~ 0]` and is read the same way with its sides swapped; an
+# unmatched mirror is an ordinary real grouping such as `[u ~ 0, Dx(u) ~ 0]`.
+# A `[0 ~ a, L ~ b]` pair whose members both constrain an unknown is left for
+# `_ambiguous_presplit_bc`. Any other nested pair containing a `0 ~` member is
+# rejected: dependent-variable data behind the `0 ~` (the pre-split of e.g.
+# `L ~ i*ψ(t, 0)`) couples the fields in a way this shape does not record.
+function _resolve_presplit_bc_pairs(bcs, dependent_operations)
+    return map(bcs) do bc
+        bc isa AbstractVector || return bc
+        length(bc) == 2 && all(eq -> eq isa Equation, bc) ||
+            return _resolve_presplit_bc_pairs(bc, dependent_operations)
+        eq1, eq2 = bc
+        if _is_zero_constant(eq2.lhs)
+            rebuilt = _rebuild_presplit_pair(eq1, eq2, dependent_operations)
+            rebuilt === nothing && !_is_zero_constant(eq1.lhs) && throw(_presplit_bc_error())
+            return something(rebuilt, bc)
+        elseif _is_zero_constant(eq1.lhs)
+            _constrains_unknown(eq1, dependent_operations) &&
+                _constrains_unknown(eq2, dependent_operations) || throw(_presplit_bc_error())
+            return bc
+        elseif _is_zero_constant(eq2.rhs)
+            rebuilt = _rebuild_presplit_pair(
+                _flip_equation(eq1), _flip_equation(eq2), dependent_operations
+            )
+            return rebuilt === nothing ? bc : _flip_equation(rebuilt)
+        end
+        return bc
+    end
+end
+
+# A same-point pair, or a `[0 ~ a, L ~ b]` pair (the pre-split of
+# `i*L ~ a + i b`), can equally be user grouping, so it is only flagged when
+# the system already shows complex values.
+function _ambiguous_presplit_bc(bcs, dependent_operations, complex_evidence)
+    complex_evidence || return false
+    for bc in bcs
+        if bc isa AbstractVector
+            if length(bc) == 2 && all(eq -> eq isa Equation, bc) && (
+                    _same_dependent_variable_instances(bc[1], bc[2], dependent_operations) ||
+                        _is_zero_constant(bc[1].lhs) && !_is_zero_constant(bc[2].lhs)
+                )
+                return true
+            end
+            _ambiguous_presplit_bc(bc, dependent_operations, complex_evidence) && return true
+        end
+    end
+    return false
+end
+
+# A `Symbolics.SplitComplexEquation` records that its two equations came from
+# splitting one complex `~` and keeps the original equation, so restoring it
+# routes the condition through the coupled split instead of the ambiguous-pair
+# checks that a hand-written or plain `~` pair still receives.
+@static if isdefined(Symbolics, :SplitComplexEquation)
+    _restore_marked_complex_eq(eq::Symbolics.SplitComplexEquation) = eq.original
+end
+_restore_marked_complex_eq(bcs::AbstractVector) = map(_restore_marked_complex_eq, bcs)
+_restore_marked_complex_eq(bc) = bc
+
 function split_complex_eq(eq, redvmaps, imdvmaps; expand_derivatives = true)
     lhs, rhs = if eq isa AbstractVector
         real_eq, imag_eq = eq
@@ -190,15 +341,6 @@ function split_complex_eq(eq, redvmaps, imdvmaps; expand_derivatives = true)
 end
 
 function split_complex_bc(eq, redvmaps, imdvmaps)
-    # Handle pre-split complex BCs from Symbolics v7
-    # These are already split into real/imag parts, just need variable renaming
-    if eq isa PreSplitComplexBC
-        # eq.real_eq becomes the Reψ equation, eq.imag_eq becomes the Imψ equation
-        real_renamed = _replace_ops(eq.real_eq.lhs, redvmaps) ~ _replace_ops(eq.real_eq.rhs, redvmaps)
-        imag_renamed = _replace_ops(eq.imag_eq.lhs, imdvmaps) ~ _replace_ops(eq.imag_eq.rhs, imdvmaps)
-        return [real_renamed, imag_renamed]
-    end
-
     # For Pair type (initial conditions), treat the pair as an equation so the
     # right-hand side is split through the complex map like an equation's rhs.
     eq isa Pair && (eq = eq.first ~ eq.second)
@@ -222,13 +364,33 @@ function handle_complex(pdesys)
         throw(ArgumentError("Complex-typed and real dependent variables cannot be mixed in handle_complex"))
     end
     typed_dvs = !isempty(dvs) && all(complex_typed)
+    dependent_operations = map(dv -> operation(_dependent_variable_term(dv)), get_dvs(pdesys))
+    # A `SplitComplexEquation` marker in the boundary conditions is restored to
+    # the complex equation it was split from, so it is split below with its
+    # real and imaginary parts coupled. Typed fields do not need the marker:
+    # their real(ψ)/imag(ψ) parts survive `~` and rename directly.
+    if !typed_dvs
+        bcs = _restore_marked_complex_eq(bcs)
+        bcs = _resolve_presplit_bc_pairs(bcs, dependent_operations)
+    end
     # In MTK v11, complex equations may already be nested Vector{Equation}
     # Flatten first before processing
     eqs_flat = _flatten_eqs(eqs)
-    bcs_flat = _flatten_bcs(bcs)
-
     eqs_have_complex = any(eq -> hascomplex(eq), eqs_flat) || any(eq -> eq isa AbstractVector, eqs)
+    bcs_flat = _flatten_bcs(bcs)
     bcs_have_complex = any(bc -> hascomplex(bc), bcs_flat)
+    if !typed_dvs && _ambiguous_presplit_bc(bcs, dependent_operations, eqs_have_complex || bcs_have_complex)
+        throw(_presplit_bc_error())
+    end
+
+    if !typed_dvs && any(bc -> bc isa Equation && (_is_false_constant(bc.lhs) || _is_false_constant(bc.rhs)), bcs_flat)
+        throw(
+            ArgumentError(
+                "A boundary condition reduced to `false` before PDEBase could inspect its complex value. " *
+                    "Symbolics may truncate complex constants in `~`; declare the dependent variable as `::Complex`."
+            )
+        )
+    end
 
     # Check both equations and BCs for complex values
     if eqs_have_complex || bcs_have_complex || typed_dvs
@@ -276,7 +438,7 @@ function handle_complex(pdesys)
                     [rename(bc.lhs) ~ rename(bc.rhs)]
                 end
             end
-        elseif eqs_have_complex
+        elseif eqs_have_complex || bcs_have_complex
             # Equations have complex values - split them into real/imaginary parts
             eqs = mapreduce(vcat, eqs) do eq
                 split_complex_eq(eq, redvmaps_dict, imdvmaps_dict)
