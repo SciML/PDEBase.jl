@@ -120,7 +120,8 @@ when `c` depends on `xᵢ`, the product-rule correction `-(Dᵢc)⋅w′` to `R`
 of all terms simplify to zero together; `corrected` reports whether corrections were added.
 Under `Reject()` a nonzero correction is an error.
 
-Errors on operators of order three or more, on second derivatives outside a divergence-compatible
+Errors on operators of order three or more (naming the highest order present, so that the error
+does not depend on the term order), on second derivatives outside a divergence-compatible
 position (inside a nonlinearity, two in one product, or a coefficient depending on `∇u`), and on a
 non-differentiable coefficient that would need the product rule (any of
 [`NONSMOOTH_FUNCTIONS`](@ref)), and on a jump ([`DISCONTINUOUS_FUNCTIONS`](@ref)) under any other
@@ -132,9 +133,11 @@ function split_divergence(spatial, sivs, policy::IBPPolicy = ProductRule(); depv
     G = Num[0 for _ in sivs]
     R = Num[]
     needy, corrections = Num[], Num[]
-    for term in unwrap.(spatial)
-        n = spatial_order(term, sivs)
-        n > 2 && error("$(ordinal(n))-order operator needs a mixed or C¹ formulation: $term")
+    terms = unwrap.(spatial)
+    orders = [spatial_order(term, sivs) for term in terms]
+    n, k = isempty(orders) ? (0, 0) : findmax(orders)
+    n > 2 && error("$(ordinal(n))-order operator needs a mixed or C¹ formulation: $(terms[k])")
+    for term in terms
         fs = factors(term)
         idx = findall(f -> is_spatial_derivative(f, sivs) && spatial_order(f, sivs) >= 2, fs)
         if isempty(idx)
