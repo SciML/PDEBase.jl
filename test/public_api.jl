@@ -35,6 +35,20 @@ end
     end
 end
 
+@testset "Argument classifier API" begin
+    for name in (:classify_argument, :classify_call, :classify_condition, :substitute_traces, :assert_no_traces)
+        @test hasdocstring(PDEBase, name)
+        @test Base.isexported(PDEBase, name)
+    end
+    for name in (:ArgumentClass, :Free, :BoxFace, :Piece, :Interior, :ConditionClass, :location, :boxface, :normal)
+        @test hasdocstring(PDEBase, name)
+        @test !Base.isexported(PDEBase, name)
+        if CAN_QUERY_PUBLIC
+            @test Base.ispublic(PDEBase, name)
+        end
+    end
+end
+
 @testset "Developer extension API" begin
     developer_api = (
         :lower_boundaries,

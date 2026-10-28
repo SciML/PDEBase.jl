@@ -10,6 +10,7 @@ pages = [
         "VariableMap" => "variablemap.md",
         "Domains" => "domains.md",
         "Boundary Conditions" => "boundaries.md",
+        "Argument Classification" => "classify.md",
     ],
     "API Reference" => "api.md",
 ]
