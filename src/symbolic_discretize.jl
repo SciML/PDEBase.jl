@@ -1,3 +1,17 @@
+function cardinalize_eqs(pdesys)
+    eqs = map(eq -> eq.lhs - eq.rhs ~ 0, get_eqs(pdesys))
+    return PDESystem(
+        eqs, get_bcs(pdesys), get_domain(pdesys), get_ivs(pdesys), get_dvs(pdesys),
+        get_ps(pdesys), initial_conditions = pdesys.initial_conditions,
+        systems = get_systems(pdesys), connector_type = get_connector_type(pdesys),
+        metadata = get_metadata(pdesys), analytic = getfield(pdesys, :analytic),
+        analytic_func = getfield(pdesys, :analytic_func),
+        gui_metadata = get_gui_metadata(pdesys), name = getfield(pdesys, :name)
+    )
+end
+
+# In-place variant kept for downstream callers (MethodOfLines `get_discrete`) that rely on
+# the mutation; `symbolic_discretize` uses the copying `cardinalize_eqs`.
 function cardinalize_eqs!(pdesys)
     pdeeqs = get_eqs(pdesys)
     for (i, eq) in enumerate(pdeeqs)
@@ -12,7 +26,7 @@ function SciMLBase.symbolic_discretize(
     pdesys = lower_boundaries(pdesys, discretization)
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
-    cardinalize_eqs!(pdesys)
+    pdesys = cardinalize_eqs(pdesys)
     pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 
     ############################
@@ -102,7 +116,7 @@ domain, and no boundary map is parsed.
 
 The hook sequence is
 
-1. `handle_complex`, `cardinalize_eqs!` and `make_pdesys_compatible` normalize the system;
+1. `handle_complex`, `cardinalize_eqs` and `make_pdesys_compatible` normalize the system;
 2. `VariableMap` and `interface_errors` analyze the variables;
 3. `construct_disc_state(discretization)` creates the mutable discretization state;
 4. `construct_discrete_space(v, pdesys, discretization)` creates the space the residuals
@@ -120,7 +134,7 @@ function SciMLBase.symbolic_discretize(
         checks = true
     )
     pdesys, complexmap = handle_complex(pdesys)
-    cardinalize_eqs!(pdesys)
+    pdesys = cardinalize_eqs(pdesys)
     pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 
     v = VariableMap(pdesys, discretization, replaced_vars = replaced_vars)
