@@ -26,15 +26,6 @@ function ibp_policies(ibp, eqs, v::VariableMap)
     return IBPPolicy[something(p, ProductRule()) for p in policies]
 end
 
-function check_no_boundary_conditions(boundarymap, ctx::SlotContext)
-    for (_, bykey) in boundarymap, (x, bs) in bykey
-        ctx.t !== nothing && isequal(x, ctx.t) && continue
-        isempty(bs) ||
-            error("boundary-condition analysis is not implemented yet; analyse needs a boundary map without spatial conditions")
-    end
-    return nothing
-end
-
 """
     analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict()) -> StrongFormAnalysis
 
@@ -53,8 +44,10 @@ their residual `lhs - rhs` up to sign, after flattening array variables through
 equation, or keys giving one equation different policies, are errors. The default is
 [`ProductRule`](@ref), which warns once per call when it generates a correction term.
 Under [`Weighted`](@ref)`(w)` the whole analysis is of the weighted equation `w⋅e`.
-Equations are not paired with fields here. Boundary conditions are not analysed yet: a
-boundary map holding any spatial condition is an error.
+Equations are not paired with fields here ([`pair_equations`](@ref) is the discretizer's
+helper). Spatial boundary conditions in `boundarymap` are classified by
+[`boundary_conditions`](@ref) into essential, natural (matched against the slot-form fluxes)
+and periodic conditions keyed by [`BoxFace`](@ref); initial conditions are skipped.
 """
 function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
     fields = declared_fields(pdesys, v)
@@ -83,10 +76,9 @@ function analyse(pdesys, v::VariableMap, boundarymap; ibp = Dict())
         push!(conormal, [Symbolics.derivative(Φ, g) for g in slots.G])
         foreach(check_evaluable, vcat(mass[end], flux[end], remainder[end], conormal[end]))
     end
-    check_no_boundary_conditions(boundarymap, ctx)
+    essential, natural, periodic = boundary_conditions(boundarymap, ctx, slots, flux; mass, bcs = get_bcs(pdesys))
     isempty(corrected) || @warn "Integration by parts generated product-rule correction terms for equations $(join(corrected, ", ")), so their stiffness matrices are non-symmetric. Write them in divergence form, or pass `ibp = Dict(eq => Weighted(w))` or `Reject()`."
-    return StrongFormAnalysis{Any}(
-        slots, nfields, dim, strong, mass, flux, remainder, conormal,
-        EssentialBC{Any}[], NaturalBC{Any}[], PeriodicBC{Any}[]
+    return StrongFormAnalysis{BoxFace}(
+        slots, nfields, dim, strong, mass, flux, remainder, conormal, essential, natural, periodic
     )
 end
