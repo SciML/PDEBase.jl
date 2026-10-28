@@ -39,6 +39,8 @@ end
         :get_system_unknowns,
         :get_eqvar,
         :add_metadata!,
+        :supported_conditions,
+        :SupportedConditions,
     )
 
     for name in developer_api

@@ -164,6 +164,6 @@ export PeriodicMap
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
     add_metadata!, BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
-    dae_operating_point, time_derivative_order
+    dae_operating_point, time_derivative_order, supported_conditions, SupportedConditions
 
 end # module PDEBase

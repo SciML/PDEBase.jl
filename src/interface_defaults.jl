@@ -577,3 +577,112 @@ compiled system is built. Metadata implementations should provide a mutable
 function add_metadata!(metadata::AbstractDiscretizationMetadata, value)
     return metadata.metadata[] = value
 end
+
+############################################################################################
+# Supported conditions: documentation and introspection only
+############################################################################################
+const CONDITION_KINDS = (
+    :dirichlet => "Dirichlet", :neumann => "Neumann", :robin => "Robin",
+    :periodic => "Periodic", :interface => "Interface", :time_dependent => "Time-dependent",
+)
+
+"""
+    SupportedConditions(; geometries = (), dirichlet = nothing, neumann = nothing,
+        robin = nothing, periodic = nothing, interface = nothing,
+        time_dependent = nothing, notes = "")
+
+Machine-readable description of the geometries and boundary-condition kinds a
+discretization supports, returned by [`supported_conditions`](@ref PDEBase.supported_conditions).
+
+Each condition field is `true` (supported), `false` (not supported) or `nothing`
+(not declared). An empty `geometries` tuple likewise means not declared.
+
+# Fields
+- `geometries::Tuple`: Supported geometries, as symbols such as `:interval`,
+  `:box` or `:mesh`, or as domain types.
+- `dirichlet`, `neumann`, `robin`: Value, normal-derivative and mixed conditions.
+- `periodic`: Periodic conditions linking opposite boundaries.
+- `interface`: Conditions coupling variables across an interface between domains.
+- `time_dependent`: Boundary data that varies with time.
+- `notes::String`: Free-text restrictions, such as required derivative orders or
+  unsupported combinations.
+
+`show(io, MIME"text/markdown"(), sc)` renders the description as a Markdown table
+for discretizer documentation.
+
+# Examples
+```julia
+PDEBase.supported_conditions(::MyDiscretization) = PDEBase.SupportedConditions(
+    geometries = (:box,), dirichlet = true, neumann = true, robin = true,
+    periodic = true, interface = true
+)
+```
+"""
+struct SupportedConditions
+    geometries::Tuple
+    dirichlet::Union{Bool, Nothing}
+    neumann::Union{Bool, Nothing}
+    robin::Union{Bool, Nothing}
+    periodic::Union{Bool, Nothing}
+    interface::Union{Bool, Nothing}
+    time_dependent::Union{Bool, Nothing}
+    notes::String
+end
+
+function SupportedConditions(;
+        geometries = (), dirichlet = nothing, neumann = nothing, robin = nothing,
+        periodic = nothing, interface = nothing, time_dependent = nothing, notes = ""
+    )
+    return SupportedConditions(
+        Tuple(geometries), dirichlet, neumann, robin, periodic, interface,
+        time_dependent, notes
+    )
+end
+
+function Base.isempty(sc::SupportedConditions)
+    return isempty(sc.geometries) && isempty(sc.notes) &&
+        all(kind -> getfield(sc, first(kind)) === nothing, CONDITION_KINDS)
+end
+
+support_label(::Nothing) = "unknown"
+support_label(x::Bool) = x ? "yes" : "no"
+
+function Base.show(io::IO, ::MIME"text/markdown", sc::SupportedConditions)
+    geometries = isempty(sc.geometries) ? "unknown" : join(sc.geometries, ", ")
+    println(io, "| Condition | Supported |")
+    println(io, "|:--- |:--- |")
+    println(io, "| Geometries | ", geometries, " |")
+    for (field, label) in CONDITION_KINDS
+        println(io, "| ", label, " | ", support_label(getfield(sc, field)), " |")
+    end
+    isempty(sc.notes) || print(io, "\n", sc.notes, "\n")
+    return nothing
+end
+
+"""
+    supported_conditions(disc::AbstractDiscretization) -> SupportedConditions
+
+Declare the geometries and boundary-condition kinds supported by `disc`.
+
+Discretizer packages extend this function so that their supported conditions are
+documented in one machine-readable place. It is documentation and introspection
+only: PDEBase never calls it while discretizing, so it does not replace
+validation in [`interface_errors`](@ref PDEBase.interface_errors) or
+[`check_boundarymap`](@ref PDEBase.check_boundarymap).
+
+# Arguments
+- `disc::AbstractDiscretization`: The discretization being described.
+
+# Returns
+- `SupportedConditions`: The default is `SupportedConditions()`, in which nothing
+  is declared. This means unknown, not that nothing is supported.
+
+# Examples
+```julia
+PDEBase.supported_conditions(::MyDiscretization) = PDEBase.SupportedConditions(
+    geometries = (:box,), dirichlet = true, neumann = true, robin = true,
+    periodic = true, interface = true, notes = "Uniform and nonuniform grids."
+)
+```
+"""
+supported_conditions(disc::AbstractDiscretization) = SupportedConditions()
