@@ -6,6 +6,7 @@ PDEBase.jl provides a type hierarchy for representing boundary conditions that a
 
 ```
 AbstractBoundary
+├── PieceBoundary
 └── AbstractTruncatingBoundary
     ├── LowerBoundary
     ├── UpperBoundary
@@ -93,6 +94,24 @@ struct HigherOrderInterfaceBoundary <: AbstractInterfaceBoundary
     indvars  # Independent variables
     eq       # The interface equation
     order    # Derivative order
+end
+```
+
+### `PieceBoundary`
+
+A condition on a named piece of the boundary of a mesh, written with traces such as
+`u(t, Γ) ~ g`, `Dn(u(t, Γ)) ~ 0` with `Dn = NormalDerivative(Γ)`, or
+`k * Dn(u(t, Γ)) + α * u(t, Γ) ~ β`. `parse_bcs` builds these for an
+`AbstractMeshDiscretization` and files them under the piece, `boundarymap[operation(u)][Γ]`.
+
+```julia
+struct PieceBoundary <: AbstractBoundary
+    u        # The first trace in the condition, e.g. u(t, Γ)
+    piece    # The BoundaryPiece Γ
+    depvars  # Dependent variables in the condition
+    eq       # The boundary equation
+    kind     # PDEBase.Essential(), Natural() or Robin(), from PDEBase.bckind
+    order    # Highest derivative order on a trace; a NormalDerivative counts one
 end
 ```
 
@@ -185,7 +204,13 @@ all_boundaries = flatten_vardict(boundarymap)
 
 ## Parsing Boundary Conditions
 
-The `parse_bcs` function (internal) processes the raw boundary conditions from the PDESystem:
+The `parse_bcs` function (internal) processes the raw boundary conditions from the PDESystem.
+`symbolic_discretize` calls `parse_bcs(bcs, v, orders, discretization)`, which dispatches on
+the discretization family: an `AbstractBoxDiscretization` finds each condition's face by
+classifying its calls with `classify_call`, an `AbstractMeshDiscretization` builds a
+`PieceBoundary` per traced condition, and any other `AbstractEquationSystemDiscretization`
+uses the substitution matching of the three-argument form. The box and default methods build
+the same boundary objects:
 
 1. Generates matching rules for lower and upper boundaries
 2. Iterates through each boundary condition equation

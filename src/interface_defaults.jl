@@ -148,7 +148,8 @@ conditions.
 The default collects `boundarymap[u][t]` over every dependent variable `u`, where
 `t = get_time(disc)`, as the initial conditions (none when `t === nothing`), and
 builds `bcmap[u][x] = boundarymap[u][x]` for every spatial variable `x` in
-`indvars(v)`. The initial conditions are passed to `generate_ic_defaults` and
+`indvars(v)`. For an `AbstractMeshDiscretization` it builds `bcmap[u][Γ] =
+boundarymap[u][Γ]` for every [`BoundaryPiece`](@ref) key `Γ` instead. The initial conditions are passed to `generate_ic_defaults` and
 `bcmap` to `discretize_equation!`. Extend it when `boundarymap` is keyed by
 something other than the spatial independent variables.
 
@@ -184,6 +185,19 @@ function split_ics_bcs(boundarymap, v::VariableMap, disc::AbstractDiscretization
                     x => boundarymap[u][x]
                 end
             )
+        end
+    )
+    return ics, bcmap
+end
+
+# A mesh boundary map is keyed by boundary pieces instead of spatial variables.
+function split_ics_bcs(boundarymap, v::VariableMap, disc::AbstractMeshDiscretization)
+    t = get_time(disc)
+    ics = t === nothing ? [] :
+        mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
+    bcmap = Dict(
+        map(collect(keys(boundarymap))) do u
+            u => Dict(filter(kv -> first(kv) isa BoundaryPiece, collect(boundarymap[u])))
         end
     )
     return ics, bcmap

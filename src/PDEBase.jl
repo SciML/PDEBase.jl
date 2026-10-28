@@ -144,7 +144,7 @@ export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMappi
 
 export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
     LowerBoundary, UpperBoundary, InterfaceBoundary,
-    HigherOrderInterfaceBoundary
+    HigherOrderInterfaceBoundary, PieceBoundary
 
 export BoundaryPiece, boundarypiece, boundarypieces, NormalDerivative
 
