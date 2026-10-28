@@ -32,6 +32,30 @@ hooks documented in the [Developer Extension API](@ref developer_extension_api).
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
 
 """
+    AbstractBoxDiscretization <: AbstractEquationSystemDiscretization
+
+Supertype for equation-system discretizations whose spatial domain is an
+interval or a product of intervals, such as finite difference and
+pseudospectral methods.
+
+Boundary conditions reach these discretizations in endpoint-substituted form,
+for example `u(t, 0, y)` on the lower `x` face; `lower_boundaries` is the hook
+that rewrites other boundary spellings into that form.
+"""
+abstract type AbstractBoxDiscretization <: AbstractEquationSystemDiscretization end
+
+"""
+    AbstractMeshDiscretization <: AbstractEquationSystemDiscretization
+
+Supertype for equation-system discretizations whose spatial domain is a
+general mesh, such as finite element methods.
+
+Boundary conditions for these discretizations are keyed by named boundary
+pieces of the mesh rather than by interval endpoints.
+"""
+abstract type AbstractMeshDiscretization <: AbstractEquationSystemDiscretization end
+
+"""
     AbstractOptimizationSystemDiscretization <: AbstractDiscretization
 
 Supertype for discretizations that lower a `PDESystem` into an optimization
@@ -111,7 +135,8 @@ include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
     AbstractDifferentialDiscretizer, AbstractDiscretizationState,
-    AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization
+    AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization,
+    AbstractBoxDiscretization, AbstractMeshDiscretization
 
 export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
     LowerBoundary, UpperBoundary, InterfaceBoundary,
@@ -129,7 +154,8 @@ export PeriodicMap
 
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
-@public interface_errors, check_boundarymap, should_transform, transform_pde_system!,
+@public lower_boundaries, interface_errors, check_boundarymap, should_transform,
+    transform_pde_system!, split_ics_bcs,
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
