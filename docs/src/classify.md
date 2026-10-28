@@ -25,6 +25,27 @@ applications, so it leaves the trace in `Dx(u(t, Γ))` and `Dn(u(t, Γ))` unchan
 Rewrite traces with `substitute_traces`, then check with `assert_no_traces` before any
 `expand_derivatives`, which turns a remaining `Dx(u(t, Γ))` into `0`.
 
+## Box lowering
+
+`to_box_bcs` turns every trace condition on the faces of an interval or box into the
+endpoint form box discretizations parse: `u(t, Γ_left) ~ g` becomes `u(t, 0.0, y) ~ g`,
+`Dn_Γ(u(t, Γ))` becomes `-Dx(...)` on a lower face and `+Dx(...)` on an upper face, and
+conditions already in endpoint form pass through. `symbolic_discretize` applies it
+automatically for every `AbstractBoxDiscretization` through `lower_boundaries`. An interval
+is the one-dimensional box, with pieces `:x1_lo` and `:x1_hi`.
+
+```julia
+Ω = Rectangle(0.0 .. 1.0, 0.0 .. 1.0)
+Γ = boundarypiece(Ω, :right)
+bcs = [u(0, x, y) ~ 0, u(t, 0, y) ~ sin(t), NormalDerivative(Γ)(u(t, Γ)) ~ 0]
+@named pdesys = PDESystem(eqs, bcs, [(x, y) ∈ Ω, t ∈ Interval(0.0, 1.0)], [t, x, y], [u(t, x, y)])
+get_bcs(to_box_bcs(pdesys))  # [u(0, x, y) ~ 0, u(t, 0, y) ~ sin(t), Dx(u(t, 1.0, y)) ~ 0]
+```
+
+```@docs
+to_box_bcs
+```
+
 ## Classifier
 
 ```@docs

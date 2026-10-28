@@ -151,11 +151,13 @@ else
     For a box (`DomainSets.HyperRectangle`) the pieces are its faces, in the order of
     `components(boundary(d))`, with each face as the piece's geometry. A rectangle's faces
     are named `:bottom, :right, :top, :left`. In any other dimension `n` they are named by
-    axis index, lower then upper per axis: `:x1_lo, :x1_hi, :x2_lo, …, :xn_hi`.
+    axis index, lower then upper per axis: `:x1_lo, :x1_hi, :x2_lo, …, :xn_hi`. An interval
+    is the one-dimensional box: its pieces are its endpoints `:x1_lo` and `:x1_hi`, with
+    the endpoint as a `DomainSets.Point`.
     """
     function boundarypieces end
 
-    function boundarypieces(d::DomainSets.HyperRectangle)
+    function boundarypieces(d::Union{DomainSets.HyperRectangle, DomainSets.AbstractInterval})
         faces = DomainSets.components(DomainSets.boundary(d))
         names = _box_face_names(DomainSets.dimension(d))
         return [BoundaryPiece(d, name, face) for (name, face) in zip(names, faces)]
