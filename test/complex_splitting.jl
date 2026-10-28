@@ -53,6 +53,66 @@ using Test
     )
 end
 
+@testset "Real BC/IC data is not duplicated into the imaginary part" begin
+    @parameters t x
+    @variables ψ(..) Reψ(..) Imψ(..)
+    Dt = Differential(t)
+    Dx = Differential(x)
+    Dxx = Differential(x)^2
+
+    residual(eq) = Symbolics.simplify(eq.lhs - eq.rhs)
+    same_equation(actual, expected) = isequal(
+        Symbolics.value(Symbolics.simplify(residual(actual) - residual(expected))), 0
+    )
+
+    # Real inhomogeneous Dirichlet data goes to the real component only
+    pdesys = PDESystem(
+        [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+        [ψ(0, x) ~ 0, ψ(t, 0) ~ exp(-t), ψ(t, 1) ~ 0],
+        [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [ψ(t, x)];
+        name = :real_bc_data_test
+    )
+    split, _ = PDEBase.handle_complex(pdesys)
+    bcs = PDEBase.get_bcs(split)
+    expected_bcs = [
+        Reψ(0, x) ~ 0, Imψ(0, x) ~ 0,
+        Reψ(t, 0) ~ exp(-t), Imψ(t, 0) ~ 0,
+        Reψ(t, 1) ~ 0, Imψ(t, 1) ~ 0,
+    ]
+    @test length(bcs) == length(expected_bcs)
+    @test all(any(same_equation(bc, expected) for bc in bcs) for expected in expected_bcs)
+
+    # Real initial-condition Pairs get an imaginary part of 0
+    pdesys_pair = PDESystem(
+        [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+        [ψ(0, x) => sin(π * x), ψ(t, 0) ~ 0, ψ(t, 1) ~ 0],
+        [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [ψ(t, x)];
+        name = :real_ic_data_test
+    )
+    split2, _ = PDEBase.handle_complex(pdesys_pair)
+    bcs2 = PDEBase.get_bcs(split2)
+    expected2 = [
+        Reψ(0, x) ~ sin(π * x), Imψ(0, x) ~ 0,
+        Reψ(t, 0) ~ 0, Imψ(t, 0) ~ 0,
+        Reψ(t, 1) ~ 0, Imψ(t, 1) ~ 0,
+    ]
+    @test length(bcs2) == length(expected2)
+    @test all(any(same_equation(bc, expected) for bc in bcs2) for expected in expected2)
+
+    # Real derivative BCs keep the Differential and zero the imaginary data
+    pdesys_dx = PDESystem(
+        [im * Dt(ψ(t, x)) ~ Dxx(ψ(t, x))],
+        [Dx(ψ(t, 0)) ~ 3],
+        [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [ψ(t, x)];
+        name = :real_derivative_bc_test
+    )
+    split3, _ = PDEBase.handle_complex(pdesys_dx)
+    bcs3 = PDEBase.get_bcs(split3)
+    expected3 = [Dx(Reψ(t, 0)) ~ 3, Dx(Imψ(t, 0)) ~ 0]
+    @test length(bcs3) == length(expected3)
+    @test all(any(same_equation(bc, expected) for bc in bcs3) for expected in expected3)
+end
+
 @testset "Mixed complex-typed and untyped dependent variables" begin
     @parameters t x
     @variables ψ(..)::Complex u(..)
