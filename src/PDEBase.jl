@@ -132,6 +132,7 @@ include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
 include("dae_support.jl")
+include("StrongForm/StrongForm.jl")
 include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
