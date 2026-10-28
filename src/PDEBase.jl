@@ -185,5 +185,7 @@ export to_box_bcs
     add_metadata!, make_pdesys_compatible, StrongForm, supported_conditions, SupportedConditions,
     BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
     dae_operating_point, time_derivative_order
+    add_metadata!, BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
+    dae_operating_point, time_derivative_order, supported_conditions, SupportedConditions
 
 end # module PDEBase
