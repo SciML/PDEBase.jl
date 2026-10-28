@@ -8,7 +8,7 @@ import Symbolics
 import SymbolicUtils
 using ModelingToolkitBase: PDESystem, ProblemTypeCtx, System, get_bcs, get_connector_type,
     get_domain, get_dvs, get_eqs, get_gui_metadata, get_iv, get_ivs, get_metadata, get_ps,
-    get_systems, get_unknowns, mtkcompile
+    get_systems, get_unknowns, initialization_equations, mtkcompile
 using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: AbstractDiscretization, AbstractDiscretizationMetadata, NonlinearProblem,
     ODEFunction, ODEProblem
@@ -30,6 +30,30 @@ Discretizer packages subtype this type and implement the developer extension
 hooks documented in the [Developer Extension API](@ref developer_extension_api).
 """
 abstract type AbstractEquationSystemDiscretization <: AbstractDiscretization end
+
+"""
+    AbstractBoxDiscretization <: AbstractEquationSystemDiscretization
+
+Supertype for equation-system discretizations whose spatial domain is an
+interval or a product of intervals, such as finite difference and
+pseudospectral methods.
+
+Boundary conditions reach these discretizations in endpoint-substituted form,
+for example `u(t, 0, y)` on the lower `x` face; `lower_boundaries` is the hook
+that rewrites other boundary spellings into that form.
+"""
+abstract type AbstractBoxDiscretization <: AbstractEquationSystemDiscretization end
+
+"""
+    AbstractMeshDiscretization <: AbstractEquationSystemDiscretization
+
+Supertype for equation-system discretizations whose spatial domain is a
+general mesh, such as finite element methods.
+
+Boundary conditions for these discretizations are keyed by named boundary
+pieces of the mesh rather than by interval endpoints.
+"""
+abstract type AbstractMeshDiscretization <: AbstractEquationSystemDiscretization end
 
 """
     AbstractOptimizationSystemDiscretization <: AbstractDiscretization
@@ -109,11 +133,13 @@ include("parse_boundaries.jl")
 include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
 include("symbolic_discretize.jl")
+include("dae_support.jl")
 include("precompilation.jl")
 
 export AbstractDiscreteSpace, AbstractCartesianDiscreteSpace, AbstractVarEqMapping,
     AbstractDifferentialDiscretizer, AbstractDiscretizationState,
-    AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization
+    AbstractEquationSystemDiscretization, AbstractOptimizationSystemDiscretization,
+    AbstractBoxDiscretization, AbstractMeshDiscretization
 
 export AbstractBoundary, AbstractTruncatingBoundary, AbstractInterfaceBoundary,
     LowerBoundary, UpperBoundary, InterfaceBoundary,
@@ -145,10 +171,12 @@ export classify_argument, classify_call, classify_condition, substitute_traces, 
 
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
-@public interface_errors, check_boundarymap, should_transform, transform_pde_system!,
+@public lower_boundaries, interface_errors, check_boundarymap, should_transform,
+    transform_pde_system!, split_ics_bcs,
     construct_disc_state, construct_discrete_space, construct_var_equation_mapping,
     construct_differential_discretizer, discretize_equation!, generate_ic_defaults,
     generate_metadata, generate_system, get_discvars, get_system_unknowns, get_eqvar,
-    add_metadata!
+    add_metadata!, BrownFullBasicInitUnsafeError, brown_init_offenders, differential_unknowns,
+    dae_operating_point, time_derivative_order
 
 end # module PDEBase
