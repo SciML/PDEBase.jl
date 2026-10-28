@@ -114,6 +114,11 @@ else
     # unequal hashes). Stable across processes except for parents hashed by identity.
     _order_key(p::BoundaryPiece) = (p.name, hash(p.parent), hash(p.geometry))
     Base.isless(a::BoundaryPiece, b::BoundaryPiece) = isless(_order_key(a), _order_key(b))
+    # Older SymbolicUtils orders mixed-type arguments by `typeof(a) < typeof(b)`, which needs
+    # `isless` on types; Base has none. Every other type sorts before a piece's type.
+    Base.isless(::Type{<:BoundaryPiece}, ::Type) = false
+    Base.isless(::Type, ::Type{<:BoundaryPiece}) = true
+    Base.isless(a::Type{<:BoundaryPiece}, b::Type{<:BoundaryPiece}) = isless(string(a), string(b))
 end
 
 # Face names of a box, in the order of `components(boundary(d))`: a rectangle's
