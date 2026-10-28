@@ -3,6 +3,33 @@
 ############################################################################################
 
 """
+    lower_boundaries(pdesys::PDESystem, disc::AbstractDiscretization)
+
+Rewrite the boundary conditions of `pdesys` into the form `disc` consumes.
+
+This is the first hook `symbolic_discretize` calls, before complex splitting,
+equation normalization and `VariableMap` construction, so every later hook sees
+the lowered system. The default returns `pdesys` unchanged. Extend it for a
+discretization family whose downstream code expects one spelling of boundary
+conditions, such as endpoint-substituted calls on a box.
+
+# Arguments
+- `pdesys::PDESystem`: The system supplied to `symbolic_discretize`.
+- `disc::AbstractDiscretization`: The discretization being applied.
+
+# Returns
+- `PDESystem`: The system used by the rest of the pipeline; `pdesys` itself by default.
+
+# Examples
+```julia
+function PDEBase.lower_boundaries(pdesys::PDESystem, disc::MyDiscretization)
+    return rewrite_boundaries_for_my_backend(pdesys)
+end
+```
+"""
+lower_boundaries(pdesys::PDESystem, disc::AbstractDiscretization) = pdesys
+
+"""
     interface_errors(sys::PDESystem, v::VariableMap, disc::AbstractDiscretization)
 
 Check whether `disc` supports the structure of `sys` represented by `v`.
@@ -110,6 +137,56 @@ function transform_pde_system!(
         pdesys::PDESystem, disc::AbstractDiscretization
     )
     return nothing
+end
+
+"""
+    split_ics_bcs(boundarymap, v::VariableMap, disc::AbstractDiscretization)
+
+Separate the parsed boundary map into initial conditions and spatial boundary
+conditions.
+
+The default collects `boundarymap[u][t]` over every dependent variable `u`, where
+`t = get_time(disc)`, as the initial conditions (none when `t === nothing`), and
+builds `bcmap[u][x] = boundarymap[u][x]` for every spatial variable `x` in
+`indvars(v)`. The initial conditions are passed to `generate_ic_defaults` and
+`bcmap` to `discretize_equation!`. Extend it when `boundarymap` is keyed by
+something other than the spatial independent variables.
+
+# Arguments
+- `boundarymap`: The parsed boundary map, after any transformation.
+- `v::VariableMap`: The variable map for the PDE system.
+- `disc::AbstractDiscretization`: The discretization being applied.
+
+# Returns
+- `(ics, bcmap)`: A vector of initial-condition boundaries and a nested `Dict`
+  of spatial boundaries keyed by dependent-variable operation and then by key.
+
+# Examples
+```julia
+function PDEBase.split_ics_bcs(boundarymap, v::VariableMap, disc::MyDiscretization)
+    t = PDEBase.get_time(disc)
+    ics = mapreduce(u -> boundarymap[u][t], vcat, keys(boundarymap))
+    bcmap = Dict(u => filter(kv -> !isequal(first(kv), t), boundarymap[u])
+        for u in keys(boundarymap))
+    return ics, bcmap
+end
+```
+"""
+function split_ics_bcs(boundarymap, v::VariableMap, disc::AbstractDiscretization)
+    t = get_time(disc)
+    ics = t === nothing ? [] :
+        mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
+
+    bcmap = Dict(
+        map(collect(keys(boundarymap))) do u
+            u => Dict(
+                map(indvars(v)) do x
+                    x => boundarymap[u][x]
+                end
+            )
+        end
+    )
+    return ics, bcmap
 end
 
 """
@@ -500,3 +577,112 @@ compiled system is built. Metadata implementations should provide a mutable
 function add_metadata!(metadata::AbstractDiscretizationMetadata, value)
     return metadata.metadata[] = value
 end
+
+############################################################################################
+# Supported conditions: documentation and introspection only
+############################################################################################
+const CONDITION_KINDS = (
+    :dirichlet => "Dirichlet", :neumann => "Neumann", :robin => "Robin",
+    :periodic => "Periodic", :interface => "Interface", :time_dependent => "Time-dependent",
+)
+
+"""
+    SupportedConditions(; geometries = (), dirichlet = nothing, neumann = nothing,
+        robin = nothing, periodic = nothing, interface = nothing,
+        time_dependent = nothing, notes = "")
+
+Machine-readable description of the geometries and boundary-condition kinds a
+discretization supports, returned by [`supported_conditions`](@ref PDEBase.supported_conditions).
+
+Each condition field is `true` (supported), `false` (not supported) or `nothing`
+(not declared). An empty `geometries` tuple likewise means not declared.
+
+# Fields
+- `geometries::Tuple`: Supported geometries, as symbols such as `:interval`,
+  `:box` or `:mesh`, or as domain types.
+- `dirichlet`, `neumann`, `robin`: Value, normal-derivative and mixed conditions.
+- `periodic`: Periodic conditions linking opposite boundaries.
+- `interface`: Conditions coupling variables across an interface between domains.
+- `time_dependent`: Boundary data that varies with time.
+- `notes::String`: Free-text restrictions, such as required derivative orders or
+  unsupported combinations.
+
+`show(io, MIME"text/markdown"(), sc)` renders the description as a Markdown table
+for discretizer documentation.
+
+# Examples
+```julia
+PDEBase.supported_conditions(::MyDiscretization) = PDEBase.SupportedConditions(
+    geometries = (:box,), dirichlet = true, neumann = true, robin = true,
+    periodic = true, interface = true
+)
+```
+"""
+struct SupportedConditions
+    geometries::Tuple
+    dirichlet::Union{Bool, Nothing}
+    neumann::Union{Bool, Nothing}
+    robin::Union{Bool, Nothing}
+    periodic::Union{Bool, Nothing}
+    interface::Union{Bool, Nothing}
+    time_dependent::Union{Bool, Nothing}
+    notes::String
+end
+
+function SupportedConditions(;
+        geometries = (), dirichlet = nothing, neumann = nothing, robin = nothing,
+        periodic = nothing, interface = nothing, time_dependent = nothing, notes = ""
+    )
+    return SupportedConditions(
+        Tuple(geometries), dirichlet, neumann, robin, periodic, interface,
+        time_dependent, notes
+    )
+end
+
+function Base.isempty(sc::SupportedConditions)
+    return isempty(sc.geometries) && isempty(sc.notes) &&
+        all(kind -> getfield(sc, first(kind)) === nothing, CONDITION_KINDS)
+end
+
+support_label(::Nothing) = "unknown"
+support_label(x::Bool) = x ? "yes" : "no"
+
+function Base.show(io::IO, ::MIME"text/markdown", sc::SupportedConditions)
+    geometries = isempty(sc.geometries) ? "unknown" : join(sc.geometries, ", ")
+    println(io, "| Condition | Supported |")
+    println(io, "|:--- |:--- |")
+    println(io, "| Geometries | ", geometries, " |")
+    for (field, label) in CONDITION_KINDS
+        println(io, "| ", label, " | ", support_label(getfield(sc, field)), " |")
+    end
+    isempty(sc.notes) || print(io, "\n", sc.notes, "\n")
+    return nothing
+end
+
+"""
+    supported_conditions(disc::AbstractDiscretization) -> SupportedConditions
+
+Declare the geometries and boundary-condition kinds supported by `disc`.
+
+Discretizer packages extend this function so that their supported conditions are
+documented in one machine-readable place. It is documentation and introspection
+only: PDEBase never calls it while discretizing, so it does not replace
+validation in [`interface_errors`](@ref PDEBase.interface_errors) or
+[`check_boundarymap`](@ref PDEBase.check_boundarymap).
+
+# Arguments
+- `disc::AbstractDiscretization`: The discretization being described.
+
+# Returns
+- `SupportedConditions`: The default is `SupportedConditions()`, in which nothing
+  is declared. This means unknown, not that nothing is supported.
+
+# Examples
+```julia
+PDEBase.supported_conditions(::MyDiscretization) = PDEBase.SupportedConditions(
+    geometries = (:box,), dirichlet = true, neumann = true, robin = true,
+    periodic = true, interface = true, notes = "Uniform and nonuniform grids."
+)
+```
+"""
+supported_conditions(disc::AbstractDiscretization) = SupportedConditions()

@@ -23,6 +23,7 @@ end
 function SciMLBase.symbolic_discretize(
         pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
     )
+    pdesys = lower_boundaries(pdesys, discretization)
     t = get_time(discretization)
     pdesys, complexmap = handle_complex(pdesys)
     pdesys = cardinalize_eqs(pdesys)
@@ -71,18 +72,7 @@ function SciMLBase.symbolic_discretize(
     derivweights = construct_differential_discretizer(pdesys, s, discretization, orders)
 
     # Separate bcs and ics
-    ics = t === nothing ? [] :
-        mapreduce(u -> boundarymap[u][t], vcat, operation.(depvars(v)))
-
-    bcmap = Dict(
-        map(collect(keys(boundarymap))) do u
-            u => Dict(
-                map(indvars(v)) do x
-                    x => boundarymap[u][x]
-                end
-            )
-        end
-    )
+    ics, bcmap = split_ics_bcs(boundarymap, v, discretization)
 
     ####
     # Loop over equations, Discretizing them and their dependent variables' boundary conditions
