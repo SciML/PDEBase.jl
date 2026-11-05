@@ -125,6 +125,7 @@ include("fallbacks.jl")
 include("symbolic_utils.jl")
 include("utils.jl")
 include("mesh_domain.jl")
+include("facet_normal.jl")
 include("variable_map.jl")
 include("classify.jl")
 include("box_lowering.jl")
@@ -164,7 +165,8 @@ export to_box_bcs
 
 # Argument classes, locations and condition classes returned by the classifier. Their
 # names are generic, so they stay qualified.
-@public ArgumentClass, Free, BoxFace, Piece, Interior, ConditionClass, location, boxface, normal
+@public ArgumentClass, Free, BoxFace, Piece, Interior, ConditionClass, location, boxface, normal,
+    FacetNormal
 
 # Mesh-domain interface, implemented by mesh backends.
 @public meshdim, facetset_names, cellset_names, contains_point, backend_mesh

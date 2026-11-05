@@ -48,7 +48,7 @@ end
 # `substitute_traces`: traces become `U`, their first derivatives `G`, their normal derivatives
 # `N·G`, coordinates `X`, time `T` and parameters `P`. Only trace-free subexpressions are
 # derivative-expanded (spec §3.3 trap).
-function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label)
+function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label, licensed)
     ex = unwrap(ex)
     haskey(rules, ex) && return rules
     if !iscall(ex)
@@ -63,7 +63,7 @@ function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label)
     end
     op = operation(ex)
     if op isa SymbolicUtils.Operator
-        rules[ex] = _slot_operator(ctx, op, ex, loc, slots, label)
+        rules[ex] = _slot_operator(ctx, op, ex, loc, slots, label, licensed)
         return rules
     end
     f = _field(ctx, ex)
@@ -72,17 +72,23 @@ function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label)
         rules[ex] = unwrap(slots.U[f])
         return rules
     end
-    foreach(a -> _slot_rules!(rules, ctx, a, loc, slots, label), arguments(ex))
+    foreach(a -> _slot_rules!(rules, ctx, a, loc, slots, label, licensed), arguments(ex))
     return rules
 end
 
+# A condition that holds the facet normal of its own location may use Cartesian derivatives of
+# traces on a piece: the user builds the contraction with the normal.
 function _slot_expression(ctx::SlotContext, ex, loc, slots, label)
-    rules = _slot_rules!(Dict{Any, Any}(), ctx, ex, loc, slots, label)
+    licensed = _has_facet_normal(ex, piece -> isequal(location(ctx.v, [Piece(piece)]), loc))
+    rules = _slot_rules!(Dict{Any, Any}(), ctx, ex, loc, slots, label, licensed)
     return unwrap(assert_no_traces(substitute_traces(ex, rules)))
 end
 
-function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, label)
+function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, label, licensed)
     inner = unwrap(only(arguments(ex)))
+    _has_facet_normal(inner) && error(
+        "derivative of an expression containing the facet normal is not supported in a boundary condition: $(wrap(ex))"
+    )
     f = _field(ctx, inner)
     if f === nothing
         _has_trace(ctx, inner) && error(
@@ -103,8 +109,8 @@ function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, labe
             error("time derivative of a trace is not supported in a boundary condition: $(wrap(ex))")
         error("derivative in $(op.x), which is not an independent variable of the system, in a boundary condition: $(wrap(ex))")
     end
-    loc isa Piece && error(
-        "$(wrap(ex)) is a Cartesian derivative of a trace on $(loc.piece), which equals the normal derivative only on a planar piece perpendicular to $(op.x); write the normal derivative NormalDerivative($(loc.piece))(…)"
+    loc isa Piece && !licensed && error(
+        "$(wrap(ex)) is a Cartesian derivative of a trace on $(loc.piece), which equals the normal derivative only on a planar piece perpendicular to $(op.x); write the normal derivative NormalDerivative($(loc.piece))(…), or include PDEBase.normal($(loc.piece)) in the condition to build the contraction yourself"
     )
     op.order == 1 ||
         error("derivative of order $(op.order) in a boundary condition is not supported: $(wrap(ex))")
@@ -112,7 +118,7 @@ function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, labe
 end
 
 # `NormalDerivative(Γ)(u_f(t, Γ))` is `N·G_f` (spec §5.3), with the numeric normal on a box face.
-function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, label)
+function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, label, licensed)
     inner = unwrap(only(arguments(ex)))
     f = _field(ctx, inner)
     f === nothing && error(
@@ -131,7 +137,18 @@ function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, 
     return unwrap(sum(n[d] * slots.G[(f - 1) * dim + d] for d in 1:dim))
 end
 
-function _slot_operator(ctx::SlotContext, op, ex, loc, slots, label)
+# A component of the facet normal is `N[d]` on a piece and the numeric `±e` on a box face.
+function _slot_operator(ctx::SlotContext, op::FacetNormal, ex, loc, slots, label, licensed)
+    oploc = location(ctx.v, [Piece(op.piece)])
+    isequal(oploc, loc) ||
+        error("$(wrap(ex)) is the normal of $(op.piece), but the condition $label is on $(_where(loc)); write the condition on the normal's piece")
+    d = _normal_component(ex)
+    d <= length(ctx.sivs) ||
+        error("$(wrap(ex)) is component $d of the normal, but the system has $(length(ctx.sivs)) spatial independent variables")
+    return unwrap(_normal(loc, ctx, slots)[d])
+end
+
+function _slot_operator(ctx::SlotContext, op, ex, loc, slots, label, licensed)
     return error("operator $op is not supported in a boundary condition: $(wrap(ex))")
 end
 
@@ -148,7 +165,10 @@ The residual `eq.lhs - eq.rhs` of a boundary condition on `face`, a `PDEBase.Box
 `BoundaryPiece`, in slot form: each trace `u_f` becomes `U[f]`, `Dx_d(u_f)` becomes
 `G[(f-1)*dim+d]` and `NormalDerivative(Γ)(u_f)` becomes `Σ_d N[d] G[(f-1)*dim+d]`. On a box face
 the normal is the face's `±e_iv` and the face coordinate becomes its endpoint value; on a piece
-the normal stays the symbolic slots `N`, and a Cartesian derivative of a trace is an error.
+the normal stays the symbolic slots `N`. A component of `PDEBase.normal(Γ)` becomes `N[d]` (or the
+numeric normal on a box face), and a Cartesian derivative of a trace on a piece is an error unless
+the condition also holds the normal of that piece. A condition with the symbolic normal but no
+derivative of a trace is an error.
 Traces are replaced with `PDEBase.substitute_traces`. Errors if a trace or any other unslotted
 symbol remains. Only trace-free subexpressions are derivative-expanded (spec §3.3 trap).
 """
@@ -468,6 +488,9 @@ function boundary_conditions(
             e, Φ = _route_on_face(B, flux, faceflux, _where(loc), n, slots, label)
             NaturalBC{K}(key, e, Φ)
         else
+            _depends(B, slots.N) && error(
+                "the condition $label contains the facet normal but no derivative of a trace; the normal can appear only in a natural or Robin-type condition"
+            )
             f, g = essential_condition(B, slots; field, label)
             EssentialBC{K}(key, f, g)
         end

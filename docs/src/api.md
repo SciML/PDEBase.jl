@@ -56,6 +56,7 @@ PDEBase.BoundaryPiece
 PDEBase.boundarypiece
 PDEBase.boundarypieces
 PDEBase.NormalDerivative
+PDEBase.FacetNormal
 ```
 
 ## Abstract Types
