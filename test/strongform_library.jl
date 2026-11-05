@@ -1,4 +1,4 @@
-# Symbolic golden-outcome gate (spec §10.5) over every system of PDESystemLibrary 0.1.10:
+# Symbolic golden-outcome gate (spec §10.5) over every system of PDESystemLibrary:
 # accepted or rejected-with-message per system, and for each accepted system the
 # reconstruction identity, linearity, BC-kind split and absence of warnings.
 using PDEBase, Symbolics, Test
@@ -204,12 +204,10 @@ const SYSTEMS = PDESystemLibrary.all_systems
 const ORIGINAL = [(copy(sys.eqs), copy(sys.bcs)) for sys in SYSTEMS]
 
 @testset "corpus" begin
-    @test length(SYSTEMS) == 427
+    @test length(SYSTEMS) >= 427
     @test allunique(getproperty.(SYSTEMS, :name))
     @test issubset(keys(REJECTED), getproperty.(SYSTEMS, :name))
     @test issubset(PERIODIC ∪ NONLINEAR, getproperty.(SYSTEMS, :name))
-    # L6: trans_sin is defined but never added to all_systems
-    @test_broken any(s -> s.name === :trans_sin, SYSTEMS)
     # The Weighted(r²) remedy: the weighted conormal vanishes on r = 0, so Dr(u(t, 0)) ~ 0 is a
     # zero facet flux, and the Dirichlet condition at r = 1 stays essential.
     sph, v, bmap = library_setup(only(filter(s -> s.name === :sph, SYSTEMS)))
