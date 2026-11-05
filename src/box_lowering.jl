@@ -66,7 +66,7 @@ end
 function _pieces!(pieces, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return pieces
-    operation(ex) isa NormalDerivative && push!(pieces, operation(ex).piece)
+    operation(ex) isa Union{NormalDerivative, FacetNormal} && push!(pieces, operation(ex).piece)
     for a in arguments(ex)
         _ispiece(a) ? push!(pieces, unwrap_const(safe_unwrap(a))) : _pieces!(pieces, a)
     end
@@ -141,7 +141,11 @@ function _box_rules!(rules, v, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return rules
     op = operation(ex)
-    if op isa NormalDerivative
+    if op isa FacetNormal
+        iv, sign = normal(_trace_face(v, op.piece))
+        rules[ex] = isequal(indvars(v)[_normal_component(ex)], iv) ? sign : 0
+        return rules
+    elseif op isa NormalDerivative
         iv, sign = normal(_trace_face(v, op.piece))
         operand = safe_unwrap(only(arguments(ex)))
         derivative = Differential(iv)(substitute_traces(operand, _box_rules!(Dict{Any, Any}(), v, operand)))
@@ -182,6 +186,10 @@ else untouched. For the face of axis `x` at its lower end `x_lo` (from
 | `k * Dn_Γ(u(t, Γ)) + α * u(t, Γ) ~ β` | `-k * Dx(u(t, x_lo, y)) + α * u(t, x_lo, y) ~ β` |
 | `u(t, Γ_lo) ~ u(t, Γ_hi)` | `u(t, x_lo, y) ~ u(t, x_hi, y)` |
 | `Dx(u(t, Γ)) ~ h` | `Dx(u(t, x_lo, y)) ~ h` |
+| `k * (n[1] * Dx(u(t, Γ)) + n[2] * Dy(u(t, Γ))) + α * u(t, Γ) ~ β`, `n = normal(Γ)` | `-k * Dx(u(t, x_lo, y)) + α * u(t, x_lo, y) ~ β` |
+
+A component of [`normal`](@ref PDEBase.normal)`(Γ)` is replaced by the numeric `-1`, `+1` or `0` of the
+face's outward normal, in the order of `indvars`.
 
 The endpoint value is the interval's own endpoint, `DomainSets.infimum` or `supremum`, so
 `0.0` on `Interval(0.0, 1.0)`; it is `isequal` to the `0` a user writes. Conditions that

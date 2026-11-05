@@ -428,3 +428,20 @@ end
         @test d_orders(x, [Dx(2 * Dx(u(t, x, y))) ~ 0]) == [2]
     end
 end
+
+@testset "facet normal in conditions" begin
+    nl, nb = normal(Γ_left), normal(Γ_bottom)
+    @test length(nl) == 2 && repr(nl[1]) == "n_left(1)"
+    bc = nl[1] * Dx(u(t, Γ_left)) + nl[2] * Dy(u(t, Γ_left)) + u(t, Γ_left) ~ 0
+    @test classify_condition(v, bc).locations == [BoxFace(unwrap(x), :lo)]
+    # the endpoint spelling and the piece normalise to one location
+    mixed = nl[1] * Dx(u(t, 0.0, y)) + u(t, Γ_left) ~ 0
+    @test classify_condition(v, mixed).locations == [BoxFace(unwrap(x), :lo)]
+    msg = errmsg(() -> classify_condition(v, nb[2] * u(t, Γ_left) ~ 0))
+    @test occursin("uses the normal of $(Γ_bottom) but is on", msg)
+    rules = Dict(unwrap(nl[1]) => -1, unwrap(nl[2]) => 0)
+    @test isequal(substitute_traces(bc.lhs, rules), -Dx(u(t, Γ_left)) + u(t, Γ_left))
+    @test_throws ArgumentError assert_no_traces(bc)
+    @test_throws ArgumentError assert_no_traces(substitute_traces(2 * nl[1], Dict(unwrap(nl[2]) => 0)))
+    @test assert_no_traces(substitute_traces(2 * nl[1], rules)) == -2
+end

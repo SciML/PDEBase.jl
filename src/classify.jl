@@ -305,14 +305,26 @@ end
 """
     normal(face::BoxFace) -> (iv, sign)
     normal(piece::Piece, x)
+    normal(Γ::BoundaryPiece) -> Vector{Num}
 
 Return the outward normal of a location. For a [`BoxFace`](@ref PDEBase.BoxFace) it is
 `±e_iv`, returned as the pair `(iv, -1)` on the lower face and `(iv, 1)` on the upper
 face. For a [`Piece`](@ref PDEBase.Piece) it is `DomainSets.normal(parent, x)` at the
 point `x` when DomainSets knows the normal of the parent domain; otherwise the
 discretization backend supplies it, and this is an error.
+
+For a [`BoundaryPiece`](@ref) `Γ` it is the symbolic outward unit normal, a vector of
+[`FacetNormal`](@ref PDEBase.FacetNormal)`(Γ)(d)` for `d` in `1:dimension(parent(Γ))`, to use in a
+boundary condition on `Γ`: `n = PDEBase.normal(Γ)` and then `n[d]`, `dot(n, v)` or
+`cross(n, v)`. The component `d` is the position in `indvars(v)`. In the strong-form analysis it
+becomes the normal slot `N[d]` on a piece and the numeric `±1` or `0` on a piece that is a
+face of a box. A Cartesian derivative of a trace on `Γ` is admitted in a condition that also
+contains `normal(Γ)`, as in the impedance term `Σ_d n[d] * Dx_c(E_d(t, Γ))`. The function is
+not exported, because DomainSets exports a `normal` of its own.
 """
 normal(face::BoxFace) = (face.iv, face.side === :lo ? -1 : 1)
+
+normal(piece::BoundaryPiece) = [FacetNormal(piece)(d) for d in 1:DomainSets.dimension(parent(piece))]
 
 function normal(p::Piece, x)
     Ω = parent(p.piece)
@@ -398,6 +410,31 @@ function _call_locations!(locs, v, ex)
     return locs
 end
 
+# The pieces of the facet normals in `ex`.
+function _normal_pieces!(pieces, ex)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return pieces
+    _is_facet_normal(ex) && push!(pieces, operation(ex).piece)
+    foreach(a -> _normal_pieces!(pieces, a), arguments(ex))
+    return pieces
+end
+
+# A facet normal must be that of the one location the condition's calls are on.
+function _check_normals(v, eq, lhs, rhs, locs)
+    length(locs) == 1 || return nothing
+    for piece in _normal_pieces!(_normal_pieces!(Any[], lhs), rhs)
+        isequal(location(v, [Piece(piece)]), only(locs)) || throw(
+            ArgumentError(
+                "condition $(eq) uses the normal of $(piece) but is on $(_loc_name(only(locs))); " *
+                    "write the normal of the piece the condition is on"
+            )
+        )
+    end
+    return nothing
+end
+_loc_name(loc::Piece) = string(loc.piece)
+_loc_name(loc) = string(loc)
+
 _istimeface(v, loc, side) = loc isa BoxFace && v.time !== nothing && isequal(loc.iv, v.time) && loc.side === side
 
 """
@@ -424,7 +461,8 @@ interior call of a variable that does not have the variables its condition's fac
 as `q(t, y)` in `u(t, 0, y) ~ q(t, y)`, adds no location, while `u(t, 0, y) ~ u(t, x, y)`
 mixes an interior call with a trace. A
 `NormalDerivative(Γa)` applied to an expression whose traces are not all on `Γa` is an
-error.
+error, and so is a [`FacetNormal`](@ref PDEBase.FacetNormal) of a piece other than the
+condition's location.
 """
 function classify_condition(v::VariableMap, eq)
     lhs, rhs = _get_lhs_rhs(eq)
@@ -438,6 +476,7 @@ function classify_condition(v::VariableMap, eq)
     )
     any(loc -> _istimeface(v, loc, :hi), locs) &&
         throw(ArgumentError("condition $(eq) is on the final time $(v.intervals[v.time][2]), not an initial condition"))
+    _check_normals(v, eq, lhs, rhs, locs)
     if length(locs) == 1
         loc = only(locs)
         return ConditionClass(_istimeface(v, loc, :lo) ? :initial : :boundary, locs)
@@ -482,7 +521,7 @@ substitute_traces(eq::Equation, rules) = substitute_traces(eq.lhs, rules) ~ subs
 function _find_trace(ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return nothing
-    operation(ex) isa NormalDerivative && return ex
+    operation(ex) isa Union{NormalDerivative, FacetNormal} && return ex
     any(_ispiece, arguments(ex)) && return ex
     for arg in arguments(ex)
         found = _find_trace(arg)
@@ -495,7 +534,8 @@ end
     assert_no_traces(ex)
 
 Throw an `ArgumentError` if `ex`, an expression or an `Equation`, still holds a trace (a
-call with a [`BoundaryPiece`](@ref) argument) or a [`NormalDerivative`](@ref), and return
+call with a [`BoundaryPiece`](@ref) argument), a [`NormalDerivative`](@ref) or a
+[`FacetNormal`](@ref PDEBase.FacetNormal), and return
 `ex` otherwise. Run it after replacing traces and before `expand_derivatives`, which
 silently turns `Dx(u(t, Γ))` into `0`.
 """

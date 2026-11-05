@@ -16,8 +16,8 @@ using TermInterface: maketerm, metadata
 using ModelingToolkitBase: get_bcs, get_dvs, get_eqs
 using ..PDEBase: VariableMap, LowerBoundary, UpperBoundary, InterfaceBoundary, PieceBoundary, _flatten_eqs,
     chain_flatten_array_variables, depvars, indvars, isupper, replaced_vars, BoxFace, Piece,
-    Interior, BoundaryPiece, NormalDerivative, classify_call, location,
-    substitute_traces, assert_no_traces
+    Interior, BoundaryPiece, NormalDerivative, FacetNormal, classify_call, location,
+    substitute_traces, assert_no_traces, _has_facet_normal, _normal_component
 
 include("types.jl")
 include("whitelist.jl")
