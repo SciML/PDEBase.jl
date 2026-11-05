@@ -115,6 +115,27 @@ struct PieceBoundary <: AbstractBoundary
 end
 ```
 
+### Facet normal
+
+`PDEBase.normal(Γ)` for a `BoundaryPiece` `Γ` returns a `Vector{Num}` with one symbolic
+component per spatial dimension of the parent domain. Component `n[d]` is the term
+`PDEBase.FacetNormal(Γ)(d)`, printed `n_<name>(d)`; `d` is the position in `indvars(v)`, the
+order of the spatial arguments of the dependent variables, which is not always the order of the
+axes of a box declared in the domain. A condition on `Γ` may use it as a coefficient, for example
+for a vector-valued field `E`, an absorbing (radiation) boundary term with an impedance
+(Robin-type) part:
+
+```julia
+n = PDEBase.normal(Γ)
+curl_trace(i) = sum(n[c] * (D[c](E[i](t, Γ)) - D[i](E[c](t, Γ))) for c in 1:3)  # D = (Dx, Dy, Dz)
+bc(i) = curl_trace(i) + γ * (n[i] * sum(n[d] * E[d](t, Γ) for d in 1:3) - E[i](t, Γ)) ~ g
+```
+
+Cartesian derivatives of traces on a piece, rejected without a normal, are accepted in a
+condition that contains `normal(Γ)` of that piece. The backend receives the component as the
+slot `N[d]`, see the strong-form page. `normal` is not exported, because DomainSets exports its
+own `normal`; write `PDEBase.normal`.
+
 ## Boundary Map Structure
 
 During discretization, boundary conditions are organized into a nested dictionary structure:
