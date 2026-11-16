@@ -421,8 +421,15 @@ end
 
 # A facet normal must be that of the one location the condition's calls are on.
 function _check_normals(v, eq, lhs, rhs, locs)
-    length(locs) == 1 || return nothing
-    for piece in _normal_pieces!(_normal_pieces!(Any[], lhs), rhs)
+    pieces = _normal_pieces!(_normal_pieces!(Any[], lhs), rhs)
+    isempty(pieces) && return nothing
+    length(locs) == 1 || throw(
+        ArgumentError(
+            "condition $(eq) uses the normal of $(first(pieces)) but has calls on $(length(locs)) locations; " *
+                "a facet normal is supported only in a condition on one piece"
+        )
+    )
+    for piece in pieces
         isequal(location(v, [Piece(piece)]), only(locs)) || throw(
             ArgumentError(
                 "condition $(eq) uses the normal of $(piece) but is on $(_loc_name(only(locs))); " *
@@ -462,7 +469,7 @@ as `q(t, y)` in `u(t, 0, y) ~ q(t, y)`, adds no location, while `u(t, 0, y) ~ u(
 mixes an interior call with a trace. A
 `NormalDerivative(Γa)` applied to an expression whose traces are not all on `Γa` is an
 error, and so is a [`FacetNormal`](@ref PDEBase.FacetNormal) of a piece other than the
-condition's location.
+condition's location, or in a condition with calls on two locations.
 """
 function classify_condition(v::VariableMap, eq)
     lhs, rhs = _get_lhs_rhs(eq)

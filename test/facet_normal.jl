@@ -1,7 +1,8 @@
 using PDEBase, ModelingToolkit, Symbolics, SciMLBase, SymbolicUtils, Test
 using DomainSets: Interval, Rectangle, (..)
+using LinearAlgebra: cross
 using PDEBase: BoxFace, FacetNormal, PieceBoundary, boxface, normal
-using PDEBase.StrongForm: analyse, StateSlots, SlotContext, slot_condition, check_whitelist, NaturalBC
+using PDEBase.StrongForm: analyse, StateSlots, SlotContext, slot_condition, check_whitelist, NaturalBC, match_flux
 
 # A mesh backend with three spatial dimensions that stops `symbolic_discretize` at the boundary map.
 struct NormalMesh end
@@ -51,7 +52,7 @@ curlcurl = [Dt(Evol[i]) ~ sum(Dxyz[c](Dxyz[c](Evol[i]) - Dxyz[i](Evol[c])) for c
 ics = [E1(0, x, y, z) ~ 0, E2(0, x, y, z) ~ 0, E3(0, x, y, z) ~ 0]
 meshdomains = [(x, y, z) ∈ Ω, t ∈ Interval(0.0, 1.0)]
 n = normal(Γ)
-# (n × curl E)_i + γ (n × (n × E))_i, written in components
+# -(n × curl E)_i + γ (n × (n × E))_i, written in components
 absorbing(i, Eg = Etr(Γ), nn = n) =
     sum(nn[c] * (Dxyz[c](Eg[i]) - Dxyz[i](Eg[c])) for c in 1:3) +
     γ * (nn[i] * sum(nn[d] * Eg[d] for d in 1:3) - Eg[i]) ~ 0
@@ -103,6 +104,7 @@ end
     msg = errmsg(() -> classify_condition(v, n[1] * E1(t, Γin) ~ 0))
     @test occursin("uses the normal of $(Γ) but is on $(Γin)", msg)
     @test occursin("has no call of a dependent variable", errmsg(() -> classify_condition(v, n[1] ~ 0)))
+    @test occursin("calls on 2 locations", errmsg(() -> classify_condition(v, n[1] * E1(t, Γ) ~ E1(t, Γin))))
     bmap = boundarymap([absorbing(1), ics...], v, NormalMeshDisc(t, Ref{Any}(nothing)))
     b = only(reduce(vcat, [get(bykey, Γ, []) for bykey in values(bmap)]))
     @test b isa PieceBoundary && b.kind == PDEBase.Robin() && b.order == 1
@@ -121,6 +123,58 @@ end
     @test symeq(slot_condition(n[3] * Dy(E2(t, Γ)) ~ 0, Γ, ctx, s), N[3] * G[(2 - 1) * 3 + 2])
     # normal-free pieces are unchanged
     @test symeq(slot_condition(NormalDerivative(Γ)(E1(t, Γ)) ~ 0, Γ, ctx, s), sum(N[d] * G[d] for d in 1:3))
+end
+
+@testset "the component formula is the cross-product form" begin
+    sys, v, _ = meshanalysis([absorbing(1), ics...])
+    ctx = SlotContext(sys, v)
+    s = StateSlots(3, 3, 1)
+    curlE(Gm) = [Gm[3, 2] - Gm[2, 3], Gm[1, 3] - Gm[3, 1], Gm[2, 1] - Gm[1, 2]]  # Gm[f, c] = ∂_c E_f
+    for (Nv, Gm, Ev, γv) in (
+            ([1.0, 0, 0], [0 0 0; 1 0 0; 0 0 0], [0.0, 0, 0], 0.0),  # E = (0, x, 0), n = e_x
+            ([0.6, 0, 0.8], [0.3 -1.2 0.7; 2.0 0.5 -0.4; -0.9 1.1 0.2], [0.5, -1.5, 2.0], 1.7),
+        )
+        vals = Dict{Any, Float64}(s.N[d] => Nv[d] for d in 1:3)
+        for f in 1:3, c in 1:3
+            vals[s.G[(f - 1) * 3 + c]] = Gm[f, c]
+        end
+        for f in 1:3
+            vals[s.U[f]] = Ev[f]
+        end
+        vals[s.P[1]] = γv
+        expected = -cross(Nv, curlE(Gm)) + γv * cross(Nv, cross(Nv, Ev))
+        for i in 1:3
+            B = slot_condition(absorbing(i), Γ, ctx, s)
+            @test Symbolics.value(substitute(B, vals)) ≈ expected[i]
+        end
+    end
+    # E = (0, x, 0), n = e_x: n × curl E = (0, -1, 0)
+    @test cross([1.0, 0, 0], curlE([0 0 0; 1 0 0; 0 0 0])) == [0.0, -1.0, 0.0]
+end
+
+@testset "a scale that holds a normal component is not cancelled" begin
+    s = StateSlots(1, 2, 0)
+    N, G = s.N, s.G
+    Φ = G[1] * N[1] + G[2] * N[2]
+    @test match_flux(Φ, Φ, s) !== nothing
+    @test match_flux(Φ, N[1] * Φ, s) === nothing
+    # scalar heat on a mesh: n₁ ∂ₙu ~ 0 vanishes on a facet with n = (0, 1), so it is not the natural condition
+    heat3 = Dt(u(t, x, y, z)) ~ sum(Dxyz[c](Dxyz[c](u(t, x, y, z))) for c in 1:3)
+    ic = u(0, x, y, z) ~ 0
+    for bc in (n[1] * NormalDerivative(Γ)(u(t, Γ)) ~ 0, NormalDerivative(Γ)(u(t, Γ)) * n[1] ~ 0)
+        sysh = PDESystem([heat3], [bc, ic], meshdomains, [t, x, y, z], [u(t, x, y, z)], [γ]; name = :sys)
+        disc = NormalMeshDisc(t, Ref{Any}(nothing))
+        @test_throws StopAtMap SciMLBase.symbolic_discretize(sysh, disc)
+        bmaph, vh = disc.captured[]
+        @test occursin("not a conormal condition", errmsg(() -> analyse(sysh, vh, bmaph)))
+    end
+    # without the normal factor the same condition is the natural condition with zero data
+    sysh = PDESystem([heat3], [NormalDerivative(Γ)(u(t, Γ)) ~ 0, ic], meshdomains, [t, x, y, z], [u(t, x, y, z)], [γ]; name = :sys)
+    disc = NormalMeshDisc(t, Ref{Any}(nothing))
+    @test_throws StopAtMap SciMLBase.symbolic_discretize(sysh, disc)
+    bmaph, vh = disc.captured[]
+    anh = analyse(sysh, vh, bmaph)
+    @test only(anh.natural).eq == 1 && symeq(only(anh.natural).Φ, 0)
 end
 
 @testset "negative cases" begin
@@ -256,4 +310,16 @@ end
     wrong = k * (normal(Γl)[2] * Dy(u(t, Γl)) + normal(Γl)[1] * Dx(u(t, Γl))) + α * u(t, Γl) ~ 1
     wronglowered = to_box_bcs(PDESystem([heat], [bcs[1]; wrong; bcs[3:5]], domains, [t, x, y], [u(t, y, x)], [k => 1.0, α => 2.0]; name = :sys); time = t).bcs[2]
     @test !isequal(Symbolics.simplify(wronglowered.lhs - wronglowered.rhs), Symbolics.simplify(left.lhs - left.rhs))
+end
+
+@testset "a normal in a condition with calls on two locations is rejected" begin
+    rect = Rectangle(0.0 .. 1.0, 0.0 .. 2.0)
+    Γl, Γr, Γt = (boundarypiece(rect, nm) for nm in (:left, :right, :top))
+    heat = Dt(u(t, x, y)) ~ Dx(k * Dx(u(t, x, y))) + Dy(k * Dy(u(t, x, y)))
+    domains = [(x, y) ∈ rect, t ∈ Interval(0.0, 1.0)]
+    bcs = [u(0, x, y) ~ 0, normal(Γt)[2] * u(t, Γl) ~ u(t, Γr), u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0]
+    sys = PDESystem([heat], bcs, domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)
+    v = VariableMap(sys, NormalBoxDisc(t))
+    @test occursin("calls on 2 locations", errmsg(() -> classify_condition(v, bcs[2])))
+    @test occursin("calls on 2 locations", errmsg(() -> to_box_bcs(sys; time = t)))
 end

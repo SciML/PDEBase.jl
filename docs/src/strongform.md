@@ -51,7 +51,7 @@ the normal it is an error that suggests `NormalDerivative`. A facet normal is al
 a volume equation, under a derivative, on another piece than the condition's, and in a
 condition with no derivative of a trace (such a condition would be essential, and an essential
 condition cannot depend on the normal). The conormal matching needs no change: in a condition
-such as the absorbing-boundary term `n × curl E + γ n × (n × E) ~ g`, the derivative terms
+such as the absorbing-boundary term `-n × curl E + γ n × (n × E) ~ g`, the derivative terms
 are matched against the conormal flux of one equation, and the normal-dependent impedance term
 lands in the facet flux `Φ`, a product of `N` and `U`. Matching the curl-type derivative terms
 of a two-dimensional in-plane vector problem is ambiguous, since both equations' conormal

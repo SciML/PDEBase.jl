@@ -231,7 +231,8 @@ end
 
 Match the boundary residual `B` against the conormal flux `Φ = G·N` (spec §5.3). Both must be
 affine in the gradient slots, `Φ = a_Φ·g + Φ₀` and `B = a_B·g + B₀`; if `a_B = λ a_Φ` for a scalar
-`λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. Proportionality must be proven
+`λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. A `λ` that contains a normal slot
+`N` is never cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match. Proportionality must be proven
 by `simplify`; a numeric agreement is never accepted (open question O3).
 """
 function match_flux(Φ, B, slots)
@@ -242,7 +243,9 @@ function match_flux(Φ, B, slots)
     i = findfirst(!_iszero, aΦ)
     (i === nothing || all(_iszero, aB)) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
-    _iszero(λ) && return nothing
+    # A scale containing a normal component can vanish on a whole facet, where the condition is
+    # then not the conormal condition it matched symbolically; it is not cancelled.
+    (_iszero(λ) || _depends(λ, slots.N)) && return nothing
     # Expanded and fraction-simplified so polynomial identities such as (1 + U)^2 = 1 + 2U + U^2
     # are proven; no coefficient-by-coefficient products, which can underflow to zero.
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||
