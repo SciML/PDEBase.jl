@@ -517,7 +517,7 @@ _trace_substitute_filter(ex) =
     substitute_traces(ex, rules)
 
 `substitute(ex, rules)` that also substitutes inside `Differential` and
-[`NormalDerivative`](@ref) applications, which plain `substitute` leaves alone. `ex` may be
+`NormalDerivative` applications, which plain `substitute` leaves alone. `ex` may be
 an expression or an `Equation`. Use it wherever traces are rewritten, so that
 `Dx(u(t, Γ))`, `Dn(u(t, Γ))` and `k * Dn(u(t, Γ)) + α * u(t, Γ)` all have their trace
 replaced, and check the result with [`assert_no_traces`](@ref).
@@ -541,7 +541,7 @@ end
     assert_no_traces(ex)
 
 Throw an `ArgumentError` if `ex`, an expression or an `Equation`, still holds a trace (a
-call with a [`BoundaryPiece`](@ref) argument), a [`NormalDerivative`](@ref) or a
+call with a [`BoundaryPiece`](@ref) argument), a `NormalDerivative` or a
 [`FacetNormal`](@ref PDEBase.FacetNormal), and return
 `ex` otherwise. Run it after replacing traces and before `expand_derivatives`, which
 silently turns `Dx(u(t, Γ))` into `0`.

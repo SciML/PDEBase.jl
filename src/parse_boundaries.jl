@@ -249,7 +249,7 @@ the boundary map. Construct instances through `PieceBoundary(u, piece, eq, v)`.
 - `kind`: The syntactic kind of the condition from `PDEBase.bckind`:
   `PDEBase.Essential()`, `PDEBase.Natural()` or `PDEBase.Robin()`
 - `order`: The highest derivative order applied to a trace, where a
-  [`NormalDerivative`](@ref) counts one
+  `NormalDerivative` counts one
 
 # Arguments
 - `u`: The trace the condition is filed under.
