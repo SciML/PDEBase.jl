@@ -1,8 +1,9 @@
 using PDEBase, ModelingToolkit, Symbolics, SciMLBase, SymbolicUtils, Test
 using DomainSets: Interval, Rectangle, (..)
-using LinearAlgebra: cross
 using PDEBase: BoxFace, FacetNormal, PieceBoundary, boxface, normal
 using PDEBase.StrongForm: analyse, StateSlots, SlotContext, slot_condition, check_whitelist, NaturalBC, match_flux
+
+cross(a, b) = [a[2] * b[3] - a[3] * b[2], a[3] * b[1] - a[1] * b[3], a[1] * b[2] - a[2] * b[1]]
 
 # A mesh backend with three spatial dimensions that stops `symbolic_discretize` at the boundary map.
 struct NormalMesh end
