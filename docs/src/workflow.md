@@ -19,11 +19,14 @@ The `symbolic_discretize` function orchestrates the entire discretization proces
 ### Phase 1: Preprocessing
 
 ```julia
+pdesys = expand_vector_operators(pdesys)
 pdesys = lower_boundaries(pdesys, discretization)
 pdesys, complexmap = handle_complex(pdesys)
 cardinalize_eqs!(pdesys)
 pdesys, replaced_vars = make_pdesys_compatible(pdesys)
 ```
+
+**`expand_vector_operators`**: Rewrites the vector-calculus operators `Grad`, `Divergence`, `Curl` and `Laplacian` of Symbolics (7.49 and later) into `Differential` terms, so every later step sees only `Differential`. `Dt(u) ~ k * Laplacian([x, y])(u)` becomes `Dt(u) ~ k * (Dx(Dx(u)) + Dy(Dy(u)))`, and `Divergence([x, y])(k * Grad([x, y])(u))` becomes `Dx(k * Dx(u)) + Dy(k * Dy(u))`, which keeps the divergence form. The variables of an operator must be independent variables of the system. Boundary conditions are rewritten the same way, including those on a trace such as `u(t, Γ)`. A system that uses none of the operators is returned unchanged.
 
 **`lower_boundaries`**: Rewrites boundary conditions into the form the discretization consumes. The default returns the system unchanged; for an `AbstractBoxDiscretization` it is `to_box_bcs`, which rewrites trace conditions on box faces into endpoint form.
 
