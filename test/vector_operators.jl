@@ -91,6 +91,15 @@ else
         @test same(eq.rhs, Dx(Av[1]) + Dy(Av[2]))
     end
 
+    @testset "array-valued equation" begin
+        V, W = v(t, x, y), w(t, x, y)
+        @named sys = PDESystem([∇(U) ~ [V, W]], boxbcs, box, [t, x, y], [U, V, W], [k])
+        lowered = expand_vector_operators(sys)
+        eq = only(get_eqs(lowered))
+        @test same.(Symbolics.scalarize(eq.lhs), [Dx(U), Dy(U)]) == [true, true]
+        @test !PDEBase._has_vector_operator(eq)
+    end
+
     @testset "d_orders and the pipeline see the expanded equation" begin
         heat = Dt(U) ~ k * Symbolics.Laplacian([x, y])(U)
         @named sys = PDESystem([heat], boxbcs, box, [t, x, y], [U], [k])

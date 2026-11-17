@@ -80,7 +80,11 @@ function expand_vector_operators end
     _unwrap_result(r::AbstractArray) = r
     _unwrap_result(r) = unwrap(r)
 
-    _expand_side(side, ivs) = Symbolics.wrap(_expand_vector_operators(Symbolics.scalarize(Symbolics.wrap(side)), ivs))
+    function _expand_side(side, ivs)
+        scalarized = Symbolics.scalarize(Symbolics.wrap(side))
+        scalarized isa AbstractArray && return map(c -> _expand_side(c, ivs), scalarized)
+        return Symbolics.wrap(_expand_vector_operators(scalarized, ivs))
+    end
     _expand_condition(eq::Equation, ivs) = _expand_side(eq.lhs, ivs) ~ _expand_side(eq.rhs, ivs)
     _expand_condition(eq::Pair, ivs) = _expand_side(first(eq), ivs) => _expand_side(last(eq), ivs)
 
