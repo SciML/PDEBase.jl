@@ -176,6 +176,12 @@ else
         @test !isequal(eq.rhs, Symbolics.unwrap(Dx(Mflux[2]) + Dy(Mflux[1])))
     end
 
+    @testset "indexing a flux of unknown shape" begin
+        @variables Mi::Matrix{Real}
+        eq = expanded((Mi * ∇(U))[1] ~ 0; dvs = [U])
+        @test !PDEBase._has_vector_operator(eq)
+    end
+
     @testset "divergence of a concrete tensor flux" begin
         Mc = [1.0 0.5; 0.5 2.0]
         eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mc * ∇(U)); dvs = [U])

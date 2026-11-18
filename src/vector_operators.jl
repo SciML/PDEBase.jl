@@ -102,7 +102,9 @@ function expand_vector_operators end
         end
         rebuilt = maketerm(typeof(ex), op, newargs, metadata(ex))
         # An eager operator can also return a symbolic array, whose operations are only evaluated by `scalarize`.
-        any(a -> a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a), newargs) || return rebuilt
+        arrays = filter(a -> a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a), newargs)
+        # An array of unknown shape cannot be scalarized and stays as an indexed term.
+        (isempty(arrays) || any(a -> !(SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT), arrays)) && return rebuilt
         return _unwrap_result(Symbolics.scalarize(Symbolics.wrap(rebuilt)))
     end
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
