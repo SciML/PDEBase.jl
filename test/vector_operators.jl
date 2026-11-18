@@ -311,6 +311,22 @@ else
         end
     end
 
+    @testset "tuple-valued boundary conditions are expanded" begin
+        gradient = Symbolics.Grad([x])(u(t, 0))
+        bcs = (gradient[1] ~ 0, u(t, 1) ~ 0, u(0, x) ~ 0)
+        @named sys = PDESystem([Dt(u(t, x)) ~ Dx(Dx(u(t, x)))], bcs, [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0)], [t, x], [u(t, x)], [])
+        lowered = get_bcs(expand_vector_operators(sys))
+        @test lowered isa Tuple && length(lowered) == 3
+        @test isequal(lowered[1].lhs, Dx(u(t, 0)))
+        @test isequal(lowered[2], bcs[2])
+    end
+
+    @testset "a derivative of an operator result is taken per component" begin
+        g = ∇(U)
+        eq = expanded(dot(Dt(g), g) ~ 0)
+        @test same(eq.lhs, Dt(Dx(U)) * Dx(U) + Dt(Dy(U)) * Dy(U))
+    end
+
     @testset "an unsized vector defers every enclosing operation" begin
         @parameters pd::Vector{Real}
         g = ∇(U)

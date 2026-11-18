@@ -46,7 +46,7 @@ function expand_vector_operators end
     _has_vector_operator(z::Complex) = _has_vector_operator(real(z)) || _has_vector_operator(imag(z))
     _has_vector_operator(eq::Equation) = _has_vector_operator(eq.lhs) || _has_vector_operator(eq.rhs)
     _has_vector_operator(eq::Pair) = _has_vector_operator(first(eq)) || _has_vector_operator(last(eq))
-    _has_vector_operator(eqs::AbstractVector) = any(_has_vector_operator, eqs)
+    _has_vector_operator(eqs::Union{AbstractVector, Tuple}) = any(_has_vector_operator, eqs)
 
     function _check_operator_vars(op, ivs)
         for var in op.vars
@@ -125,6 +125,10 @@ function expand_vector_operators end
         end
         # An operator result is a Julia array of expressions, and applying `op` to it (`2g`, `dot(g, g)`,
         # `sum(g)`, `(2g)[1]`) evaluates per component, which a rebuilt symbolic array term would not.
+        # A derivative of an operator result is taken per component.
+        if op isa Differential && only(newargs) isa AbstractArray
+            return map(c -> unwrap(op(c)), only(newargs))
+        end
         if any(a -> a isa AbstractArray, newargs)
             # `broadcast` carries its function (`^`, `sin`) as a constant argument, which must be unwrapped to be called.
             callable = map(newargs) do a
@@ -209,14 +213,14 @@ function expand_vector_operators end
         for condition in conditions
             if !_has_vector_operator(condition)
                 push!(expanded, condition)
-            elseif condition isa AbstractVector
+            elseif condition isa Union{AbstractVector, Tuple}
                 push!(expanded, _expand_conditions(condition, ivs))
             else
                 result = _expand_condition(condition, ivs)
                 result isa AbstractVector ? append!(expanded, result) : push!(expanded, result)
             end
         end
-        return map(identity, expanded)
+        return conditions isa Tuple ? Tuple(expanded) : map(identity, expanded)
     end
 
     function expand_vector_operators(pdesys::PDESystem)
