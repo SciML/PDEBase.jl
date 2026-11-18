@@ -230,8 +230,8 @@ end
 
 # Is `λ` provably positive for every real unit normal `N`? A structural sign analysis: positive
 # numbers, sums and products of positive or nonnegative terms, and even powers of any real polynomial
-# in the normal components are nonnegative. Components that make up the whole unit-normal sum
-# `Σ N[d]^2` count as the constant 1.
+# in the normal components are nonnegative. A sum holding a positively weighted square of every
+# component is at least its smallest weight on the unit sphere, so it is positive.
 function _positive_in_normal(λ, N)
     isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
     function realpoly(t)
@@ -253,12 +253,22 @@ function _positive_in_normal(λ, N)
         op = operation(t)
         args = arguments(t)
         if op === (+)
-            squares = [a for a in args if iscall(unwrap(a)) && operation(unwrap(a)) === (^) && isnormal(unwrap(arguments(unwrap(a))[1])) && isequal(unwrap_const(unwrap(arguments(unwrap(a))[2])), 2)]
-            unit = length(unique(squares)) == length(N)
-            rest = unit ? [a for a in args if !any(sq -> isequal(a, sq), squares)] : collect(args)
-            signs = sign.(rest)
+            # a sum with a positively weighted square of every component is at least the smallest weight
+            square(a) = (a = unwrap(a); iscall(a) && operation(a) === (^) && isnormal(unwrap(arguments(a)[1])) && isequal(unwrap_const(unwrap(arguments(a)[2])), 2) ? unwrap(arguments(a)[1]) : nothing)
+            function weighted_square(a)
+                a = unwrap(a)
+                sq = square(a)
+                sq === nothing || return sq
+                iscall(a) && operation(a) === (*) && length(arguments(a)) == 2 || return nothing
+                w, rest = arguments(a)
+                c = unwrap_const(unwrap(w))
+                return c isa Real && c > 0 ? square(rest) : nothing
+            end
+            squares = filter(!isnothing, weighted_square.(args))
+            covered = all(m -> any(sq -> isequal(sq, unwrap(m)), squares), N)
+            signs = sign.(args)
             any(==(:unknown), signs) && return :unknown
-            return unit || any(==(:pos), signs) ? :pos : :nonneg
+            return covered || any(==(:pos), signs) ? :pos : :nonneg
         elseif op === (*)
             signs = sign.(args)
             any(==(:unknown), signs) && return :unknown
@@ -284,7 +294,11 @@ end
 Match the boundary residual `B` against the conormal flux `Φ = G·N` (spec §5.3). Both must be
 affine in the gradient slots, `Φ = a_Φ·g + Φ₀` and `B = a_B·g + B₀`; if `a_B = λ a_Φ` for a scalar
 `λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. A `λ` that contains a normal slot
-`N` is cancelled only if it is provably positive (a positive constant plus even powers of normal components); otherwise it is not cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match. Proportionality must be proven
+`N` is cancelled only if it is provably nonvanishing on the unit sphere, with either sign: a positive
+constant plus squares of real polynomials in the normal components (`1 + N₁²`, `1 + (N₁ + N₂)²`), or a
+sum holding a positively weighted square of every component (`N₁² + N₂²`, `N₁² + 2N₂²`), the whole
+`λ` or its negative. Any other `λ` is not cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match.
+Proportionality must be proven
 by `simplify`; a numeric agreement is never accepted (open question O3).
 """
 function match_flux(Φ, B, slots)

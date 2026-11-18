@@ -71,38 +71,6 @@ function _check_normal_not_differentiated(ex)
 end
 
 """
-Does `ex` hold a `NormalDerivative` of a call of a dependent variable of `v`, or a `Differential` in a
-spatial variable of `v` of a call of a variable declared with that variable among its arguments?
-`Dx(w(t))` for a time-only `w` is zero and does not count.
-"""
-function _has_field_derivative(ex, v)
-    ex = safe_unwrap(ex)
-    iscall(ex) || return false
-    op = operation(ex)
-    declared(x, call) = haskey(v.args, operation(call)) && any(a -> isequal(a, x), v.args[operation(call)])
-    if op isa NormalDerivative
-        _has_field_call(only(arguments(ex)), call -> haskey(v.args, operation(call))) && return true
-    elseif op isa Differential && any(x -> isequal(op.x, x), indvars(v))
-        # a chain of spatial derivatives is zero unless the field has every variable of the chain
-        xs, inner = Any[op.x], safe_unwrap(only(arguments(ex)))
-        while iscall(inner) && operation(inner) isa Differential
-            any(x -> isequal(operation(inner).x, x), indvars(v)) && push!(xs, operation(inner).x)
-            inner = safe_unwrap(only(arguments(inner)))
-        end
-        _has_field_call(inner, call -> all(x -> declared(x, call), xs)) && return true
-        # a spatial derivative of an operand that does not depend on its variable is zero, with its children
-        return false
-    end
-    return any(a -> _has_field_derivative(a, v), arguments(ex))
-end
-
-function _has_field_call(ex, isfield)
-    ex = safe_unwrap(ex)
-    iscall(ex) || return false
-    return isfield(ex) || any(a -> _has_field_call(a, isfield), arguments(ex))
-end
-
-"""
 Throw if a condition that held a facet normal has no derivative left in its residual, unless the
 residual is identically zero there (a zero natural condition, as `x * n[1] * Dx(u) ~ 0` at `x = 0`).
 """

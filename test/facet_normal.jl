@@ -167,6 +167,8 @@ end
     @test symeq(last(route_natural((1 + (N[1] + N[2])^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     s1 = StateSlots(1, 1, 0)
     @test symeq(match_flux(s1.G[1] * s1.N[1], s1.N[1]^2 * (s1.G[1] * s1.N[1] - 3), s1), 3)
+    @test symeq(match_flux(Φ, (N[1]^2 + 2 * N[2]^2) * (Φ - 3), s), 3)
+    @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
     @test symeq(match_flux(Φ, (N[1]^2 + N[2]^2) * (Φ - 3), s), 3)
     @test match_flux(Φ, (N[1]^2 + N[1]^2) * (Φ - 3), s) === nothing
@@ -393,6 +395,12 @@ end
     @variables w3(..)
     sysx2 = PDESystem([heat, Dt(w3(t, x)) ~ 0], [u(0, x, y) ~ 0, Dx(Dy(w3(t, 0.0))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w3(t, x)], [k => 1.0]; name = :sys)
     @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysx2; time = t)))
+    # the two reviewer examples: a parameter derivative is zero, a coefficient does not hide a derivative
+    @variables w4(..)
+    sysk = PDESystem([heat, Dt(w4(t, y)) ~ 0], [u(0, x, y) ~ 0, Dy(Differential(k)(w4(t, y))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w4(t, y)], [k => 1.0]; name = :sys)
+    @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysk; time = t)))
+    sysc = PDESystem([heat, Dt(w4(t, y)) ~ 0], [u(0, x, y) ~ 0, Dx(Dy(x * w4(t, y))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w4(t, y)], [k => 1.0]; name = :sys)
+    @test to_box_bcs(sysc; time = t) isa PDESystem
     # Dx of a time-only field is zero and does not count
     @variables w(..)
     sysw = PDESystem([heat, Dt(w(t)) ~ 0], [u(0, x, y) ~ 0, Dx(w(t)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w(t)], [k => 1.0]; name = :sys)

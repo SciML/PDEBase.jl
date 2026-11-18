@@ -137,7 +137,9 @@ function _endpoint_call(v, call, face)
     return u_op(args...)
 end
 
-function _box_rules!(rules, v, ex)
+# With `declared`, every call of a dependent variable becomes the call with its declared variables,
+# for the derivative check only; the lowered output never uses it.
+function _box_rules!(rules, v, ex; declared = false)
     ex = safe_unwrap(ex)
     iscall(ex) || return rules
     op = operation(ex)
@@ -149,16 +151,54 @@ function _box_rules!(rules, v, ex)
     elseif op isa NormalDerivative
         iv, sign = normal(_trace_face(v, op.piece))
         operand = safe_unwrap(only(arguments(ex)))
-        derivative = Differential(iv)(substitute_traces(operand, _box_rules!(Dict{Any, Any}(), v, operand)))
+        derivative = Differential(iv)(substitute_traces(operand, _box_rules!(Dict{Any, Any}(), v, operand; declared)))
         rules[ex] = sign < 0 ? -derivative : derivative
+        return rules
+    elseif declared && haskey(v.args, op)
+        rules[ex] = op(v.args[op]...)
         return rules
     elseif haskey(v.args, op) && any(_ispiece, arguments(ex))
         piece = unwrap_const(safe_unwrap(only(filter(_ispiece, arguments(ex)))))
         rules[ex] = _endpoint_call(v, ex, _trace_face(v, piece))
         return rules
     end
-    foreach(a -> _box_rules!(rules, v, a), arguments(ex))
+    foreach(a -> _box_rules!(rules, v, a; declared), arguments(ex))
     return rules
+end
+
+# The spatial derivatives of declared fields left in `ex`, outermost first.
+function _spatial_derivatives!(nodes, ex, v)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return nodes
+    op = operation(ex)
+    if op isa Differential && any(x -> isequal(op.x, x), indvars(v))
+        any(n -> isequal(n, ex), nodes) || push!(nodes, ex)
+        return nodes
+    end
+    foreach(a -> _spatial_derivatives!(nodes, a, v), arguments(ex))
+    return nodes
+end
+
+# A condition with a facet normal must keep a derivative of a field: the normal is allowed only in a
+# natural or Robin-type condition. The fields are put in their declared variables and the derivatives
+# are really expanded (product and chain rules), for this check only, so a derivative that is zero
+# (in a parameter, or of a field lacking the variable) does not count and one that survives a
+# coefficient (`Dy(x * w)`) does. At the face the endpoint is substituted into the coefficients; a
+# residual that is then zero but held a derivative is the zero natural condition of a degenerate face.
+function _check_box_normal_derivative(v, lhs, rhs, bc)
+    rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs; declared = true), v, rhs; declared = true)
+    residual = Symbolics.expand_derivatives(Num(substitute_traces(lhs, rules)) - Num(substitute_traces(rhs, rules)))
+    nodes = _spatial_derivatives!(Any[], residual, v)
+    slots = [Symbolics.variable(Symbol(:_dg, j)) for j in eachindex(nodes)]
+    residual = Symbolics.simplify(Symbolics.expand(Symbolics.substitute(residual, Dict(unwrap(n) => unwrap(g) for (n, g) in zip(nodes, slots)))))
+    holds_derivative(r) = (vars = Set(unwrap.(Symbolics.get_variables(r))); any(g -> unwrap(g) in vars, slots))
+    written = holds_derivative(residual)
+    for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
+        face = boxface(v, piece)
+        face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
+    end
+    residual = Symbolics.simplify(Symbolics.expand(residual))
+    return _check_normal_has_derivative(true, holds_derivative(residual), isequal(residual, 0) && written, bc)
 end
 
 function _lower_bc(v, bc::Union{Equation, Pair})
@@ -167,18 +207,7 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     lhs, rhs = _get_lhs_rhs(bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
-    if _has_facet_normal(lhs) || _has_facet_normal(rhs)
-        residual = Symbolics.simplify(Symbolics.expand(Num(lowered[1]) - Num(lowered[2])))
-        written = _has_field_derivative(residual, v)
-        for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
-            face = boxface(v, piece)
-            face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
-        end
-        residual = Symbolics.simplify(Symbolics.expand(residual))
-        # a derivative that vanishes only at the face (x = 0) is a zero natural condition; one that
-        # vanished with the numeric normal is no condition at all
-        _check_normal_has_derivative(true, _has_field_derivative(residual, v), isequal(residual, 0) && written, bc)
-    end
+    (_has_facet_normal(lhs) || _has_facet_normal(rhs)) && _check_box_normal_derivative(v, lhs, rhs, bc)
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end
 _lower_bc(v, bcs::AbstractVector) = map(bc -> _lower_bc(v, bc), bcs)
