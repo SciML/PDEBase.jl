@@ -96,7 +96,9 @@ function expand_vector_operators end
             callable = map(newargs) do a
                 a isa SymbolicUtils.BasicSymbolic || return a
                 a = unwrap_const(a)
-                return a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a) ? Symbolics.wrap(a) : a
+                a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a) || return a
+                known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
+                return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
             end
             # A vector of unknown length contracted with an operator result has that result's length.
             lengths = [length(a) for a in callable if a isa AbstractVector]

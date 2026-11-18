@@ -207,6 +207,19 @@ else
         end
     end
 
+    @testset "tensor-weighted gradient equations with a symbolic tensor" begin
+        @parameters Mp[1:2, 1:2]
+        g = ∇(U)
+        gx, gy = Dx(U), Dy(U)
+        reference = Mp[1, 1] * gx^2 + (Mp[1, 2] + Mp[2, 1]) * gx * gy + Mp[2, 2] * gy^2
+        for lhs in (g' * Mp * g, dot(g, Mp * g))
+            @test same(expanded(lhs ~ 0).lhs, reference)
+            @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, Mp])
+            parsed = parsed_boundary_map(sys, disc)
+            @test analyse(parsed.pdesys, parsed.v, parsed.boundarymap).nfields == 1
+        end
+    end
+
     @testset "divergence of a nonsymmetric tensor flux" begin
         field = x^2 * y + x * y^3
         eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])([1 2; 3 4] * Symbolics.Grad([x, y])(field)); dvs = [U])
