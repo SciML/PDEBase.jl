@@ -94,10 +94,34 @@ else
     @testset "array-valued equation" begin
         V, W = v(t, x, y), w(t, x, y)
         @named sys = PDESystem([∇(U) ~ [V, W]], boxbcs, box, [t, x, y], [U, V, W], [k])
-        lowered = expand_vector_operators(sys)
-        eq = only(get_eqs(lowered))
-        @test same.(Symbolics.scalarize(eq.lhs), [Dx(U), Dy(U)]) == [true, true]
-        @test !PDEBase._has_vector_operator(eq)
+        eqs = get_eqs(expand_vector_operators(sys))
+        @test length(eqs) == 2
+        @test isequal(eqs[1], Dx(U) ~ V)
+        @test isequal(eqs[2], Dy(U) ~ W)
+        @test !PDEBase._has_vector_operator(eqs)
+
+        parsed = parsed_boundary_map(sys, disc)
+        @test length(get_eqs(parsed.pdesys)) == 2
+        analysis = analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
+        @test analysis.nfields == 3
+    end
+
+    @testset "nested equation groups keep their shape" begin
+        V, W = v(t, x, y), w(t, x, y)
+        g = ∇(U)
+        plain = Dt(V) ~ Dx(W)
+        @named sys = PDESystem([[g[1] ~ V, g[2] ~ W], plain], boxbcs, box, [t, x, y], [U, V, W], [k])
+        eqs = get_eqs(expand_vector_operators(sys))
+        @test eqs[1] isa AbstractVector && length(eqs[1]) == 2
+        @test isequal(eqs[1][1], Dx(U) ~ V)
+        @test isequal(eqs[1][2], Dy(U) ~ W)
+        @test isequal(eqs[2], plain)
+    end
+
+    @testset "symbolic index into an operator result is a clear error" begin
+        @variables i::Int
+        @named sys = PDESystem([∇(U)[i] ~ v(t, x, y)], boxbcs, box, [t, x, y], [U, v(t, x, y)], [k])
+        @test_throws ArgumentError expand_vector_operators(sys)
     end
 
     @testset "d_orders and the pipeline see the expanded equation" begin

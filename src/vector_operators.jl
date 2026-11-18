@@ -72,7 +72,14 @@ function expand_vector_operators end
             return _unwrap_result(_eager(op)(Num(_expand_vector_operators(arg, ivs))))
         elseif op === getindex && iscall(first(args)) && operation(first(args)) isa _VectorOperator
             components = _expand_vector_operators(first(args), ivs)
-            return unwrap(components[(Int(unwrap_const(i)) for i in args[2:end])...])
+            indices = map(unwrap_const, args[2:end])
+            all(i -> i isa Integer, indices) || throw(
+                ArgumentError(
+                    "indexing the result of the vector operator $(nameof(typeof(operation(first(args))))) " *
+                        "with the symbolic index $(join(indices, ", ")) is not supported, use integer indices"
+                )
+            )
+            return unwrap(components[indices...])
         end
         any(_has_vector_operator, args) || return ex
         return maketerm(typeof(ex), op, map(a -> _expand_vector_operators(a, ivs), args), metadata(ex))
@@ -85,16 +92,39 @@ function expand_vector_operators end
         scalarized isa AbstractArray && return map(c -> _expand_side(c, ivs), scalarized)
         return Symbolics.wrap(_expand_vector_operators(scalarized, ivs))
     end
-    _expand_condition(eq::Equation, ivs) = _expand_side(eq.lhs, ivs) ~ _expand_side(eq.rhs, ivs)
+    # An array-valued equation becomes one scalar equation per component, which is all the rest of the
+    # pipeline handles.
+    function _expand_condition(eq::Equation, ivs)
+        lhs, rhs = _expand_side(eq.lhs, ivs), _expand_side(eq.rhs, ivs)
+        (lhs isa AbstractArray || rhs isa AbstractArray) || return lhs ~ rhs
+        n = length(lhs isa AbstractArray ? lhs : rhs)
+        components(side) = side isa AbstractArray ? vec(side) : fill(side, n)
+        return Equation[l ~ r for (l, r) in zip(components(lhs), components(rhs))]
+    end
     _expand_condition(eq::Pair, ivs) = _expand_side(first(eq), ivs) => _expand_side(last(eq), ivs)
+
+    # Nested groups of equations keep their nesting, the pipeline flattens them later.
+    function _expand_conditions(conditions, ivs)
+        expanded = Any[]
+        for condition in conditions
+            if !_has_vector_operator(condition)
+                push!(expanded, condition)
+            elseif condition isa AbstractVector
+                push!(expanded, _expand_conditions(condition, ivs))
+            else
+                result = _expand_condition(condition, ivs)
+                result isa AbstractVector ? append!(expanded, result) : push!(expanded, result)
+            end
+        end
+        return map(identity, expanded)
+    end
 
     function expand_vector_operators(pdesys::PDESystem)
         eqs, bcs = get_eqs(pdesys), get_bcs(pdesys)
         (_has_vector_operator(eqs) || _has_vector_operator(bcs)) || return pdesys
         ivs = unwrap.(get_ivs(pdesys))
-        expand(eq) = _has_vector_operator(eq) ? _expand_condition(eq, ivs) : eq
         return PDESystem(
-            map(expand, eqs), map(expand, bcs), get_domain(pdesys), get_ivs(pdesys),
+            _expand_conditions(eqs, ivs), _expand_conditions(bcs, ivs), get_domain(pdesys), get_ivs(pdesys),
             get_dvs(pdesys), get_ps(pdesys), initial_conditions = pdesys.initial_conditions,
             systems = get_systems(pdesys), connector_type = get_connector_type(pdesys),
             metadata = get_metadata(pdesys), analytic = getfield(pdesys, :analytic),
