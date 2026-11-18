@@ -327,6 +327,29 @@ else
         @test same(eq.lhs, Dt(Dx(U)) * Dx(U) + Dt(Dy(U)) * Dy(U))
     end
 
+    @testset "an unsized vector used only through a scalar index does not defer" begin
+        @parameters ps::Vector{Real}
+        field = t^2 * x^2 * y + t * x * y^3
+        gf = Symbolics.Grad([x, y])(field)
+        eq = expanded(dot(Dt(ps[1] * gf), gf) ~ 0; dvs = [U])
+        point = Dict(t => 2, x => 3, y => 4)
+        # The lowered residual is linear in p[1]: its coefficient is the value for p[1] = 1.
+        lowered = Symbolics.substitute(expand_derivatives(eq.lhs), point)
+        @test same(lowered, 94160 * ps[1])
+        by_hand = Dt(7 * Dx(field)) * Dx(field) + Dt(7 * Dy(field)) * Dy(field)
+        @test Symbolics.unwrap_const(Symbolics.substitute(expand_derivatives(by_hand), point)) == 659120 == 7 * 94160
+    end
+
+    @testset "a derivative of an array expression with an unsized vector is rejected" begin
+        @parameters pq::Vector{Real}
+        @test_throws ArgumentError expanded(dot(Dt(∇(U) + pq), ∇(U)) ~ 0; dvs = [U])
+    end
+
+    @testset "a scalar coefficient does not delay a known dimension error" begin
+        @parameters ps2::Vector{Real} q3[1:3]
+        @test_throws ArgumentError expanded(dot(∇(U), ps2[1] * q3) ~ 0; dvs = [U])
+    end
+
     @testset "an unsized vector defers every enclosing operation" begin
         @parameters pd::Vector{Real}
         g = ∇(U)

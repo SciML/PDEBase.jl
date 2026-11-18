@@ -118,8 +118,16 @@ function expand_vector_operators end
         # Julia's own length rules apply once the vector is bound.
         if any(_has_unsized, newargs)
             if _is_linalg_dot(op)
-                lengths = [length(a) for a in newargs if a isa Vector]
+                lengths = collect(skipmissing(map(_extent, newargs)))
                 allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
+            end
+            if op isa Differential && !_scalar_shaped_value(only(newargs))
+                throw(
+                    ArgumentError(
+                        "a derivative of an array expression that contains a vector without a declared length " *
+                            "is not supported, declare the length of the vector"
+                    )
+                )
             end
             return maketerm(typeof(ex), op, map(unwrap, newargs), metadata(ex))
         end
@@ -129,18 +137,19 @@ function expand_vector_operators end
         if op isa Differential && only(newargs) isa AbstractArray
             return map(c -> unwrap(op(c)), only(newargs))
         end
+        if _is_linalg_dot(op)
+            lengths = collect(skipmissing(map(_extent, newargs)))
+            allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
+        end
         if any(a -> a isa AbstractArray, newargs)
             # `broadcast` carries its function (`^`, `sin`) as a constant argument, which must be unwrapped to be called.
             callable = map(newargs) do a
                 a isa SymbolicUtils.BasicSymbolic || return a
                 a = unwrap_const(a)
-                a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a) || return a
+                a isa SymbolicUtils.BasicSymbolic || return a
+                _scalar_shaped(a) && return Symbolics.wrap(a)
                 known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
                 return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
-            end
-            if _is_linalg_dot(op)
-                lengths = [length(a) for a in callable if a isa AbstractVector]
-                allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
             end
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
@@ -158,9 +167,20 @@ function expand_vector_operators end
     _has_unsized(a::Symbolics.Arr) = _has_unsized(unwrap(a))
     function _has_unsized(a::SymbolicUtils.BasicSymbolic)
         SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT || return true
+        # A concrete index of an unsized array is a scalar, so the array does not flow on as a whole.
+        iscall(a) && operation(a) === getindex && _scalar_shaped(a) &&
+            all(i -> unwrap_const(i) isa Integer, arguments(a)[2:end]) && return false
         return iscall(a) && any(_has_unsized, arguments(a))
     end
     _has_unsized(a) = false
+    _scalar_shaped_value(a) = a isa SymbolicUtils.BasicSymbolic ? _scalar_shaped(a) : !(a isa AbstractArray)
+    # The length of a one-dimensional operand when it is known, `missing` otherwise.
+    _extent(a::AbstractVector) = a isa Symbolics.Arr ? _extent(unwrap(a)) : length(a)
+    function _extent(a::SymbolicUtils.BasicSymbolic)
+        shape = SymbolicUtils.shape(a)
+        return shape isa SymbolicUtils.ShapeVecT && length(shape) == 1 ? length(only(shape)) : missing
+    end
+    _extent(a) = missing
     # LinearAlgebra's `dot` by identity, so a user's own function called `dot` is an ordinary function.
     _is_linalg_dot(op) = op === LinearAlgebra.dot
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
