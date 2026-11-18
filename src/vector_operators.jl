@@ -67,7 +67,19 @@ function expand_vector_operators end
             _check_operator_vars(op, ivs)
             arg = only(args)
             if SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT && length(SymbolicUtils.shape(arg)) == 1
-                components = [_expand_vector_operators(c, ivs) for c in Symbolics.scalarize(Symbolics.wrap(arg))]
+                scalarized = try
+                    Symbolics.scalarize(Symbolics.wrap(arg))
+                catch err
+                    # A sum with an unsized vector has an inferred shape but cannot be written out per component.
+                    err isa TypeError || rethrow()
+                    throw(
+                        ArgumentError(
+                            "the operand of the vector operator $(nameof(typeof(op))) contains a vector without a " *
+                                "declared length, declare the length of the vector contracted with the operator"
+                        )
+                    )
+                end
+                components = [_expand_vector_operators(c, ivs) for c in scalarized]
                 return _concrete(_eager(op)(components))
             end
             if op isa Union{Symbolics.Divergence, Symbolics.Curl} && !(SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT)

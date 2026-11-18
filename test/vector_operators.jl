@@ -172,6 +172,8 @@ else
         @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Vu); dvs = [U])
         @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(Vu); dvs = [U])
         @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mu * ∇(U)); dvs = [U])
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(∇(U) + Vu); dvs = [U])
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(∇(U) + Vu); dvs = [U])
         # A declared length is checked by the operator, so a matching one lowers and an oversized one is an error.
         @test same(expanded(Dt(U) ~ Symbolics.Divergence([x, y])(F2); dvs = [U]).rhs, Dx(F2[1]) + Dy(F2[2]))
         @test same(expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(F2); dvs = [U]).rhs, Dx(F2[2]) - Dy(F2[1]))
