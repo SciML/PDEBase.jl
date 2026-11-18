@@ -155,6 +155,12 @@ else
         @test same(eq.rhs, Dx(Vu[1]) + Dy(Vu[2]))
     end
 
+    @testset "operators nested in a vector of unknown length" begin
+        @variables M::Matrix{Real}
+        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(M * ∇(U)); dvs = [U])
+        @test !PDEBase._has_vector_operator(eq)
+    end
+
     @testset "vector of unknown length" begin
         @variables Av2::Vector{Real}
         eq = expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(Av2); dvs = [U])

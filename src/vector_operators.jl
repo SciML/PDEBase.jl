@@ -72,7 +72,7 @@ function expand_vector_operators end
             end
             if op isa Union{Symbolics.Divergence, Symbolics.Curl} && !(SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT)
                 # The coordinates of the operator fix which components of a vector of unknown length are needed.
-                wrapped = Symbolics.wrap(arg)
+                wrapped = Symbolics.wrap(_expand_vector_operators(arg, ivs))
                 return _unwrap_result(_eager(op)([wrapped[i] for i in eachindex(op.vars)]))
             end
             return _unwrap_result(_eager(op)(Symbolics.wrap(_expand_vector_operators(arg, ivs))))
