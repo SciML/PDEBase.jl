@@ -185,18 +185,43 @@ else
         @test !PDEBase._has_vector_operator(eq)
     end
 
-    @testset "unknown-length vectors are never resolved to the operator result's length" begin
-        @variables Zu::Vector{Real}
-        @test_throws ArgumentError expanded(dot(∇(U), Zu) ~ 0; dvs = [U])
-        @test_throws ArgumentError expanded(dot(Zu, ∇(U)) ~ 0; dvs = [U])
+    @testset "dot with an unknown-length vector stays a contraction until it is bound" begin
+        @parameters weights::Vector{Real}
+        gradient = [19, -3]
+        bindings(w) = Dict(
+            Symbolics.unwrap(Dx(U)) => gradient[1], Symbolics.unwrap(Dy(U)) => gradient[2],
+            Symbolics.unwrap(weights) => w
+        )
+        # Evaluates the contraction the way the base revision would, once the weights are bound.
+        function residual(eq, w)
+            bound = Symbolics.substitute(Symbolics.unwrap(eq.lhs), bindings(w))
+            args = map(arguments(bound)) do a
+                a = Symbolics.unwrap_const(a)
+                a isa AbstractVector ? a : Symbolics.unwrap_const.(arguments(a)[2:end])
+            end
+            return dot(args...)
+        end
+        for lhs in (dot(∇(U), weights), dot(weights, ∇(U)))
+            @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, weights])
+            for eq in (only(get_eqs(expand_vector_operators(sys))), only(get_eqs(parsed_boundary_map(sys, disc).pdesys)))
+                @test residual(eq, [7, 13]) == 94
+                @test_throws DimensionMismatch residual(eq, [7, 13, 5])
+            end
+        end
+        @variables Z3[1:3]
+        @test_throws ArgumentError expanded(dot(∇(U), Z3) ~ 0; dvs = [U])
     end
 
-    @testset "unknown-length parameter bound to an incompatible vector keeps its value" begin
-        @parameters zp::Vector{Real}
-        @named sys = PDESystem([sum_both(∇(U), zp) ~ 0], boxbcs, box, [t, x, y], [U], [k, zp])
+    @testset "a function named dot in a module named LinearAlgebra is an ordinary function" begin
+        mod = Module(:LinearAlgebra)
+        Core.eval(mod, :(using Symbolics))
+        Core.eval(mod, :(dot(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)))
+        Core.eval(mod, :(@register_symbolic dot(a::AbstractVector, b::AbstractVector)))
+        @parameters zq[1:3]
+        lhs = Base.invokelatest(mod.dot, ∇(U), zq)
+        @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, zq])
         eq = only(get_eqs(expand_vector_operators(sys)))
-        @test isequal(arguments(Symbolics.unwrap(eq.lhs))[2], Symbolics.unwrap(zp))
-        @test_throws ArgumentError expanded(dot(∇(U), zp) ~ 0; dvs = [U])
+        @test operation(Symbolics.unwrap(eq.lhs)) === mod.dot
     end
 
     @testset "a registered function named dot is an ordinary function" begin

@@ -104,13 +104,12 @@ function expand_vector_operators end
             # would change the value of any function whose operands have independent lengths.
             if _is_linalg_dot(op)
                 lengths = [length(a) for a in callable if a isa AbstractVector && !_unknown_vector(a)]
-                any(_unknown_vector, callable) && throw(
-                    ArgumentError(
-                        "a vector of unknown length cannot be contracted with `dot` against the result of a vector " *
-                            "operator, declare its length"
-                    )
-                )
                 allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
+                if any(_unknown_vector, callable)
+                    # The contraction stays a call, so `dot` checks the real length once the vector is bound.
+                    literals = map(unwrap, callable)
+                    return maketerm(typeof(ex), op, literals, metadata(ex))
+                end
             end
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
@@ -124,12 +123,7 @@ function expand_vector_operators end
     end
     _unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
     # LinearAlgebra's `dot` by identity, so a user's own function called `dot` is an ordinary function.
-    function _is_linalg_dot(op)
-        op isa Function && nameof(op) === :dot || return false
-        linalg = parentmodule(op)
-        path = pathof(linalg)
-        return nameof(linalg) === :LinearAlgebra && path isa String && occursin("stdlib", path)
-    end
+    _is_linalg_dot(op) = op === LinearAlgebra.dot
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
     # A vector-valued operator result becomes a Julia array of expressions, so that products with constant
     # matrices, adjoints and contractions (`g' * A * g`, `dot(g, A * g)`) evaluate per component.

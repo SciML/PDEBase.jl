@@ -1,5 +1,6 @@
 module PDEBase
 import DomainSets
+import LinearAlgebra
 using IntervalSets: var".."
 import ModelingToolkitBase
 import PrecompileTools
