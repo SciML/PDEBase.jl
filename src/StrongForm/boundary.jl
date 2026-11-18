@@ -186,6 +186,15 @@ function _check_normals_at(ctx::SlotContext, ex, loc, slots, label)
     return nothing
 end
 
+# The distinct trace calls of dependent variables in `ex`: real-valued, like the state slots they become.
+function _trace_calls(ctx::SlotContext, ex, calls = Any[])
+    ex = unwrap(ex)
+    iscall(ex) || return calls
+    _field(ctx, ex) !== nothing ? any(c -> isequal(c, ex), calls) || push!(calls, ex) :
+        foreach(a -> _trace_calls(ctx, a, calls), arguments(ex))
+    return calls
+end
+
 function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     loc = _location(ctx, face)
     # each side is checked on its own, so a misplaced normal cannot cancel in the difference
@@ -206,7 +215,7 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
             _check_sides_finite((eq.lhs, eq.rhs), face_rules, "$eq on $(_where(loc))")
         else
             rules = Dict{Any, Any}(unwrap(t) => unwrap(slots.N[_normal_component(t)]) for t in _normal_terms!(_normal_terms!(Any[], eq.lhs), eq.rhs))
-            any(side -> _divides_by_normal(substitute(unwrap(side), rules), slots.N, _real_slots(slots)), (eq.lhs, eq.rhs)) &&
+            any(side -> _divides_by_normal(substitute(unwrap(side), rules), slots.N, vcat(_real_slots(slots), _trace_calls(ctx, side))), (eq.lhs, eq.rhs)) &&
                 error("the condition $eq on $(_where(loc)) divides by an expression of the facet normal that can vanish on a facet")
         end
         restricted = restrict_to_face(Num(B), face, ctx, slots)
@@ -410,6 +419,8 @@ function match_flux(Φ, B, slots)
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||
         return nothing
     nograd = Dict(gi => 0 for gi in g)
+    # the gradient-free data and the returned flux must be defined at the sample normals as well
+    _defined_on_sample_normals([substitute(Φ, nograd), substitute(B, nograd)], slots.N) || return nothing
     return Symbolics.simplify(substitute(Φ, nograd) - substitute(B, nograd) / λ)
 end
 

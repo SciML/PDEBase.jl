@@ -193,6 +193,8 @@ end
         @test symeq(last(route_natural(scale * (Φu - 3), [[s1u.G[1], s1u.G[2]]], s1u.N, s1u)), 3)
     end
     @test match_flux(Φu, (1 + exp(log(s1u.N[1])) - s1u.N[1]) * (Φu - 3), s1u) === nothing
+    # singular gradient-free data is rejected too: log(1 + N₁) is -Inf at (-1, 0)
+    @test match_flux(Φu, Φu - log(1 + s1u.N[1]), s1u) === nothing
     @test symeq(last(route_natural((Φ - 3) / (2 + N[1]^2), [[G[1], G[2]]], N, s)), 3)
     @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
@@ -222,6 +224,14 @@ end
 end
 
 @testset "negative cases" begin
+    # a denominator that is at least 1 for every real trace and unit normal is fine; one that can vanish is not
+    sysd, vd, _ = meshanalysis([absorbing(1), ics...])
+    ctxd, sd = SlotContext(sysd, vd), StateSlots(3, 3, 1)
+    ndu = NormalDerivative(Γ)(E1(t, Γ))
+    @test slot_condition(ndu / (1 + n[1]^2 + E1(t, Γ)^2) ~ 0, Γ, ctxd, sd) isa Num
+    for bad in (1 - n[1]^2 - E1(t, Γ)^2, n[1])
+        @test occursin("divides by an expression of the facet normal", errmsg(() -> slot_condition(ndu / bad ~ 0, Γ, ctxd, sd)))
+    end
     # a pole in the normal on a mesh piece cannot cancel between the sides
     pm = (1 / n[1])^2
     sysm, vm, bmapm = meshanalysis([NormalDerivative(Γ)(E1(t, Γ)) + pm ~ pm, ics...])
