@@ -181,6 +181,7 @@ function _check_normals_at(ctx::SlotContext, ex, loc, slots, label)
     iscall(ex) || return nothing
     op = operation(ex)
     op isa FacetNormal && return _slot_operator(ctx, op, ex, loc, slots, label, true)
+    op isa Differential && _check_normal_not_differentiated(ex)
     foreach(a -> _check_normals_at(ctx, unwrap(a), loc, slots, label), arguments(ex))
     return nothing
 end

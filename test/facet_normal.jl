@@ -429,6 +429,7 @@ end
     @test symeq(slot_condition(NormalDerivative(Γl)(w5(t, Γl)) ~ 0, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0)), 0)
     # operators that cancel between the sides without a normal are unchanged
     @test symeq(slot_condition(Dt(u(t, Γl)) + Dx(u(t, Γl)) ~ Dt(u(t, Γl)), Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0)), StateSlots(2, 2, 0).G[1])
+    @test occursin("derivative of an expression containing the facet normal", errmsg(() -> slot_condition(Dx(nl[1]) + nl[1] * Dx(u(t, Γl)) ~ Dx(nl[1]), Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a normal of another piece cannot cancel between the sides
     @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one
