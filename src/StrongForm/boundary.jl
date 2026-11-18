@@ -182,7 +182,7 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
     if _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs)
         residual = Symbolics.simplify(Symbolics.expand(restrict_to_face(Num(B), face, ctx, slots)))
-        _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual), "$eq on $(_where(loc))")
+        _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual) && _depends(Num(B), slots.G), "$eq on $(_where(loc))")
     end
     return Num(B)
 end

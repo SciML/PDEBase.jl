@@ -374,6 +374,7 @@ end
     Γr = boundarypiece(rect, :right)
     @test occursin("calls on 2 locations", errmsg(() -> classify_condition(vdeg, Differential(nl[1])(u(t, Γl)) ~ u(t, Γr))))
     @test occursin("uses the normal of", errmsg(() -> classify_condition(vdeg, Differential(normal(Γr)[1])(u(t, Γl)) ~ 0)))
+    @test occursin("no derivative of a trace", lowering(nl[2] * u(t, Γl) ~ 0))
     # Dx of a time-only field is zero and does not count
     @variables w(..)
     sysw = PDESystem([heat, Dt(w(t)) ~ 0], [u(0, x, y) ~ 0, Dx(w(t)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w(t)], [k => 1.0]; name = :sys)
