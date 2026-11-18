@@ -36,6 +36,7 @@ function expand_vector_operators end
         operation(ex) isa _VectorOperator && return true
         return any(_has_vector_operator, arguments(ex))
     end
+    _has_vector_operator(z::Complex) = _has_vector_operator(real(z)) || _has_vector_operator(imag(z))
     _has_vector_operator(eq::Equation) = _has_vector_operator(eq.lhs) || _has_vector_operator(eq.rhs)
     _has_vector_operator(eq::Pair) = _has_vector_operator(first(eq)) || _has_vector_operator(last(eq))
     _has_vector_operator(eqs::AbstractVector) = any(_has_vector_operator, eqs)
@@ -89,6 +90,9 @@ function expand_vector_operators end
 
     # Returns unwrapped sides: wrapping a complex side makes `~` split it into two real equations,
     # which is `handle_complex`'s job.
+    _expand_side(side::Complex, ivs) = complex(
+        Symbolics.wrap(_expand_side(real(side), ivs)), Symbolics.wrap(_expand_side(imag(side), ivs))
+    )
     function _expand_side(side, ivs)
         side = unwrap(side)
         side isa SymbolicUtils.BasicSymbolic && isempty(SymbolicUtils.shape(side)) &&

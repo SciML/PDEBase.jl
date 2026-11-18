@@ -126,6 +126,13 @@ else
         @test string(eq.rhs) == string(Symbolics.unwrap(im * (Dx(Dx(U)) + Dy(Dy(U)))))
     end
 
+    @testset "complex-valued boundary pairs" begin
+        pair = u(0, x, y) => im * Symbolics.Laplacian([x, y])(U)
+        @test PDEBase._has_vector_operator(pair)
+        lowered = PDEBase._expand_condition(pair, unwrap.([t, x, y]))
+        @test !PDEBase._has_vector_operator(lowered)
+    end
+
     @testset "vector of unknown length" begin
         @variables Av2::Vector{Real}
         eq = expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(Av2); dvs = [U])
