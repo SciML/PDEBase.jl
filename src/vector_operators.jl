@@ -69,7 +69,7 @@ function expand_vector_operators end
                 components = [_expand_vector_operators(c, ivs) for c in Symbolics.scalarize(Symbolics.wrap(arg))]
                 return _unwrap_result(_eager(op)(components))
             end
-            return _unwrap_result(_eager(op)(Num(_expand_vector_operators(arg, ivs))))
+            return _unwrap_result(_eager(op)(Symbolics.wrap(_expand_vector_operators(arg, ivs))))
         elseif op === getindex && iscall(first(args)) && operation(first(args)) isa _VectorOperator
             components = _expand_vector_operators(first(args), ivs)
             indices = map(unwrap_const, args[2:end])
@@ -87,16 +87,21 @@ function expand_vector_operators end
     _unwrap_result(r::AbstractArray) = r
     _unwrap_result(r) = unwrap(r)
 
+    # Returns unwrapped sides: wrapping a complex side makes `~` split it into two real equations,
+    # which is `handle_complex`'s job.
     function _expand_side(side, ivs)
+        side = unwrap(side)
+        side isa SymbolicUtils.BasicSymbolic && isempty(SymbolicUtils.shape(side)) &&
+            return _expand_vector_operators(side, ivs)
         scalarized = Symbolics.scalarize(Symbolics.wrap(side))
         scalarized isa AbstractArray && return map(c -> _expand_side(c, ivs), scalarized)
-        return Symbolics.wrap(_expand_vector_operators(scalarized, ivs))
+        return _expand_vector_operators(scalarized, ivs)
     end
     # An array-valued equation becomes one scalar equation per component, which is all the rest of the
     # pipeline handles.
     function _expand_condition(eq::Equation, ivs)
         lhs, rhs = _expand_side(eq.lhs, ivs), _expand_side(eq.rhs, ivs)
-        (lhs isa AbstractArray || rhs isa AbstractArray) || return lhs ~ rhs
+        (lhs isa AbstractArray || rhs isa AbstractArray) || return Equation(lhs, rhs)
         if lhs isa AbstractArray && rhs isa AbstractArray && size(lhs) != size(rhs)
             throw(
                 ArgumentError(
@@ -107,7 +112,7 @@ function expand_vector_operators end
         end
         n = length(lhs isa AbstractArray ? lhs : rhs)
         components(side) = side isa AbstractArray ? vec(side) : fill(side, n)
-        return Equation[l ~ r for (l, r) in zip(components(lhs), components(rhs))]
+        return Equation[Equation(l, r) for (l, r) in zip(components(lhs), components(rhs))]
     end
     _expand_condition(eq::Pair, ivs) = _expand_side(first(eq), ivs) => _expand_side(last(eq), ivs)
 

@@ -120,6 +120,18 @@ else
         @test expand_vector_operators(sys).description == "Heat equation"
     end
 
+    @testset "complex-valued sides are left for the complex handling" begin
+        eq = expanded(Equation(Dt(U), im * Symbolics.Laplacian([x, y])(U)))
+        @test !PDEBase._has_vector_operator(eq)
+        @test string(eq.rhs) == string(Symbolics.unwrap(im * (Dx(Dx(U)) + Dy(Dy(U)))))
+    end
+
+    @testset "vector of unknown length" begin
+        @variables Av2::Vector{Real}
+        eq = expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(Av2); dvs = [U])
+        @test same(eq.rhs, Dx(Av2[2]) - Dy(Av2[1]))
+    end
+
     @testset "nested equation groups keep their shape" begin
         V, W = v(t, x, y), w(t, x, y)
         g = ∇(U)
