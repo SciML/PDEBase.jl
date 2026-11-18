@@ -168,6 +168,8 @@ end
     s1 = StateSlots(1, 1, 0)
     @test symeq(match_flux(s1.G[1] * s1.N[1], s1.N[1]^2 * (s1.G[1] * s1.N[1] - 3), s1), 3)
     @test symeq(match_flux(Φ, (N[1]^2 + 2 * N[2]^2) * (Φ - 3), s), 3)
+    @test symeq(match_flux(Φ, (N[1]^2 + 2 * N[2]^2 - 1 // 2) * (Φ - 3), s), 3)
+    @test match_flux(Φ, (N[1]^2 + 2 * N[2]^2 - 1) * (Φ - 3), s) === nothing
     @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
     @test symeq(match_flux(Φ, (N[1]^2 + N[2]^2) * (Φ - 3), s), 3)
@@ -400,7 +402,12 @@ end
     sysk = PDESystem([heat, Dt(w4(t, y)) ~ 0], [u(0, x, y) ~ 0, Dy(Differential(k)(w4(t, y))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w4(t, y)], [k => 1.0]; name = :sys)
     @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysk; time = t)))
     sysc = PDESystem([heat, Dt(w4(t, y)) ~ 0], [u(0, x, y) ~ 0, Dx(Dy(x * w4(t, y))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w4(t, y)], [k => 1.0]; name = :sys)
-    @test to_box_bcs(sysc; time = t) isa PDESystem
+    gotc = to_box_bcs(sysc; time = t).bcs[2]
+    @test symeq(gotc.lhs - gotc.rhs, Dx(Dy(x * w4(t, y))) - u(t, 0.0, y) - 1)
+    # mixed partials cancel across spellings, in both orders
+    for (inner, outer) in ((Dy(Dx(u(t, 0.0, y))), Dx(Dy(u(t, Γl)))), (Dx(Dy(u(t, 0.0, y))), Dy(Dx(u(t, Γl)))))
+        @test occursin("no derivative of a trace", lowering(nl[1] * outer + u(t, Γl) ~ -inner))
+    end
     # a derivative of data is no derivative of the solution, and a placeholder name is no collision
     @parameters a(..) _dg1
     @test occursin("no derivative of a trace", lowering(Dx(a(x)) + nl[1] * u(t, Γl) ~ 1))

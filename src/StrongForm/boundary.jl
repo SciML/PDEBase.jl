@@ -230,11 +230,11 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
-# Is `λ` provably positive for every real unit normal `N`? A structural sign analysis: positive
-# numbers, sums and products of positive or nonnegative terms, and even powers of any real polynomial
-# in the normal components are nonnegative. A sum holding a positively weighted square of every
-# component is at least its smallest weight on the unit sphere, so it is positive.
-function _positive_in_normal(λ, N)
+# A lower bound of `λ` over every real unit normal `N`, or `nothing` if none is proven. Numbers, sums, and
+# products and powers of terms with a nonnegative bound are bounded structurally; an even power of a real
+# polynomial in the normal components is at least 0; and a sum holding positively weighted squares of every
+# component is at least the smallest total weight of a component on the unit sphere.
+function _normal_lower_bound(λ, N)
     isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
     function realpoly(t)
         t = unwrap(t)
@@ -246,49 +246,52 @@ function _positive_in_normal(λ, N)
         return op === (+) || op === (*) ? all(realpoly, arguments(t)) :
             op === (^) && unwrap_const(unwrap(arguments(t)[2])) isa Integer && realpoly(arguments(t)[1])
     end
-    # :pos, :nonneg or :unknown
-    function sign(t)
+    square(a) = (a = unwrap(a); iscall(a) && operation(a) === (^) && isnormal(unwrap(arguments(a)[1])) && isequal(unwrap_const(unwrap(arguments(a)[2])), 2) ? unwrap(arguments(a)[1]) : nothing)
+    # (weight, component) of `c * N[d]^2` with a positive number `c`
+    function weighted_square(a)
+        a = unwrap(a)
+        sq = square(a)
+        sq === nothing || return (1, sq)
+        iscall(a) && operation(a) === (*) && length(arguments(a)) == 2 || return nothing
+        w, rest = arguments(a)
+        c = unwrap_const(unwrap(w))
+        sq = square(rest)
+        return c isa Real && c > 0 && sq !== nothing ? (c, sq) : nothing
+    end
+    function bound(t)
         t = unwrap(t)
         c = unwrap_const(t)
-        c isa Real && return c > 0 ? :pos : c == 0 ? :nonneg : :unknown
-        iscall(t) || return :unknown
+        c isa Real && return c
+        iscall(t) || return nothing
         op = operation(t)
         args = arguments(t)
         if op === (+)
-            # a sum with a positively weighted square of every component is at least the smallest weight
-            square(a) = (a = unwrap(a); iscall(a) && operation(a) === (^) && isnormal(unwrap(arguments(a)[1])) && isequal(unwrap_const(unwrap(arguments(a)[2])), 2) ? unwrap(arguments(a)[1]) : nothing)
-            function weighted_square(a)
-                a = unwrap(a)
-                sq = square(a)
-                sq === nothing || return sq
-                iscall(a) && operation(a) === (*) && length(arguments(a)) == 2 || return nothing
-                w, rest = arguments(a)
-                c = unwrap_const(unwrap(w))
-                return c isa Real && c > 0 ? square(rest) : nothing
-            end
             squares = filter(!isnothing, weighted_square.(args))
-            covered = all(m -> any(sq -> isequal(sq, unwrap(m)), squares), N)
-            signs = sign.(args)
-            any(==(:unknown), signs) && return :unknown
-            return covered || any(==(:pos), signs) ? :pos : :nonneg
+            weights = [sum(w for (w, sq) in squares if isequal(sq, unwrap(m)); init = 0) for m in N]
+            complete = all(>(0), weights)
+            rest = complete ? [a for a in args if weighted_square(a) === nothing] : collect(args)
+            bounds = bound.(rest)
+            any(isnothing, bounds) && return nothing
+            return sum(bounds; init = 0) + (complete ? minimum(weights) : 0)
         elseif op === (*)
-            signs = sign.(args)
-            any(==(:unknown), signs) && return :unknown
-            return all(==(:pos), signs) ? :pos : :nonneg
+            bounds = bound.(args)
+            (any(isnothing, bounds) || any(<(0), bounds)) && return nothing
+            return prod(bounds)
         elseif op === (^)
             base, power = args
             e = unwrap_const(unwrap(power))
-            e isa Integer && e > 0 || return :unknown
-            e == 2 && length(N) == 1 && isnormal(unwrap(base)) && return :pos
-            sb = sign(base)
-            sb == :pos && return :pos
-            sb == :nonneg && return :nonneg
-            return iseven(e) && realpoly(base) ? :nonneg : :unknown
+            e isa Integer && e > 0 || return nothing
+            e == 2 && length(N) == 1 && isnormal(unwrap(base)) && return 1
+            sb = bound(base)
+            sb !== nothing && sb >= 0 && return sb^e
+            return iseven(e) && realpoly(base) ? 0 : nothing
         end
-        return :unknown
+        return nothing
     end
-    return sign(λ) == :pos
+    return bound(λ)
 end
+
+_positive_in_normal(λ, N) = (b = _normal_lower_bound(λ, N); b !== nothing && b > 0)
 
 """
     match_flux(Φ, B, slots) -> Union{Num, Nothing}

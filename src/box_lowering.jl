@@ -189,6 +189,20 @@ function _spatial_derivatives!(nodes, ex, v)
     return nodes
 end
 
+# The derivative chain `ex` with its variables in the order of the system's variables, as Symbolics does
+# not identify the mixed partials `Dx(Dy(f))` and `Dy(Dx(f))`.
+function _canonical_derivative(v, ex)
+    vars, inner = Any[], safe_unwrap(ex)
+    while iscall(inner) && operation(inner) isa Differential
+        append!(vars, fill(operation(inner).x, operation(inner).order))
+        inner = safe_unwrap(only(arguments(inner)))
+    end
+    order = vcat(Any[v.time], indvars(v))
+    position(x) = something(findfirst(y -> isequal(x, y), order), length(order) + 1)
+    sort!(vars; by = position)
+    return foldr((x, e) -> Differential(x)(e), vars; init = inner)
+end
+
 # A condition with a facet normal must keep a derivative of a field: the normal is allowed only in a
 # natural or Robin-type condition. The fields are put in their declared variables and the derivatives
 # are really expanded (product and chain rules), for this check only, so a derivative that is zero
@@ -199,6 +213,8 @@ function _check_box_normal_derivative(v, lhs, rhs, bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs; declared = true), v, rhs; declared = true)
     residual = Symbolics.expand_derivatives(Num(substitute_traces(lhs, rules)) - Num(substitute_traces(rhs, rules)))
     nodes = _spatial_derivatives!(Any[], residual, v)
+    canonical = [_canonical_derivative(v, n) for n in nodes]
+    keys = unique(canonical)
     taken = Symbolics.get_variables(residual)
     function placeholder(j)
         name = "##derivative#$j"
@@ -207,8 +223,9 @@ function _check_box_normal_derivative(v, lhs, rhs, bc)
         end
         return Symbolics.variable(Symbol(name))
     end
-    slots = [placeholder(j) for j in eachindex(nodes)]
-    residual = Symbolics.simplify(Symbolics.expand(substitute_traces(residual, Dict(unwrap(n) => unwrap(g) for (n, g) in zip(nodes, slots)))))
+    slots = [placeholder(j) for j in eachindex(keys)]
+    replacements = Dict(unwrap(n) => unwrap(slots[findfirst(k -> isequal(k, c), keys)]) for (n, c) in zip(nodes, canonical))
+    residual = Symbolics.simplify(Symbolics.expand(substitute_traces(residual, replacements)))
     holds_derivative(r) = (vars = Set(unwrap.(Symbolics.get_variables(r))); any(g -> unwrap(g) in vars, slots))
     written = holds_derivative(residual)
     for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
