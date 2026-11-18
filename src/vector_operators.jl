@@ -25,7 +25,10 @@ named by the coordinates and must not drop further ones, so an unsized vector, o
 contains one (for example a sized matrix times an unsized vector, whose two-element result Symbolics infers
 but cannot write out), throws an `ArgumentError`. Other operations on operator results that contain an
 unsized vector, such as `sum(g + p)` or `dot(g, p)`, are kept as calls on the lowered components and are
-evaluated once the vector is bound.
+evaluated once the vector is bound. The exception is a derivative: a `Differential` of an array expression
+that contains an unsized vector as a whole, including by an index into a composite such as `(g + p)[1]`,
+throws an `ArgumentError`, because the derivative would act on the unknown elements. A bare parameter indexed
+by an integer, as in `p[1]` or `p[i]` with an `Int` symbol `i`, counts as a scalar and may be differentiated.
 """
 function expand_vector_operators end
 
@@ -143,13 +146,19 @@ function expand_vector_operators end
         end
         if any(a -> a isa AbstractArray, newargs)
             # `broadcast` carries its function (`^`, `sin`) as a constant argument, which must be unwrapped to be called.
-            callable = map(newargs) do a
-                a isa SymbolicUtils.BasicSymbolic || return a
-                a = unwrap_const(a)
-                a isa SymbolicUtils.BasicSymbolic || return a
-                _scalar_shaped(a) && return Symbolics.wrap(a)
-                known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
-                return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
+            callable = try
+                map(newargs) do a
+                    a isa SymbolicUtils.BasicSymbolic || return a
+                    a = unwrap_const(a)
+                    a isa SymbolicUtils.BasicSymbolic || return a
+                    _scalar_shaped(a) && return Symbolics.wrap(a)
+                    known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
+                    return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
+                end
+            catch err
+                # A sized operand built from an unsized parameter cannot be written out before binding.
+                err isa TypeError || rethrow()
+                return maketerm(typeof(ex), op, map(unwrap, newargs), metadata(ex))
             end
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
@@ -167,12 +176,17 @@ function expand_vector_operators end
     _has_unsized(a::Symbolics.Arr) = _has_unsized(unwrap(a))
     function _has_unsized(a::SymbolicUtils.BasicSymbolic)
         SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT || return true
-        # A concrete index of an unsized array is a scalar, so the array does not flow on as a whole.
-        iscall(a) && operation(a) === getindex && _scalar_shaped(a) &&
-            all(i -> unwrap_const(i) isa Integer, arguments(a)[2:end]) && return false
+        # An integer-valued index (a literal or an `Int` symbol) of a bare unsized array is a scalar, so the array
+        # does not flow on as a whole. An index into a composite expression is not exempt.
+        iscall(a) && operation(a) === getindex && _scalar_shaped(a) && !iscall(first(arguments(a))) &&
+            all(_integer_index, arguments(a)[2:end]) && return false
         return iscall(a) && any(_has_unsized, arguments(a))
     end
     _has_unsized(a) = false
+    function _integer_index(i)
+        i = unwrap_const(i)
+        return i isa Integer || (i isa SymbolicUtils.BasicSymbolic && !iscall(i) && SymbolicUtils.symtype(i) <: Integer)
+    end
     _scalar_shaped_value(a) = a isa SymbolicUtils.BasicSymbolic ? _scalar_shaped(a) : !(a isa AbstractArray)
     # The length of a one-dimensional operand when it is known, `missing` otherwise.
     _extent(a::AbstractVector) = a isa Symbolics.Arr ? _extent(unwrap(a)) : length(a)

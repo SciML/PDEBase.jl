@@ -345,6 +345,33 @@ else
         @test_throws ArgumentError expanded(dot(Dt(∇(U) + pq), ∇(U)) ~ 0; dvs = [U])
     end
 
+    @testset "a scalar-weighted declared vector still contracts after binding" begin
+        @parameters pw::Vector{Real} q2[1:2]
+        @named sys = PDESystem([dot(∇(U), pw[1] * q2) ~ 0], boxbcs, box, [t, x, y], [U], [k, pw, q2])
+        bindings = Dict(
+            Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3, Symbolics.unwrap(pw) => [7, 13],
+            Symbolics.unwrap(q2) => [2, -3]
+        )
+        for eq in (only(get_eqs(expand_vector_operators(sys))), only(get_eqs(parsed_boundary_map(sys, disc).pdesys)))
+            @test evaluate(eq.lhs, bindings) == 7 * (19 * 2 + 3 * 3)
+        end
+    end
+
+    @testset "an index into a composite does not escape the derivative rule" begin
+        @parameters pc::Vector{Real}
+        g = ∇(U)
+        @test_throws ArgumentError expanded(dot(Dt((g + pc)[1] * g), g) ~ 0; dvs = [U])
+    end
+
+    @testset "an integer symbol indexes a bare unsized parameter like a literal" begin
+        @parameters pi_::Vector{Real} ii::Int
+        field = t^2 * x^2 * y + t * x * y^3
+        gf = Symbolics.Grad([x, y])(field)
+        eq = expanded(dot(Dt(pi_[ii] * gf), gf) ~ 0; dvs = [U])
+        lowered = Symbolics.substitute(expand_derivatives(eq.lhs), Dict(t => 2, x => 3, y => 4))
+        @test same(lowered, 94160 * pi_[ii])
+    end
+
     @testset "a scalar coefficient does not delay a known dimension error" begin
         @parameters ps2::Vector{Real} q3[1:3]
         @test_throws ArgumentError expanded(dot(∇(U), ps2[1] * q3) ~ 0; dvs = [U])
