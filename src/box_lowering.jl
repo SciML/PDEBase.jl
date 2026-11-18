@@ -141,6 +141,7 @@ function _box_rules!(rules, v, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return rules
     op = operation(ex)
+    op isa Differential && _check_normal_not_differentiated(ex)
     if op isa FacetNormal
         iv, sign = normal(_trace_face(v, op.piece))
         rules[ex] = isequal(indvars(v)[_normal_component(ex)], iv) ? sign : 0
@@ -164,6 +165,8 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     _has_trace(bc) || return bc
     classify_condition(v, bc)
     lhs, rhs = _get_lhs_rhs(bc)
+    (_has_facet_normal(lhs) || _has_facet_normal(rhs)) && !(_has_trace_derivative(lhs) || _has_trace_derivative(rhs)) &&
+        _normal_without_derivative_error(bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)

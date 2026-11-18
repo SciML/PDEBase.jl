@@ -60,3 +60,24 @@ function _has_facet_normal(ex, test = _ -> true)
     _is_facet_normal(ex) && test(operation(ex).piece) && return true
     return any(a -> _has_facet_normal(a, test), arguments(ex))
 end
+
+"Reject a `Differential` node `ex` whose operand holds a facet normal: the normal is not a field to differentiate."
+function _check_normal_not_differentiated(ex)
+    _has_facet_normal(only(arguments(ex))) && error(
+        "derivative of an expression containing the facet normal is not supported in a boundary condition: $(Symbolics.wrap(ex))"
+    )
+    return nothing
+end
+
+"Does `ex` hold a `Differential` or `NormalDerivative` of an expression that holds a trace?"
+function _has_trace_derivative(ex)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return false
+    operation(ex) isa Union{Differential, NormalDerivative} && _find_trace(only(arguments(ex))) !== nothing && return true
+    return any(_has_trace_derivative, arguments(ex))
+end
+
+"The error for a facet normal in a gradient-free (essential) condition `label`."
+_normal_without_derivative_error(label) = error(
+    "the condition $label contains the facet normal but no derivative of a trace; the normal can appear only in a natural or Robin-type condition"
+)

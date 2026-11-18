@@ -86,9 +86,7 @@ end
 
 function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, label, licensed)
     inner = unwrap(only(arguments(ex)))
-    _has_facet_normal(inner) && error(
-        "derivative of an expression containing the facet normal is not supported in a boundary condition: $(wrap(ex))"
-    )
+    _check_normal_not_differentiated(ex)
     f = _field(ctx, inner)
     if f === nothing
         _has_trace(ctx, inner) && error(
@@ -491,9 +489,7 @@ function boundary_conditions(
             e, Φ = _route_on_face(B, flux, faceflux, _where(loc), n, slots, label)
             NaturalBC{K}(key, e, Φ)
         else
-            _depends(B, slots.N) && error(
-                "the condition $label contains the facet normal but no derivative of a trace; the normal can appear only in a natural or Robin-type condition"
-            )
+            _depends(B, slots.N) && _normal_without_derivative_error(label)
             f, g = essential_condition(B, slots; field, label)
             EssentialBC{K}(key, f, g)
         end

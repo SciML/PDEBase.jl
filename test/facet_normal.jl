@@ -324,3 +324,17 @@ end
     @test occursin("calls on 2 locations", errmsg(() -> classify_condition(v, bcs[2])))
     @test occursin("calls on 2 locations", errmsg(() -> to_box_bcs(sys; time = t)))
 end
+
+@testset "box lowering rejects the normal under a derivative and in an essential condition" begin
+    rect = Rectangle(0.0 .. 1.0, 0.0 .. 2.0)
+    Γl = boundarypiece(rect, :left)
+    nl = normal(Γl)
+    heat = Dt(u(t, x, y)) ~ Dx(k * Dx(u(t, x, y))) + Dy(k * Dy(u(t, x, y)))
+    domains = [(x, y) ∈ rect, t ∈ Interval(0.0, 1.0)]
+    function lowering(bc)
+        sys = PDESystem([heat], [u(0, x, y) ~ 0, bc, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)
+        return errmsg(() -> to_box_bcs(sys; time = t))
+    end
+    @test occursin("derivative of an expression containing the facet normal", lowering(Dx(nl[1]) + Dx(u(t, Γl)) ~ 1))
+    @test occursin("contains the facet normal but no derivative of a trace", lowering(nl[1] * u(t, Γl) ~ 1))
+end
