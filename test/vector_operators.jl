@@ -185,12 +185,35 @@ else
         @test !PDEBase._has_vector_operator(eq)
     end
 
-    @testset "contraction with a vector of unknown length" begin
+    @testset "unknown-length vectors are never resolved to the operator result's length" begin
         @variables Zu::Vector{Real}
-        eq = expanded(dot(∇(U), Zu) ~ 0; dvs = [U])
-        @test same(eq.lhs, Dx(U) * Zu[1] + Dy(U) * Zu[2])
-        eq = expanded(dot(Zu, ∇(U)) ~ 0; dvs = [U])
-        @test same(eq.lhs, Dx(U) * Zu[1] + Dy(U) * Zu[2])
+        @test_throws ArgumentError expanded(dot(∇(U), Zu) ~ 0; dvs = [U])
+        @test_throws ArgumentError expanded(dot(Zu, ∇(U)) ~ 0; dvs = [U])
+    end
+
+    @testset "unknown-length parameter bound to an incompatible vector keeps its value" begin
+        @parameters zp::Vector{Real}
+        @named sys = PDESystem([sum_both(∇(U), zp) ~ 0], boxbcs, box, [t, x, y], [U], [k, zp])
+        eq = only(get_eqs(expand_vector_operators(sys)))
+        @test isequal(arguments(Symbolics.unwrap(eq.lhs))[2], Symbolics.unwrap(zp))
+        @test_throws ArgumentError expanded(dot(∇(U), zp) ~ 0; dvs = [U])
+    end
+
+    @testset "a registered function named dot is an ordinary function" begin
+        mod = Module(:UserDot)
+        Core.eval(mod, :(using Symbolics))
+        Core.eval(mod, :(dot(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)))
+        Core.eval(mod, :(@register_symbolic dot(a::AbstractVector, b::AbstractVector)))
+        @parameters zw[1:3]
+        lhs = Base.invokelatest(mod.dot, ∇(U), zw)
+        @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, zw])
+        eq = only(get_eqs(expand_vector_operators(sys)))
+        bindings = Dict(
+            Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3,
+            [Symbolics.unwrap(zw[i]) => c for (i, c) in enumerate([7, 13, 5])]...
+        )
+        args = [Symbolics.unwrap_const.(arguments(a)[2:end]) for a in arguments(Symbolics.substitute(Symbolics.unwrap(eq.lhs), bindings))]
+        @test Base.invokelatest(mod.dot, args...) == 41
     end
 
     @testset "tensor-weighted gradient equations" begin

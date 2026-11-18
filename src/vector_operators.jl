@@ -100,16 +100,17 @@ function expand_vector_operators end
                 known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
                 return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
             end
-            # Only a contraction needs equal lengths, so only there does a vector of unknown length take the
-            # length of the operator result. Other functions keep their independent operands as they are.
-            is_dot = op isa Function && nameof(op) === :dot
-            if is_dot || op === *
-                unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
-                lengths = [length(a) for a in callable if a isa AbstractVector && !unknown_vector(a)]
-                if is_dot && !allequal(lengths)
-                    throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
-                end
-                isempty(lengths) || (callable = map(a -> unknown_vector(a) ? [a[i] for i in 1:first(lengths)] : a, callable))
+            # Vectors of unknown length are never resolved to the length of an operator result, since that
+            # would change the value of any function whose operands have independent lengths.
+            if _is_linalg_dot(op)
+                lengths = [length(a) for a in callable if a isa AbstractVector && !_unknown_vector(a)]
+                any(_unknown_vector, callable) && throw(
+                    ArgumentError(
+                        "a vector of unknown length cannot be contracted with `dot` against the result of a vector " *
+                            "operator, declare its length"
+                    )
+                )
+                allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
             end
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
@@ -120,6 +121,13 @@ function expand_vector_operators end
         # An array of unknown shape cannot be scalarized and stays as an indexed term.
         (isempty(arrays) || any(a -> !(SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT), arrays)) && return rebuilt
         return _unwrap_result(Symbolics.scalarize(Symbolics.wrap(rebuilt)))
+    end
+    _unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
+    # LinearAlgebra's `dot` by identity, so a user's own function called `dot` is an ordinary function.
+    function _is_linalg_dot(op)
+        id = Base.PkgId(Base.UUID("37e2e46d-f89d-539d-b4ee-838fcccc9c8e"), "LinearAlgebra")
+        linalg = get(Base.loaded_modules, id, nothing)
+        return linalg !== nothing && op === getfield(linalg, :dot)
     end
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
     # A vector-valued operator result becomes a Julia array of expressions, so that products with constant
