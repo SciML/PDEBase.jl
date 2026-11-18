@@ -222,6 +222,10 @@ end
 end
 
 @testset "negative cases" begin
+    # a pole in the normal on a mesh piece cannot cancel between the sides
+    pm = (1 / n[1])^2
+    sysm, vm, bmapm = meshanalysis([NormalDerivative(Γ)(E1(t, Γ)) + pm ~ pm, ics...])
+    @test occursin("divides by an expression of the facet normal", errmsg(() -> analyse(sysm, vm, bmapm)))
     sys, v, _ = meshanalysis([absorbing(1), ics...])
     ctx = SlotContext(sys, v)
     s = StateSlots(3, 3, 1)
@@ -477,6 +481,8 @@ end
         vp = VariableMap(sysp, NormalBoxDisc(t))
         @test occursin("undefined on this face", errmsg(() -> analyse(sysp, vp, boundarymap(sysp.bcs, vp, NormalBoxDisc(t)))))
     end
+    unknown_pole = (1 / (u(t, Γl) * nl[2]))^2
+    @test occursin("undefined on this face", errmsg(() -> slot_condition(nl[1] * Dx(u(t, Γl)) + unknown_pole ~ unknown_pole, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a normal of another piece cannot cancel between the sides
     @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one

@@ -204,6 +204,10 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
                 face_rules[unwrap(term)] = values[_normal_component(term)]
             end
             _check_sides_finite((eq.lhs, eq.rhs), face_rules, "$eq on $(_where(loc))")
+        else
+            rules = Dict{Any, Any}(unwrap(t) => unwrap(slots.N[_normal_component(t)]) for t in _normal_terms!(_normal_terms!(Any[], eq.lhs), eq.rhs))
+            any(side -> _divides_by_normal(substitute(unwrap(side), rules), slots.N, _real_slots(slots)), (eq.lhs, eq.rhs)) &&
+                error("the condition $eq on $(_where(loc)) divides by an expression of the facet normal that can vanish on a facet")
         end
         restricted = restrict_to_face(Num(B), face, ctx, slots)
         foreach(r -> _check_finite_constants(r, "$eq on $(_where(loc))"), (B, restricted))

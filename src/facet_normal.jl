@@ -119,6 +119,7 @@ function _numeric_value(ex, rules)
     c isa Number && return c
     iscall(ex) || return nothing
     values = map(a -> _numeric_value(a, rules), arguments(ex))
+    operation(ex) === (*) && any(v -> v isa Number && iszero(v), values) && return 0
     any(isnothing, values) && return nothing
     return try
         operation(ex)(values...)
