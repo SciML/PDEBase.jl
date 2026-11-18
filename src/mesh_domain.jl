@@ -188,7 +188,7 @@ struct Robin <: BCKind end
 
 Classify the boundary condition `eq` by its syntax. A trace is a call with a
 [`BoundaryPiece`](@ref) argument, such as `u(t, Γ)`. Only spatial derivatives of a trace
-count: a [`NormalDerivative`](@ref), or a `Differential` in a variable that the trace does
+count: a `NormalDerivative`, or a `Differential` in a variable that the trace does
 not keep, such as `Dx(u(t, Γ))`. A `Differential` in a kept argument, such as
 `Dt(u(t, Γ))`, differentiates along the piece and leaves the trace a value. A condition
 whose traces all sit inside a spatial derivative is [`PDEBase.Natural`](@ref), one with

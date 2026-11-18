@@ -53,7 +53,7 @@ remove(v::AbstractVector, a::Number) = filter(x -> !isequal(x, a), v)
 Return derivative orders with respect to independent variable `x` that appear
 in the PDE equations or boundary conditions `pdeeqs`.
 
-A [`NormalDerivative`](@ref) counts as order 1 when `x` is its [`BoundaryPiece`](@ref),
+A `NormalDerivative` counts as order 1 when `x` is its [`BoundaryPiece`](@ref),
 and, given the variable map `v`, when its piece is the box face on which `x` is fixed.
 Without `v` it does not count for an independent variable.
 

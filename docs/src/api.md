@@ -55,7 +55,14 @@ PDEBase.x2i
 PDEBase.BoundaryPiece
 PDEBase.boundarypiece
 PDEBase.boundarypieces
-PDEBase.NormalDerivative
+```
+
+`NormalDerivative` is documented here only while PDEBase defines its own fallback; once
+Symbolics provides it, the Symbolics documentation covers it.
+
+```@autodocs
+Modules = [PDEBase]
+Filter = t -> nameof(t) === :NormalDerivative
 ```
 
 ## Abstract Types
