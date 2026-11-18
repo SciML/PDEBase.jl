@@ -25,7 +25,7 @@ function _check_box_domains(pdesys)
     return nothing
 end
 
-_has_trace(bc::Union{Equation, Pair}) = any(side -> _find_trace(side) !== nothing, _get_lhs_rhs(bc))
+_has_trace(bc::Union{Equation, Pair}) = any(side -> _find_trace(side) !== nothing || _has_facet_normal(side), _get_lhs_rhs(bc))
 _has_trace(bcs::AbstractVector) = any(_has_trace, bcs)
 _has_trace(_) = false
 
@@ -168,7 +168,12 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
     if _has_facet_normal(lhs) || _has_facet_normal(rhs)
-        residual = Symbolics.simplify(Symbolics.expand(Num(lowered[1]) - Num(lowered[2])))
+        residual = Num(lowered[1]) - Num(lowered[2])
+        for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
+            face = boxface(v, piece)
+            face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
+        end
+        residual = Symbolics.simplify(Symbolics.expand(residual))
         _check_normal_has_derivative(true, _has_field_derivative(residual, ex -> haskey(v.args, operation(ex)), indvars(v)), bc)
     end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)

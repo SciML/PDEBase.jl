@@ -58,12 +58,13 @@ function _has_facet_normal(ex, test = _ -> true)
     ex = safe_unwrap(ex)
     iscall(ex) || return false
     _is_facet_normal(ex) && test(operation(ex).piece) && return true
+    operation(ex) isa Differential && _has_facet_normal(operation(ex).x, test) && return true
     return any(a -> _has_facet_normal(a, test), arguments(ex))
 end
 
 "Reject a `Differential` node `ex` whose operand holds a facet normal: the normal is not a field to differentiate."
 function _check_normal_not_differentiated(ex)
-    (_has_facet_normal(only(arguments(ex))) || operation(ex) isa Differential && _has_facet_normal(operation(ex).x)) && error(
+    _has_facet_normal(ex) && error(
         "derivative of an expression containing the facet normal is not supported in a boundary condition: $(Symbolics.wrap(ex))"
     )
     return nothing
