@@ -50,7 +50,7 @@ condition that also contains `normal(Γ)` of that piece, where it becomes the gr
 the normal it is an error that suggests `NormalDerivative`. A facet normal is also an error in
 a volume equation, under a derivative, on another piece than the condition's, and in a
 condition with no derivative of a trace (such a condition would be essential, and an essential
-condition cannot depend on the normal). The conormal matching needs no change: in a condition
+condition cannot depend on the normal). The exception is a condition whose written derivative loses its gradient only because a coefficient vanishes on a degenerate box face, such as `x * n[1] * Dx(u) ~ 0` at `x = 0` for `uₜ = ∂ₓ(x∂ₓu) + ∂ᵧ²u`: it is the zero natural condition and is routed with flux `0`, while the same condition with unit diffusion is an error because the face flux stays nonzero. A derivative that vanished already with the numeric normal, such as `n[2] * Dx(u) ~ 0` on a left face, is no condition and is an error. The conormal matching needs no change: in a condition
 such as the absorbing-boundary term `-n × curl E + γ n × (n × E) ~ g`, the derivative terms
 are matched against the conormal flux of one equation, and the normal-dependent impedance term
 lands in the facet flux `Φ`, a product of `N` and `U`. Matching the curl-type derivative terms

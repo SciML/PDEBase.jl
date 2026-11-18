@@ -182,7 +182,7 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
     if _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs)
         residual = Symbolics.simplify(Symbolics.expand(restrict_to_face(Num(B), face, ctx, slots)))
-        _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual) && _depends(Num(B), slots.G), "$eq on $(_where(loc))")
+        _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual) && _depends(Symbolics.simplify(Symbolics.expand(Num(B))), slots.G), "$eq on $(_where(loc))")
     end
     return Num(B)
 end
@@ -228,29 +228,53 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
-# Is `λ`, expanded, a sum of terms that are nonnegative for every real normal (a nonnegative number
-# times even powers of normal components) with at least one positive constant term? Then `λ ≥ c > 0`.
+# Is `λ` provably positive for every real unit normal `N`? A structural sign analysis: positive
+# numbers, sums and products of positive or nonnegative terms, and even powers of any real polynomial
+# in the normal components are nonnegative. Components that make up the whole unit-normal sum
+# `Σ N[d]^2` count as the constant 1.
 function _positive_in_normal(λ, N)
-    terms = let ex = unwrap(Symbolics.expand(λ))
-        iscall(ex) && operation(ex) === (+) ? collect(arguments(ex)) : [ex]
-    end
     isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
-    function nonneg(t)
+    function realpoly(t)
         t = unwrap(t)
+        isnormal(t) && return true
         c = unwrap_const(t)
-        c isa Real && return c >= 0
+        c isa Real && return true
         iscall(t) || return false
         op = operation(t)
-        op === (*) && return all(nonneg, arguments(t))
-        if op === (^)
-            base, power = arguments(t)
-            e = unwrap_const(unwrap(power))
-            return isnormal(unwrap(base)) && e isa Integer && e > 0 && iseven(e)
-        end
-        return false
+        return op === (+) || op === (*) ? all(realpoly, arguments(t)) :
+            op === (^) && unwrap_const(unwrap(arguments(t)[2])) isa Integer && realpoly(arguments(t)[1])
     end
-    constant(t) = (c = unwrap_const(unwrap(t)); c isa Real && c > 0)
-    return all(nonneg, terms) && any(constant, terms)
+    # :pos, :nonneg or :unknown
+    function sign(t)
+        t = unwrap(t)
+        c = unwrap_const(t)
+        c isa Real && return c > 0 ? :pos : c == 0 ? :nonneg : :unknown
+        iscall(t) || return :unknown
+        op = operation(t)
+        args = arguments(t)
+        if op === (+)
+            squares = [a for a in args if iscall(unwrap(a)) && operation(unwrap(a)) === (^) && isnormal(unwrap(arguments(unwrap(a))[1])) && isequal(unwrap_const(unwrap(arguments(unwrap(a))[2])), 2)]
+            unit = length(unique(squares)) == length(N)
+            rest = unit ? [a for a in args if !any(sq -> isequal(a, sq), squares)] : collect(args)
+            signs = sign.(rest)
+            any(==(:unknown), signs) && return :unknown
+            return unit || any(==(:pos), signs) ? :pos : :nonneg
+        elseif op === (*)
+            signs = sign.(args)
+            any(==(:unknown), signs) && return :unknown
+            return all(==(:pos), signs) ? :pos : :nonneg
+        elseif op === (^)
+            base, power = args
+            e = unwrap_const(unwrap(power))
+            e isa Integer && e > 0 || return :unknown
+            sb = sign(base)
+            sb == :pos && return :pos
+            sb == :nonneg && return :nonneg
+            return iseven(e) && realpoly(base) ? :nonneg : :unknown
+        end
+        return :unknown
+    end
+    return sign(λ) == :pos
 end
 
 """

@@ -84,6 +84,8 @@ function _has_field_derivative(ex, v)
         _has_field_call(only(arguments(ex)), call -> haskey(v.args, operation(call))) && return true
     elseif op isa Differential && any(x -> isequal(op.x, x), indvars(v))
         _has_field_call(only(arguments(ex)), call -> declared(op.x, call)) && return true
+        # a spatial derivative of an operand that does not depend on its variable is zero, with its children
+        return false
     end
     return any(a -> _has_field_derivative(a, v), arguments(ex))
 end

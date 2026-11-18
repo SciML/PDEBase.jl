@@ -168,13 +168,16 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
     if _has_facet_normal(lhs) || _has_facet_normal(rhs)
-        residual = Num(lowered[1]) - Num(lowered[2])
+        residual = Symbolics.simplify(Symbolics.expand(Num(lowered[1]) - Num(lowered[2])))
+        written = _has_field_derivative(residual, v)
         for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
             face = boxface(v, piece)
             face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
         end
         residual = Symbolics.simplify(Symbolics.expand(residual))
-        _check_normal_has_derivative(true, _has_field_derivative(residual, v), isequal(residual, 0) && (_has_field_derivative(lhs, v) || _has_field_derivative(rhs, v)), bc)
+        # a derivative that vanishes only at the face (x = 0) is a zero natural condition; one that
+        # vanished with the numeric normal is no condition at all
+        _check_normal_has_derivative(true, _has_field_derivative(residual, v), isequal(residual, 0) && written, bc)
     end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end

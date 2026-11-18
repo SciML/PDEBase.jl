@@ -163,6 +163,12 @@ end
     @test symeq(match_flux(Φ, (1 + N[1]^2) * (Φ - 3), s), 3)
     @test symeq(last(route_natural((1 + N[1]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     @test symeq(match_flux(Φ, -(1 + N[1]^2) * (Φ - 3), s), 3)
+    @test symeq(match_flux(Φ, (1 + (N[1] + N[2])^2) * (Φ - 3), s), 3)
+    @test symeq(last(route_natural((1 + (N[1] + N[2])^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
+    # the unit normal has length one
+    @test symeq(match_flux(Φ, (N[1]^2 + N[2]^2) * (Φ - 3), s), 3)
+    @test match_flux(Φ, (N[1]^2 + N[1]^2) * (Φ - 3), s) === nothing
+    @test match_flux(Φ, (N[1] + N[2])^2 * (Φ - 3), s) === nothing
     @test match_flux(Φ, (N[1]^2) * (Φ - 3), s) === nothing
     @test match_flux(Φ, (1 - N[1]^2) * (Φ - 3), s) === nothing
     @test match_flux(Φ, (1 + N[1]) * (Φ - 3), s) === nothing
@@ -375,6 +381,13 @@ end
     @test occursin("calls on 2 locations", errmsg(() -> classify_condition(vdeg, Differential(nl[1])(u(t, Γl)) ~ u(t, Γr))))
     @test occursin("uses the normal of", errmsg(() -> classify_condition(vdeg, Differential(normal(Γr)[1])(u(t, Γl)) ~ 0)))
     @test occursin("no derivative of a trace", lowering(nl[2] * u(t, Γl) ~ 0))
+    # a derivative that vanished with the numeric normal imposes nothing
+    @test occursin("no derivative of a trace", lowering(nl[2] * Dx(u(t, Γl)) ~ 0))
+    @test occursin("no derivative of a trace", lowering(nl[1] * Dx(u(t, Γl)) ~ -Dx(u(t, Γl))))
+    # a mixed derivative of a field that lacks one of the variables is zero
+    @variables w2(..)
+    sysmix = PDESystem([heat, Dt(w2(t, y)) ~ 0], [u(0, x, y) ~ 0, Dx(Dy(w2(t, y))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w2(t, y)], [k => 1.0]; name = :sys)
+    @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysmix; time = t)))
     # Dx of a time-only field is zero and does not count
     @variables w(..)
     sysw = PDESystem([heat, Dt(w(t)) ~ 0], [u(0, x, y) ~ 0, Dx(w(t)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w(t)], [k => 1.0]; name = :sys)
