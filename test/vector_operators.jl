@@ -32,6 +32,9 @@ end
 
 same(a, b) = isequal(Symbolics.expand(Num(a) - Num(b)), Num(0))
 
+sum_both(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)
+@register_symbolic sum_both(a::AbstractVector, b::AbstractVector)
+
 if !isdefined(Symbolics, :Grad)
     @testset "vector operators need Symbolics 7.49" begin
         @test_skip false
@@ -222,10 +225,35 @@ else
         end
     end
 
-    @testset "divergence of a nonsymmetric tensor flux" begin
+    @testset "divergence of a spatially varying nonsymmetric tensor flux" begin
         field = x^2 * y + x * y^3
-        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])([1 2; 3 4] * Symbolics.Grad([x, y])(field)); dvs = [U])
-        @test Symbolics.value(Symbolics.substitute(expand_derivatives(eq.rhs), Dict(x => 2, y => 3))) == 305
+        tensor = [x y; x * y 1 + 2 * x]
+        at(ex) = Symbolics.value(Symbolics.substitute(expand_derivatives(ex), Dict(x => 2, y => 3)))
+        grad = Symbolics.Grad([x, y])(field)
+        flux1 = expanded(Dt(U) ~ (tensor * grad)[1]; dvs = [U])
+        flux2 = expanded(Dt(U) ~ (tensor * grad)[2]; dvs = [U])
+        divergence = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(tensor * grad); dvs = [U])
+        @test (at(flux1.rhs), at(flux2.rhs), at(divergence.rhs)) == (252, 524, 588)
+    end
+
+    @testset "independent-length operands keep their size" begin
+        @parameters zv[1:3]
+        bindings = Dict(
+            Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3,
+            [Symbolics.unwrap(zv[i]) => c for (i, c) in enumerate([7, 13, 5])]...
+        )
+        residual(eq) = sum_both(
+            [Symbolics.unwrap_const.(arguments(a)[2:end]) for a in arguments(Symbolics.substitute(Symbolics.unwrap(eq.lhs), bindings))]...
+        )
+        @named sys = PDESystem([sum_both(∇(U), zv) ~ 0], boxbcs, box, [t, x, y], [U], [k, zv])
+        @test residual(only(get_eqs(expand_vector_operators(sys)))) == 41
+        parsed = parsed_boundary_map(sys, disc)
+        @test residual(only(get_eqs(parsed.pdesys))) == 41
+    end
+
+    @testset "contractions need equal lengths" begin
+        @variables Z3[1:3]
+        @test_throws ArgumentError expanded(dot(∇(U), Z3) ~ 0; dvs = [U])
     end
 
     @testset "divergence of a concrete tensor flux" begin

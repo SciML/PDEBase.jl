@@ -100,10 +100,16 @@ function expand_vector_operators end
                 known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
                 return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
             end
-            # A vector of unknown length contracted with an operator result has that result's length.
-            unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
-            lengths = [length(a) for a in callable if a isa AbstractVector && !unknown_vector(a)]
-            isempty(lengths) || (callable = map(a -> unknown_vector(a) ? [a[i] for i in 1:first(lengths)] : a, callable))
+            # Only a contraction needs equal lengths, so only there does a vector of unknown length take the
+            # length of the operator result. Other functions keep their independent operands as they are.
+            if op === Symbolics.LinearAlgebra.dot || op === *
+                unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
+                lengths = [length(a) for a in callable if a isa AbstractVector && !unknown_vector(a)]
+                if op === Symbolics.LinearAlgebra.dot && !allequal(lengths)
+                    throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
+                end
+                isempty(lengths) || (callable = map(a -> unknown_vector(a) ? [a[i] for i in 1:first(lengths)] : a, callable))
+            end
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
         end
