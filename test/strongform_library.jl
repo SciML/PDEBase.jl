@@ -204,8 +204,11 @@ const SYSTEMS = PDESystemLibrary.all_systems
 const ORIGINAL = [(copy(sys.eqs), copy(sys.bcs)) for sys in SYSTEMS]
 
 @testset "corpus" begin
-    @test length(SYSTEMS) >= 427
-    @test allunique(getproperty.(SYSTEMS, :name))
+    names = getproperty.(SYSTEMS, :name)
+    # 0.1.10 has 427 systems; 0.1.11 adds :trans_sin.
+    @test count(!=(:trans_sin), names) == 427
+    @test (:trans_sin in names) == (pkgversion(PDESystemLibrary) >= v"0.1.11")
+    @test allunique(names)
     @test issubset(keys(REJECTED), getproperty.(SYSTEMS, :name))
     @test issubset(PERIODIC ∪ NONLINEAR, getproperty.(SYSTEMS, :name))
     # The Weighted(r²) remedy: the weighted conormal vanishes on r = 0, so Dr(u(t, 0)) ~ 0 is a
