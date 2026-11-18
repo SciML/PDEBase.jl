@@ -3,7 +3,7 @@ using PDEBase: expand_vector_operators, parsed_boundary_map
 using PDEBase.StrongForm
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs, get_eqs
 using Symbolics
-const dot = Symbolics.LinearAlgebra.dot
+using LinearAlgebra: dot
 using SymbolicUtils: operation
 using SciMLBase
 using Test
@@ -31,6 +31,9 @@ function PDEBase.construct_discrete_space(v::VariableMap, pdesys::PDESystem, ::V
 end
 
 same(a, b) = isequal(Symbolics.expand(Num(a) - Num(b)), Num(0))
+
+# Evaluates the lowered expression itself, so a changed operation or a truncated operand shows in the value.
+evaluate(ex, bindings) = Symbolics.unwrap_const(Symbolics.substitute(Symbolics.unwrap(ex), bindings; fold = Val(true)))
 
 sum_both(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)
 @register_symbolic sum_both(a::AbstractVector, b::AbstractVector)
@@ -192,15 +195,7 @@ else
             Symbolics.unwrap(Dx(U)) => gradient[1], Symbolics.unwrap(Dy(U)) => gradient[2],
             Symbolics.unwrap(weights) => w
         )
-        # Evaluates the contraction the way the base revision would, once the weights are bound.
-        function residual(eq, w)
-            bound = Symbolics.substitute(Symbolics.unwrap(eq.lhs), bindings(w))
-            args = map(arguments(bound)) do a
-                a = Symbolics.unwrap_const(a)
-                a isa AbstractVector ? a : Symbolics.unwrap_const.(arguments(a)[2:end])
-            end
-            return dot(args...)
-        end
+        residual(eq, w) = evaluate(eq.lhs, bindings(w))
         for lhs in (dot(∇(U), weights), dot(weights, ∇(U)))
             @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, weights])
             for eq in (only(get_eqs(expand_vector_operators(sys))), only(get_eqs(parsed_boundary_map(sys, disc).pdesys)))
@@ -212,16 +207,33 @@ else
         @test_throws ArgumentError expanded(dot(∇(U), Z3) ~ 0; dvs = [U])
     end
 
-    @testset "a function named dot in a module named LinearAlgebra is an ordinary function" begin
-        mod = Module(:LinearAlgebra)
-        Core.eval(mod, :(using Symbolics))
-        Core.eval(mod, :(dot(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)))
-        Core.eval(mod, :(@register_symbolic dot(a::AbstractVector, b::AbstractVector)))
-        @parameters zq[1:3]
-        lhs = Base.invokelatest(mod.dot, ∇(U), zq)
-        @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, zq])
-        eq = only(get_eqs(expand_vector_operators(sys)))
-        @test operation(Symbolics.unwrap(eq.lhs)) === mod.dot
+    @testset "a function named dot in a package named LinearAlgebra is an ordinary function" begin
+        # Satisfies a name-and-path check for the standard library: a package called LinearAlgebra that lives
+        # under a `stdlib` directory, with its own `dot` whose operands have independent lengths.
+        pkg = joinpath(mktempdir(), "stdlib", "LinearAlgebra")
+        mkpath(joinpath(pkg, "src"))
+        uuid = Base.UUID("11111111-2222-3333-4444-555555555555")
+        write(joinpath(pkg, "Project.toml"), "name = \"LinearAlgebra\"\nuuid = \"$uuid\"\nversion = \"0.0.1\"\n")
+        write(
+            joinpath(pkg, "src", "LinearAlgebra.jl"),
+            "module LinearAlgebra\ndot(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)\nend\n"
+        )
+        push!(LOAD_PATH, pkg)
+        try
+            fake = Base.require(Base.PkgId(uuid, "LinearAlgebra"))
+            @test fake.dot !== dot && occursin("stdlib", pathof(fake))
+            Core.eval(@__MODULE__, :(@register_symbolic $fake.dot(a::AbstractVector, b::AbstractVector)))
+            @parameters zq[1:3]
+            @named sys = PDESystem([Base.invokelatest(fake.dot, ∇(U), zq) ~ 0], boxbcs, box, [t, x, y], [U], [k, zq])
+            eq = only(get_eqs(Base.invokelatest(expand_vector_operators, sys)))
+            bindings = Dict(
+                Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3,
+                [Symbolics.unwrap(zq[i]) => c for (i, c) in enumerate([7, 13, 5])]...
+            )
+            @test evaluate(eq.lhs, bindings) == 41
+        finally
+            filter!(!=(pkg), LOAD_PATH)
+        end
     end
 
     @testset "a registered function named dot is an ordinary function" begin
@@ -237,8 +249,7 @@ else
             Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3,
             [Symbolics.unwrap(zw[i]) => c for (i, c) in enumerate([7, 13, 5])]...
         )
-        args = [Symbolics.unwrap_const.(arguments(a)[2:end]) for a in arguments(Symbolics.substitute(Symbolics.unwrap(eq.lhs), bindings))]
-        @test Base.invokelatest(mod.dot, args...) == 41
+        @test Base.invokelatest(evaluate, eq.lhs, bindings) == 41
     end
 
     @testset "tensor-weighted gradient equations" begin
@@ -285,18 +296,17 @@ else
     end
 
     @testset "independent-length operands keep their size" begin
-        @parameters zv[1:3]
-        bindings = Dict(
-            Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3,
-            [Symbolics.unwrap(zv[i]) => c for (i, c) in enumerate([7, 13, 5])]...
-        )
-        residual(eq) = sum_both(
-            [Symbolics.unwrap_const.(arguments(a)[2:end]) for a in arguments(Symbolics.substitute(Symbolics.unwrap(eq.lhs), bindings))]...
-        )
-        @named sys = PDESystem([sum_both(∇(U), zv) ~ 0], boxbcs, box, [t, x, y], [U], [k, zv])
-        @test residual(only(get_eqs(expand_vector_operators(sys)))) == 41
-        parsed = parsed_boundary_map(sys, disc)
-        @test residual(only(get_eqs(parsed.pdesys))) == 41
+        @parameters zv[1:3] zu::Vector{Real}
+        for weights in (zv, zu)
+            bindings = Dict(
+                Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3,
+                (weights === zv ? [Symbolics.unwrap(zv[i]) => c for (i, c) in enumerate([7, 13, 5])] : [Symbolics.unwrap(zu) => [7, 13, 5]])...
+            )
+            @named sys = PDESystem([sum_both(∇(U), weights) ~ 0], boxbcs, box, [t, x, y], [U], [k, weights])
+            @test evaluate(only(get_eqs(expand_vector_operators(sys))).lhs, bindings) == 41
+            parsed = parsed_boundary_map(sys, disc)
+            @test evaluate(only(get_eqs(parsed.pdesys)).lhs, bindings) == 41
+        end
     end
 
     @testset "contractions need equal lengths" begin
