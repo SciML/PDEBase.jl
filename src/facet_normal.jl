@@ -83,7 +83,13 @@ function _has_field_derivative(ex, v)
     if op isa NormalDerivative
         _has_field_call(only(arguments(ex)), call -> haskey(v.args, operation(call))) && return true
     elseif op isa Differential && any(x -> isequal(op.x, x), indvars(v))
-        _has_field_call(only(arguments(ex)), call -> declared(op.x, call)) && return true
+        # a chain of spatial derivatives is zero unless the field has every variable of the chain
+        xs, inner = Any[op.x], safe_unwrap(only(arguments(ex)))
+        while iscall(inner) && operation(inner) isa Differential
+            any(x -> isequal(operation(inner).x, x), indvars(v)) && push!(xs, operation(inner).x)
+            inner = safe_unwrap(only(arguments(inner)))
+        end
+        _has_field_call(inner, call -> all(x -> declared(x, call), xs)) && return true
         # a spatial derivative of an operand that does not depend on its variable is zero, with its children
         return false
     end

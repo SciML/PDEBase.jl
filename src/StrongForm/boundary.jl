@@ -267,6 +267,7 @@ function _positive_in_normal(λ, N)
             base, power = args
             e = unwrap_const(unwrap(power))
             e isa Integer && e > 0 || return :unknown
+            e == 2 && length(N) == 1 && isnormal(unwrap(base)) && return :pos
             sb = sign(base)
             sb == :pos && return :pos
             sb == :nonneg && return :nonneg
