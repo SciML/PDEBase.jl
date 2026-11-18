@@ -91,12 +91,21 @@ function expand_vector_operators end
         newargs = map(a -> _expand_vector_operators(a, ivs), args)
         # An operator result is a Julia array of expressions, and applying `op` to it (`2g`, `dot(g, g)`,
         # `sum(g)`, `(2g)[1]`) evaluates per component, which a rebuilt symbolic array term would not.
-        any(a -> a isa AbstractArray, newargs) && return _unwrap_result(op(newargs...))
+        if any(a -> a isa AbstractArray, newargs)
+            # `broadcast` carries its function (`^`, `sin`) as a constant argument, which must be unwrapped to be called.
+            callable = map(newargs) do a
+                a isa SymbolicUtils.BasicSymbolic || return a
+                return _scalar_shaped(a) ? unwrap_const(a) : Symbolics.wrap(a)
+            end
+            result = op(callable...)
+            return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
+        end
         rebuilt = maketerm(typeof(ex), op, newargs, metadata(ex))
         # An eager operator can also return a symbolic array, whose operations are only evaluated by `scalarize`.
-        any(a -> a isa SymbolicUtils.BasicSymbolic && !isempty(SymbolicUtils.shape(a)), newargs) || return rebuilt
+        any(a -> a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a), newargs) || return rebuilt
         return _unwrap_result(Symbolics.scalarize(Symbolics.wrap(rebuilt)))
     end
+    _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
     _unwrap_result(r::AbstractArray) = r
     _unwrap_result(r) = unwrap(r)
 
@@ -107,7 +116,7 @@ function expand_vector_operators end
     )
     function _expand_side(side, ivs)
         side = unwrap(side)
-        side isa SymbolicUtils.BasicSymbolic && isempty(SymbolicUtils.shape(side)) &&
+        side isa SymbolicUtils.BasicSymbolic && _scalar_shaped(side) &&
             return _expand_vector_operators(side, ivs)
         scalarized = Symbolics.scalarize(Symbolics.wrap(side))
         scalarized isa AbstractArray && return map(c -> _expand_side(c, ivs), scalarized)

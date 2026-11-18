@@ -136,7 +136,8 @@ domain, and no boundary map is parsed.
 
 The hook sequence is
 
-1. `handle_complex`, `cardinalize_eqs` and `make_pdesys_compatible` normalize the system;
+1. `expand_vector_operators` rewrites `Grad`, `Divergence`, `Curl` and `Laplacian` into `Differential`
+   terms, then `handle_complex`, `cardinalize_eqs` and `make_pdesys_compatible` normalize the system;
 2. `VariableMap` and `interface_errors` analyze the variables;
 3. `construct_disc_state(discretization)` creates the mutable discretization state;
 4. `construct_discrete_space(v, pdesys, discretization)` creates the space the residuals

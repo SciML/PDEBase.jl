@@ -149,6 +149,17 @@ else
         @test analyse(parsed.pdesys, parsed.v, parsed.boundarymap).nfields == 1
     end
 
+    @testset "broadcast followed by a reduction" begin
+        @variables Ac[1:2]
+        g = ∇(U)
+        gx, gy = Dx(U), Dy(U)
+        @test same(expanded(sum(g .^ 2) ~ 0).lhs, gx^2 + gy^2)
+        @test same(expanded(sum(g .* g) ~ 0).lhs, gx^2 + gy^2)
+        @test same(expanded(sum(sin.(g)) ~ 0).lhs, sin(gx) + sin(gy))
+        @test same(expanded(dot(Ac, g) ~ 0).lhs, Ac[1] * gx + Ac[2] * gy)
+        @test same(expanded(sum(g .^ 2) ~ 0; dvs = [U, Ac]).lhs, gx^2 + gy^2)
+    end
+
     @testset "divergence of a vector of unknown length" begin
         @variables Vu::Vector{Real}
         eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Vu); dvs = [U])
@@ -159,6 +170,17 @@ else
         @variables M::Matrix{Real}
         eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(M * ∇(U)); dvs = [U])
         @test !PDEBase._has_vector_operator(eq)
+        # Both flux components, in order, against the same product built by hand.
+        Mflux = M * [Dx(U), Dy(U)]
+        @test isequal(eq.rhs, Symbolics.unwrap(Dx(Mflux[1]) + Dy(Mflux[2])))
+        @test !isequal(eq.rhs, Symbolics.unwrap(Dx(Mflux[2]) + Dy(Mflux[1])))
+    end
+
+    @testset "divergence of a concrete tensor flux" begin
+        Mc = [1.0 0.5; 0.5 2.0]
+        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mc * ∇(U)); dvs = [U])
+        flux = [1.0 * Dx(U) + 0.5 * Dy(U), 0.5 * Dx(U) + 2.0 * Dy(U)]
+        @test same(expand_derivatives(eq.rhs), expand_derivatives(Dx(flux[1]) + Dy(flux[2])))
     end
 
     @testset "vector of unknown length" begin
