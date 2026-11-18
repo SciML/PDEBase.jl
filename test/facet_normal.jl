@@ -179,6 +179,13 @@ end
     @test match_flux(Φ, ((N[1]^4 - 1) / (N[1]^2 - 1)) * Φ, s) === nothing
     @test symeq(match_flux(Φ, Φ - 1 / (2 + N[1]^2), s), 1 / (2 + N[1]^2))
     @test symeq(match_flux(Φ, (Φ - 3) / (2 + N[1]^2), s), 3)
+    # a denominator that is at least 1 for every real state and normal
+    s1u = StateSlots(1, 2, 0)
+    Φu = s1u.G[1] * s1u.N[1] + s1u.G[2] * s1u.N[2]
+    dpos = 1 + s1u.N[1]^2 + s1u.U[1]^2
+    @test symeq(match_flux(Φu, Φu - 1 / dpos, s1u), 1 / dpos)
+    @test symeq(last(route_natural(Φu - 1 / dpos, [[s1u.G[1], s1u.G[2]]], s1u.N, s1u)), 1 / dpos)
+    @test match_flux(Φu, Φu - 1 / (1 - s1u.N[1]^2 - s1u.U[1]^2), s1u) === nothing
     @test symeq(last(route_natural((Φ - 3) / (2 + N[1]^2), [[G[1], G[2]]], N, s)), 3)
     @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
@@ -446,6 +453,12 @@ end
     nonfinite = -Dx(u(t, Γl)) ~ 1 / nl[2]
     @test_throws ArgumentError to_box_bcs(PDESystem([heat], [u(0, x, y) ~ 0, nonfinite, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys); time = t)
     @test occursin("divides by a component of the facet normal", errmsg(() -> slot_condition(nonfinite, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
+    # the denominator vanishes only once the face coordinate and the zero normal component are both substituted
+    endpoint_zero = nl[1] * Dx(u(t, Γl)) ~ 1 / (x + nl[2])
+    @test_throws ArgumentError to_box_bcs(PDESystem([heat], [u(0, x, y) ~ 0, endpoint_zero, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys); time = t)
+    @test occursin("divides by a component of the facet normal", errmsg(() -> slot_condition(endpoint_zero, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
+    s0 = StateSlots(2, 2, 0)
+    @test occursin("divides by a component of the facet normal", errmsg(() -> route_natural(s0.G[1] * s0.N[1] + s0.G[2] * s0.N[2] - 1 / s0.N[2], [[s0.G[1], s0.G[2]]], [-1, 0], s0)))
     # a normal of another piece cannot cancel between the sides
     @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one

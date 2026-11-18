@@ -196,10 +196,11 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     isempty(leftover) ||
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
     if _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs)
-        residual = Symbolics.simplify(Symbolics.expand(restrict_to_face(Num(B), face, ctx, slots)))
+        restricted = restrict_to_face(Num(B), face, ctx, slots)
+        foreach(r -> _check_finite_constants(r, "$eq on $(_where(loc))"), (B, restricted))
+        residual = Symbolics.simplify(Symbolics.expand(restricted))
         _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual) && _depends(Symbolics.simplify(Symbolics.expand(Num(B))), slots.G), "$eq on $(_where(loc))")
     end
-    _check_finite_constants(B, "$eq on $(_where(loc))")
     return Num(B)
 end
 
@@ -244,30 +245,33 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
+# The state, gradient and coordinate slots are real, so their even powers are nonnegative.
+_real_slots(slots) = Any[slots.U; slots.G; slots.X; slots.T]
+
 # Does `ex` divide by an expression with a normal component that is not provably nonvanishing on the
 # unit sphere?
-function _divides_by_normal(ex, N)
+function _divides_by_normal(ex, N, R = ())
     ex = unwrap(ex)
     iscall(ex) || return false
     op, args = operation(ex), arguments(ex)
-    risky(den) = any(m -> _depends(den, [m]), N) && !_nonvanishing_in_normal(den, N)
+    risky(den) = any(m -> _depends(den, [m]), N) && !_nonvanishing_in_normal(den, N, R)
     op === (/) && risky(args[2]) && return true
     if op === (^)
         e = unwrap_const(unwrap(args[2]))
         e isa Real && e < 0 && risky(args[1]) && return true
     end
-    return any(a -> _divides_by_normal(a, N), args)
+    return any(a -> _divides_by_normal(a, N, R), args)
 end
 
 # A lower bound of `λ` over every real unit normal `N`, or `nothing` if none is proven. Numbers, sums, and
 # products and powers of terms with a nonnegative bound are bounded structurally; an even power of a real
 # polynomial in the normal components is at least 0; and a sum `c + Σ wᵢ Nᵢ²` with signed weights (zero for a missing component) is at least `c + minᵢ wᵢ` on the unit
 # sphere, as `Σ Nᵢ² = 1`.
-function _normal_lower_bound(λ, N)
+function _normal_lower_bound(λ, N, R = ())
     isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
     function realpoly(t)
         t = unwrap(t)
-        isnormal(t) && return true
+        (isnormal(t) || any(m -> isequal(t, unwrap(m)), R)) && return true
         c = unwrap_const(t)
         c isa Real && return true
         iscall(t) || return false
@@ -320,19 +324,19 @@ function _normal_lower_bound(λ, N)
     return bound(λ)
 end
 
-_positive_in_normal(λ, N) = (b = _normal_lower_bound(λ, N); b !== nothing && b > 0)
+_positive_in_normal(λ, N, R = ()) = (b = _normal_lower_bound(λ, N, R); b !== nothing && b > 0)
 
 # Is `λ` provably nonzero for every real unit normal? Either sign of a positive lower bound, or a product,
 # quotient or integer power of provably nonzero factors.
-function _nonvanishing_in_normal(λ, N)
+function _nonvanishing_in_normal(λ, N, R = ())
     λ = unwrap(λ)
     c = unwrap_const(λ)
     c isa Real && return c != 0
-    (_positive_in_normal(λ, N) || _positive_in_normal(-λ, N)) && return true
+    (_positive_in_normal(λ, N, R) || _positive_in_normal(-λ, N, R)) && return true
     iscall(λ) || return false
     op, args = operation(λ), arguments(λ)
-    (op === (*) || op === (/)) && return all(a -> _nonvanishing_in_normal(a, N), args)
-    op === (^) && unwrap_const(unwrap(args[2])) isa Integer && return _nonvanishing_in_normal(args[1], N)
+    (op === (*) || op === (/)) && return all(a -> _nonvanishing_in_normal(a, N, R), args)
+    op === (^) && unwrap_const(unwrap(args[2])) isa Integer && return _nonvanishing_in_normal(args[1], N, R)
     return false
 end
 
@@ -345,7 +349,9 @@ affine in the gradient slots, `Φ = a_Φ·g + Φ₀` and `B = a_B·g + B₀`; if
 `N` is cancelled only if it is provably nonvanishing on the unit sphere, with either sign: a positive
 constant plus squares of real polynomials in the normal components (`1 + N₁²`, `1 + (N₁ + N₂)²`), or a
 sum holding a positively weighted square of every component (`N₁² + N₂²`, `N₁² + 2N₂²`), the whole
-`λ` or its negative. Any other `λ` is not cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match.
+`λ` or its negative; a provably nonzero reciprocal such as `1/(2 + N₁²)`, or a product or quotient of provably
+nonzero factors, is cancelled too, and even powers of state, gradient and coordinate slots count as
+nonnegative. Any other `λ` is not cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match.
 Proportionality must be proven
 by `simplify`; a numeric agreement is never accepted (open question O3).
 """
@@ -357,12 +363,12 @@ function match_flux(Φ, B, slots)
     i = findfirst(!_iszero, aΦ)
     (i === nothing || all(_iszero, aB)) && return nothing
     # a division by something that can vanish on a facet is undefined there; simplification must not hide it
-    _divides_by_normal(B, slots.N) && return nothing
+    _divides_by_normal(B, slots.N, _real_slots(slots)) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
     # A scale containing a normal component can vanish on a whole facet, where the condition is
     # then not the conormal condition it matched symbolically; it is cancelled only if it is
     # provably nonzero for every real normal (definite in sign).
-    (_iszero(λ) || _depends(λ, slots.N) && !_nonvanishing_in_normal(λ, slots.N)) && return nothing
+    (_iszero(λ) || _depends(λ, slots.N) && !_nonvanishing_in_normal(λ, slots.N, _real_slots(slots))) && return nothing
     # Expanded and fraction-simplified so polynomial identities such as (1 + U)^2 = 1 + 2U + U^2
     # are proven; no coefficient-by-coefficient products, which can underflow to zero.
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||
@@ -409,6 +415,7 @@ equation or more than one matches.
 function route_natural(B, flux, n, slots; label = B)
     nsub = Dict(slots.N[d] => n[d] for d in eachindex(n))
     Bn = substitute(B, nsub)
+    _check_finite_constants(Bn, label)
     matches = Tuple{Int, Num}[]
     for (e, G) in enumerate(flux)
         Φbc = match_flux(substitute(_conormal_flux(G, n), nsub), Bn, slots)

@@ -232,6 +232,7 @@ function _check_box_normal_derivative(v, lhs, rhs, bc)
         face = boxface(v, piece)
         face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
     end
+    _check_finite_constants(residual, bc)
     residual = Symbolics.simplify(Symbolics.expand(residual))
     return _check_normal_has_derivative(true, holds_derivative(residual), isequal(residual, 0) && written, bc)
 end
