@@ -242,7 +242,10 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     lhs, rhs = _get_lhs_rhs(bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
-    (_has_facet_normal(lhs) || _has_facet_normal(rhs)) && _check_box_normal_derivative(v, lhs, rhs, bc)
+    if _has_facet_normal(lhs) || _has_facet_normal(rhs)
+        foreach(side -> _check_finite_constants(side, bc), lowered)
+        _check_box_normal_derivative(v, lhs, rhs, bc)
+    end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end
 _lower_bc(v, bcs::AbstractVector) = map(bc -> _lower_bc(v, bc), bcs)

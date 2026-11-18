@@ -178,6 +178,8 @@ end
     @test match_flux(Φ2, (-(2^62) - (2^62 + 1) * N[1]^2 + 2^62 * N[2]^2) * Φ2, s) === nothing
     @test match_flux(Φ, ((N[1]^4 - 1) / (N[1]^2 - 1)) * Φ, s) === nothing
     @test symeq(match_flux(Φ, Φ - 1 / (2 + N[1]^2), s), 1 / (2 + N[1]^2))
+    @test symeq(match_flux(Φ, (Φ - 3) / (2 + N[1]^2), s), 3)
+    @test symeq(last(route_natural((Φ - 3) / (2 + N[1]^2), [[G[1], G[2]]], N, s)), 3)
     @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
     @test symeq(match_flux(Φ, (N[1]^2 + N[2]^2) * (Φ - 3), s), 3)
@@ -440,6 +442,10 @@ end
     @test occursin("derivative of an expression containing the facet normal", errmsg(() -> slot_condition(Dx(nl[1]) + nl[1] * Dx(u(t, Γl)) ~ Dx(nl[1]), Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     cancelled_nd = NormalDerivative(Γl)(nl[1] * u(t, Γl))
     @test occursin("derivative of an expression containing the facet normal", errmsg(() -> slot_condition(cancelled_nd + Dx(u(t, Γl)) ~ cancelled_nd, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
+    # division by a zero normal component is no condition
+    nonfinite = -Dx(u(t, Γl)) ~ 1 / nl[2]
+    @test_throws ArgumentError to_box_bcs(PDESystem([heat], [u(0, x, y) ~ 0, nonfinite, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys); time = t)
+    @test occursin("divides by a component of the facet normal", errmsg(() -> slot_condition(nonfinite, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a normal of another piece cannot cancel between the sides
     @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one

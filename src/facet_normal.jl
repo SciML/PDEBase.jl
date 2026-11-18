@@ -83,3 +83,19 @@ end
 _normal_without_derivative_error(label) = error(
     "the condition $label contains the facet normal but no derivative of a trace; the normal can appear only in a natural or Robin-type condition"
 )
+
+"""
+Throw an `ArgumentError` if `ex`, a condition `label` after the numeric facet normal replaced the symbolic one,
+holds a constant that is not finite: it divided by a component of the normal that is zero on this face.
+"""
+function _check_finite_constants(ex, label)
+    ex = safe_unwrap(ex)
+    c = unwrap_const(ex)
+    c isa Number && !isfinite(c) && throw(
+        ArgumentError(
+            "the condition $label divides by a component of the facet normal that is zero on this face, giving $c"
+        )
+    )
+    iscall(ex) && foreach(a -> _check_finite_constants(a, label), arguments(ex))
+    return nothing
+end

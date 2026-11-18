@@ -199,6 +199,7 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
         residual = Symbolics.simplify(Symbolics.expand(restrict_to_face(Num(B), face, ctx, slots)))
         _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual) && _depends(Symbolics.simplify(Symbolics.expand(Num(B))), slots.G), "$eq on $(_where(loc))")
     end
+    _check_finite_constants(B, "$eq on $(_where(loc))")
     return Num(B)
 end
 
@@ -249,7 +250,7 @@ function _divides_by_normal(ex, N)
     ex = unwrap(ex)
     iscall(ex) || return false
     op, args = operation(ex), arguments(ex)
-    risky(den) = any(m -> _depends(den, [m]), N) && !(_positive_in_normal(den, N) || _positive_in_normal(-unwrap(den), N))
+    risky(den) = any(m -> _depends(den, [m]), N) && !_nonvanishing_in_normal(den, N)
     op === (/) && risky(args[2]) && return true
     if op === (^)
         e = unwrap_const(unwrap(args[2]))
@@ -321,6 +322,20 @@ end
 
 _positive_in_normal(λ, N) = (b = _normal_lower_bound(λ, N); b !== nothing && b > 0)
 
+# Is `λ` provably nonzero for every real unit normal? Either sign of a positive lower bound, or a product,
+# quotient or integer power of provably nonzero factors.
+function _nonvanishing_in_normal(λ, N)
+    λ = unwrap(λ)
+    c = unwrap_const(λ)
+    c isa Real && return c != 0
+    (_positive_in_normal(λ, N) || _positive_in_normal(-λ, N)) && return true
+    iscall(λ) || return false
+    op, args = operation(λ), arguments(λ)
+    (op === (*) || op === (/)) && return all(a -> _nonvanishing_in_normal(a, N), args)
+    op === (^) && unwrap_const(unwrap(args[2])) isa Integer && return _nonvanishing_in_normal(args[1], N)
+    return false
+end
+
 """
     match_flux(Φ, B, slots) -> Union{Num, Nothing}
 
@@ -347,7 +362,7 @@ function match_flux(Φ, B, slots)
     # A scale containing a normal component can vanish on a whole facet, where the condition is
     # then not the conormal condition it matched symbolically; it is cancelled only if it is
     # provably nonzero for every real normal (definite in sign).
-    (_iszero(λ) || _depends(λ, slots.N) && !(_positive_in_normal(λ, slots.N) || _positive_in_normal(-λ, slots.N))) && return nothing
+    (_iszero(λ) || _depends(λ, slots.N) && !_nonvanishing_in_normal(λ, slots.N)) && return nothing
     # Expanded and fraction-simplified so polynomial identities such as (1 + U)^2 = 1 + 2U + U^2
     # are proven; no coefficient-by-coefficient products, which can underflow to zero.
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||
