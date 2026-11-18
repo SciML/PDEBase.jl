@@ -48,7 +48,7 @@ end
 # `substitute_traces`: traces become `U`, their first derivatives `G`, their normal derivatives
 # `N·G`, coordinates `X`, time `T` and parameters `P`. Only trace-free subexpressions are
 # derivative-expanded (spec §3.3 trap).
-function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label)
+function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label, licensed)
     ex = unwrap(ex)
     haskey(rules, ex) && return rules
     if !iscall(ex)
@@ -63,7 +63,7 @@ function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label)
     end
     op = operation(ex)
     if op isa SymbolicUtils.Operator
-        rules[ex] = _slot_operator(ctx, op, ex, loc, slots, label)
+        rules[ex] = _slot_operator(ctx, op, ex, loc, slots, label, licensed)
         return rules
     end
     f = _field(ctx, ex)
@@ -72,17 +72,21 @@ function _slot_rules!(rules, ctx::SlotContext, ex, loc, slots, label)
         rules[ex] = unwrap(slots.U[f])
         return rules
     end
-    foreach(a -> _slot_rules!(rules, ctx, a, loc, slots, label), arguments(ex))
+    foreach(a -> _slot_rules!(rules, ctx, a, loc, slots, label, licensed), arguments(ex))
     return rules
 end
 
+# A condition that holds the facet normal of its own location may use Cartesian derivatives of
+# traces on a piece: the user builds the contraction with the normal.
 function _slot_expression(ctx::SlotContext, ex, loc, slots, label)
-    rules = _slot_rules!(Dict{Any, Any}(), ctx, ex, loc, slots, label)
+    licensed = _has_facet_normal(ex, piece -> isequal(location(ctx.v, [Piece(piece)]), loc))
+    rules = _slot_rules!(Dict{Any, Any}(), ctx, ex, loc, slots, label, licensed)
     return unwrap(assert_no_traces(substitute_traces(ex, rules)))
 end
 
-function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, label)
+function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, label, licensed)
     inner = unwrap(only(arguments(ex)))
+    _check_normal_not_differentiated(ex)
     f = _field(ctx, inner)
     if f === nothing
         _has_trace(ctx, inner) && error(
@@ -103,8 +107,10 @@ function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, labe
             error("time derivative of a trace is not supported in a boundary condition: $(wrap(ex))")
         error("derivative in $(op.x), which is not an independent variable of the system, in a boundary condition: $(wrap(ex))")
     end
-    loc isa Piece && error(
-        "$(wrap(ex)) is a Cartesian derivative of a trace on $(loc.piece), which equals the normal derivative only on a planar piece perpendicular to $(op.x); write the normal derivative NormalDerivative($(loc.piece))(…)"
+    # a derivative in a coordinate the field does not have is zero, not a gradient
+    any(a -> isequal(a, op.x), ctx.args[ctx.ops[f]]) || return unwrap(Num(0))
+    loc isa Piece && !licensed && error(
+        "$(wrap(ex)) is a Cartesian derivative of a trace on $(loc.piece), which equals the normal derivative only on a planar piece perpendicular to $(op.x); write the normal derivative NormalDerivative($(loc.piece))(…), or include PDEBase.normal($(loc.piece)) in the condition to build the contraction yourself"
     )
     op.order == 1 ||
         error("derivative of order $(op.order) in a boundary condition is not supported: $(wrap(ex))")
@@ -112,7 +118,7 @@ function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, labe
 end
 
 # `NormalDerivative(Γ)(u_f(t, Γ))` is `N·G_f` (spec §5.3), with the numeric normal on a box face.
-function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, label)
+function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, label, licensed)
     inner = unwrap(only(arguments(ex)))
     f = _field(ctx, inner)
     f === nothing && error(
@@ -128,10 +134,22 @@ function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, 
     _check_on_location(ctx, inner, f, loc, label)
     dim = length(ctx.sivs)
     n = _normal(loc, ctx, slots)
-    return unwrap(sum(n[d] * slots.G[(f - 1) * dim + d] for d in 1:dim))
+    # only the coordinates the field has: a derivative in another is zero, as for a Cartesian derivative
+    return unwrap(sum(n[d] * slots.G[(f - 1) * dim + d] for d in 1:dim if any(a -> isequal(a, ctx.sivs[d]), ctx.args[ctx.ops[f]]); init = 0))
 end
 
-function _slot_operator(ctx::SlotContext, op, ex, loc, slots, label)
+# A component of the facet normal is `N[d]` on a piece and the numeric `±e` on a box face.
+function _slot_operator(ctx::SlotContext, op::FacetNormal, ex, loc, slots, label, licensed)
+    oploc = location(ctx.v, [Piece(op.piece)])
+    isequal(oploc, loc) ||
+        error("$(wrap(ex)) is the normal of $(op.piece), but the condition $label is on $(_where(loc)); write the condition on the normal's piece")
+    d = _normal_component(ex)
+    d <= length(ctx.sivs) ||
+        error("$(wrap(ex)) is component $d of the normal, but the system has $(length(ctx.sivs)) spatial independent variables")
+    return unwrap(_normal(loc, ctx, slots)[d])
+end
+
+function _slot_operator(ctx::SlotContext, op, ex, loc, slots, label, licensed)
     return error("operator $op is not supported in a boundary condition: $(wrap(ex))")
 end
 
@@ -146,22 +164,65 @@ _has_trace(ctx::SlotContext, ex) =
 
 The residual `eq.lhs - eq.rhs` of a boundary condition on `face`, a `PDEBase.BoxFace` or a
 `BoundaryPiece`, in slot form: each trace `u_f` becomes `U[f]`, `Dx_d(u_f)` becomes
-`G[(f-1)*dim+d]` and `NormalDerivative(Γ)(u_f)` becomes `Σ_d N[d] G[(f-1)*dim+d]`. On a box face
+`G[(f-1)*dim+d]` and `NormalDerivative(Γ)(u_f)` becomes `Σ_d N[d] G[(f-1)*dim+d]` over the spatial coordinates `d` that `u_f` is declared with (a derivative in an omitted coordinate is zero, as for a Cartesian derivative). On a box face
 the normal is the face's `±e_iv` and the face coordinate becomes its endpoint value; on a piece
-the normal stays the symbolic slots `N`, and a Cartesian derivative of a trace is an error.
+the normal stays the symbolic slots `N`. A component of `PDEBase.normal(Γ)` becomes `N[d]` (or the
+numeric normal on a box face), and a Cartesian derivative of a trace on a piece is an error unless
+the condition also holds the normal of that piece. A condition with the symbolic normal but no
+derivative of a trace is an error.
 Traces are replaced with `PDEBase.substitute_traces`. Errors if a trace or any other unslotted
 symbol remains. Only trace-free subexpressions are derivative-expanded (spec §3.3 trap).
 """
 slot_condition(eq::Equation, face, ctx::SlotContext, slots) =
     restrict_to_face(_slot_unrestricted(eq, face, ctx, slots), face, ctx, slots)
 
+# Every facet normal in `ex` must be that of `loc`.
+function _check_normals_at(ctx::SlotContext, ex, loc, slots, label)
+    iscall(ex) || return nothing
+    op = operation(ex)
+    op isa FacetNormal && return _slot_operator(ctx, op, ex, loc, slots, label, true)
+    op isa Union{Differential, NormalDerivative} && _check_normal_not_differentiated(ex)
+    foreach(a -> _check_normals_at(ctx, unwrap(a), loc, slots, label), arguments(ex))
+    return nothing
+end
+
+# The distinct trace calls of dependent variables in `ex`: real-valued, like the state slots they become.
+function _trace_calls(ctx::SlotContext, ex, calls = Any[])
+    ex = unwrap(ex)
+    iscall(ex) || return calls
+    _field(ctx, ex) !== nothing ? any(c -> isequal(c, ex), calls) || push!(calls, ex) :
+        foreach(a -> _trace_calls(ctx, a, calls), arguments(ex))
+    return calls
+end
+
 function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     loc = _location(ctx, face)
+    # each side is checked on its own, so a misplaced normal cannot cancel in the difference
+    foreach(side -> _check_normals_at(ctx, unwrap(side), loc, slots, "$eq on $(_where(loc))"), (eq.lhs, eq.rhs))
     B = _slot_expression(ctx, unwrap(eq.lhs - eq.rhs), loc, slots, "$eq on $(_where(loc))")
     slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.X, [slots.T], slots.N, slots.P)))
     leftover = unique(_leftovers!(Any[], B, slotset, false))
     isempty(leftover) ||
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
+    if _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs)
+        if loc isa BoxFace
+            lo, hi = ctx.intervals[loc.iv]
+            values = face_normal(loc, ctx.sivs)
+            face_rules = Dict{Any, Any}(loc.iv => loc.side === :lo ? lo : hi)
+            for term in _normal_terms!(_normal_terms!(Any[], eq.lhs), eq.rhs)
+                face_rules[unwrap(term)] = values[_normal_component(term)]
+            end
+            _check_sides_finite((eq.lhs, eq.rhs), face_rules, "$eq on $(_where(loc))")
+        else
+            rules = Dict{Any, Any}(unwrap(t) => unwrap(slots.N[_normal_component(t)]) for t in _normal_terms!(_normal_terms!(Any[], eq.lhs), eq.rhs))
+            any(side -> _divides_by_normal(substitute(unwrap(side), rules), slots.N, vcat(_real_slots(slots), _trace_calls(ctx, side))), (eq.lhs, eq.rhs)) &&
+                error("the condition $eq on $(_where(loc)) divides by an expression of the facet normal that can vanish on a facet")
+        end
+        restricted = restrict_to_face(Num(B), face, ctx, slots)
+        foreach(r -> _check_finite_constants(r, "$eq on $(_where(loc))"), (B, restricted))
+        residual = Symbolics.simplify(Symbolics.expand(restricted))
+        _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual) && _depends(Symbolics.simplify(Symbolics.expand(Num(B))), slots.G), "$eq on $(_where(loc))")
+    end
     return Num(B)
 end
 
@@ -206,12 +267,148 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
+# Representative unit normals: the axes and their negatives, the normalised sign vectors, and two generic directions.
+function _sample_normals(dim)
+    axes = [[i == j ? s : 0 for j in 1:dim] for i in 1:dim for s in (1, -1)]
+    # the sign vectors grow as 2^dim, so only in the dimensions that occur in practice
+    signs = dim <= 6 ? [collect(Float64, c) ./ sqrt(dim) for c in Iterators.product(ntuple(_ -> (1, -1), dim)...)] : Vector{Float64}[]
+    generic = [normalize_direction([1.0, 2.0, 3.0, 4.0][mod1(i, 4)] for i in 1:dim), normalize_direction([-3.0, 1.0, -2.0, 5.0][mod1(i, 4)] for i in 1:dim)]
+    return vcat(axes, vec(signs), generic)
+end
+normalize_direction(v) = (w = collect(Float64, v); w ./ sqrt(sum(abs2, w)))
+
+# Are the expressions defined (no domain error, no non-finite constant) at every representative unit normal? A
+# sampling heuristic for the domain of the original, unsimplified coefficients, which simplification can widen
+# (`exp(log(N₁))` is `N₁`, but is undefined at N₁ = -1); the exact proof of nonvanishing stays the primary check.
+function _defined_on_sample_normals(exprs, N)
+    function finite(ex, rules)
+        ex = unwrap(ex)
+        value = _numeric_value(ex, rules)
+        value isa Number && return isfinite(value)
+        return !iscall(ex) || all(a -> finite(a, rules), arguments(ex))
+    end
+    return all(n -> all(ex -> finite(ex, Dict{Any, Any}(unwrap(N[d]) => n[d] for d in eachindex(N))), exprs), _sample_normals(length(N)))
+end
+
+# The state, gradient and coordinate slots are real, so their even powers are nonnegative.
+_real_slots(slots) = Any[slots.U; slots.G; slots.X; slots.T]
+
+# Does `ex` divide by an expression with a normal component that is not provably nonvanishing on the
+# unit sphere?
+function _divides_by_normal(ex, N, R = ())
+    ex = unwrap(ex)
+    iscall(ex) || return false
+    op, args = operation(ex), arguments(ex)
+    risky(den) = any(m -> _depends(den, [m]), N) && !_nonvanishing_in_normal(den, N, R)
+    op === (/) && risky(args[2]) && return true
+    if op === (^)
+        e = unwrap_const(unwrap(args[2]))
+        e isa Real && e < 0 && risky(args[1]) && return true
+    end
+    return any(a -> _divides_by_normal(a, N, R), args)
+end
+
+# A lower bound of `λ` over every real unit normal `N`, or `nothing` if none is proven. Numbers, sums, and
+# products and powers of terms with a nonnegative bound are bounded structurally; an even power of a real
+# polynomial in the normal components is at least 0, as is `abs` of one; `exp` of a real is positive and `exp(log(a))` is `a` for a positive `a`, so the proof does not depend on the simplifier; and a sum `c + Σ wᵢ Nᵢ²` with signed weights (zero for a missing component) is at least `c + minᵢ wᵢ` on the unit
+# sphere, as `Σ Nᵢ² = 1`.
+function _normal_lower_bound(λ, N, R = ())
+    isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
+    function realpoly(t)
+        t = unwrap(t)
+        (isnormal(t) || any(m -> isequal(t, unwrap(m)), R)) && return true
+        c = unwrap_const(t)
+        c isa Real && return true
+        iscall(t) || return false
+        op = operation(t)
+        op === abs && return realpoly(arguments(t)[1])
+        return op === (+) || op === (*) ? all(realpoly, arguments(t)) :
+            op === (^) && unwrap_const(unwrap(arguments(t)[2])) isa Integer && realpoly(arguments(t)[1])
+    end
+    square(a) = (a = unwrap(a); iscall(a) && operation(a) === (^) && isnormal(unwrap(arguments(a)[1])) && isequal(unwrap_const(unwrap(arguments(a)[2])), 2) ? unwrap(arguments(a)[1]) : nothing)
+    # (weight, component) of `c * N[d]^2` with a positive number `c`
+    function weighted_square(a)
+        a = unwrap(a)
+        sq = square(a)
+        sq === nothing || return (1, sq)
+        iscall(a) && operation(a) === (*) && length(arguments(a)) == 2 || return nothing
+        w, rest = arguments(a)
+        c = unwrap_const(unwrap(w))
+        sq = square(rest)
+        return c isa Real && sq !== nothing ? (c, sq) : nothing
+    end
+    function bound(t)
+        t = unwrap(t)
+        c = unwrap_const(t)
+        # exact arithmetic: machine integers could wrap around into a false positive bound
+        c isa Real && return c isa Integer ? BigInt(c) : c isa Rational ? Rational{BigInt}(c) : c
+        iscall(t) || return nothing
+        op = operation(t)
+        args = arguments(t)
+        if op === (+)
+            squares = filter(!isnothing, weighted_square.(args))
+            weights = [sum(w for (w, sq) in squares if isequal(sq, unwrap(m)); init = 0) for m in N]
+            rest = [a for a in args if weighted_square(a) === nothing]
+            bounds = bound.(rest)
+            any(isnothing, bounds) && return nothing
+            return sum(bounds; init = 0) + minimum(weights)
+        elseif op === (*)
+            bounds = bound.(args)
+            (any(isnothing, bounds) || any(<(0), bounds)) && return nothing
+            return prod(bounds)
+        elseif op === (^)
+            base, power = args
+            e = unwrap_const(unwrap(power))
+            e isa Integer && e > 0 || return nothing
+            e == 2 && length(N) == 1 && isnormal(unwrap(base)) && return 1
+            sb = bound(base)
+            sb !== nothing && sb >= 0 && return sb^e
+            return iseven(e) && realpoly(base) ? 0 : nothing
+        elseif op === abs
+            return realpoly(args[1]) ? 0 : nothing
+        elseif op === exp
+            # exp of a real is positive, by a margin no bound here needs; exp(log(a)) is a for a positive a
+            inner = unwrap(args[1])
+            if iscall(inner) && operation(inner) === log
+                b = bound(arguments(inner)[1])
+                b !== nothing && b > 0 && return b
+            end
+            return realpoly(inner) ? Rational{BigInt}(1, big(10)^100) : nothing
+        end
+        return nothing
+    end
+    return bound(λ)
+end
+
+_positive_in_normal(λ, N, R = ()) = (b = _normal_lower_bound(λ, N, R); b !== nothing && b > 0)
+
+# Is `λ` provably nonzero for every real unit normal? Either sign of a positive lower bound, or a product,
+# quotient or integer power of provably nonzero factors.
+function _nonvanishing_in_normal(λ, N, R = ())
+    λ = unwrap(λ)
+    c = unwrap_const(λ)
+    c isa Real && return c != 0
+    (_positive_in_normal(λ, N, R) || _positive_in_normal(-λ, N, R)) && return true
+    iscall(λ) || return false
+    op, args = operation(λ), arguments(λ)
+    (op === (*) || op === (/)) && return all(a -> _nonvanishing_in_normal(a, N, R), args)
+    op === (^) && unwrap_const(unwrap(args[2])) isa Integer && return _nonvanishing_in_normal(args[1], N, R)
+    return false
+end
+
 """
     match_flux(Φ, B, slots) -> Union{Num, Nothing}
 
 Match the boundary residual `B` against the conormal flux `Φ = G·N` (spec §5.3). Both must be
 affine in the gradient slots, `Φ = a_Φ·g + Φ₀` and `B = a_B·g + B₀`; if `a_B = λ a_Φ` for a scalar
-`λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. Proportionality must be proven
+`λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. The original coefficients must also be defined at a sample of unit normals (the axes, the normalised sign vectors and two generic directions): a sampling heuristic that rejects a scale such as `exp(log(N₁))`, whose simplification would widen its domain. A `λ` that contains a normal slot
+`N` is cancelled only if it is provably nonvanishing on the unit sphere, with either sign: a positive
+constant plus squares of real polynomials in the normal components (`1 + N₁²`, `1 + (N₁ + N₂)²`), or a
+sum holding a positively weighted square of every component (`N₁² + N₂²`, `N₁² + 2N₂²`), the whole
+`λ` or its negative; a provably nonzero reciprocal such as `1/(2 + N₁²)`, or a product or quotient of provably
+nonzero factors, is cancelled too, and even powers of state, gradient and coordinate slots count as
+nonnegative. Any other `λ` is not cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match.
+Proportionality must be proven
 by `simplify`; a numeric agreement is never accepted (open question O3).
 """
 function match_flux(Φ, B, slots)
@@ -221,13 +418,22 @@ function match_flux(Φ, B, slots)
     any(a -> _depends(a, g), vcat(aΦ, aB)) && return nothing
     i = findfirst(!_iszero, aΦ)
     (i === nothing || all(_iszero, aB)) && return nothing
+    # a division by something that can vanish on a facet is undefined there; simplification must not hide it
+    _divides_by_normal(B, slots.N, _real_slots(slots)) && return nothing
+    any(a -> _depends(a, slots.N), aB) && !_defined_on_sample_normals(vcat(aB, aΦ), slots.N) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
-    _iszero(λ) && return nothing
+    # A scale containing a normal component can vanish on a whole facet, where the condition is
+    # then not the conormal condition it matched symbolically; it is cancelled only if it is
+    # provably nonzero for every real normal (definite in sign).
+    (_iszero(λ) || _depends(λ, slots.N) && !_nonvanishing_in_normal(λ, slots.N, _real_slots(slots))) && return nothing
     # Expanded and fraction-simplified so polynomial identities such as (1 + U)^2 = 1 + 2U + U^2
     # are proven; no coefficient-by-coefficient products, which can underflow to zero.
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||
         return nothing
     nograd = Dict(gi => 0 for gi in g)
+    # the gradient-free data and the returned flux must be defined at the sample normals as well
+    data = [substitute(Φ, nograd), substitute(B, nograd)]
+    any(a -> _depends(a, slots.N), data) && !_defined_on_sample_normals(data, slots.N) && return nothing
     return Symbolics.simplify(substitute(Φ, nograd) - substitute(B, nograd) / λ)
 end
 
@@ -269,6 +475,7 @@ equation or more than one matches.
 function route_natural(B, flux, n, slots; label = B)
     nsub = Dict(slots.N[d] => n[d] for d in eachindex(n))
     Bn = substitute(B, nsub)
+    _check_finite_constants(Bn, label)
     matches = Tuple{Int, Num}[]
     for (e, G) in enumerate(flux)
         Φbc = match_flux(substitute(_conormal_flux(G, n), nsub), Bn, slots)

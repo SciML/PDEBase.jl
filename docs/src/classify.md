@@ -23,7 +23,9 @@ A trace keeps the time argument: on a time-dependent `u(t, x, y)` it is `u(t, Γ
 Plain `substitute` does not descend into `Differential` or `NormalDerivative`
 applications, so it leaves the trace in `Dx(u(t, Γ))` and `Dn(u(t, Γ))` unchanged.
 Rewrite traces with `substitute_traces`, then check with `assert_no_traces` before any
-`expand_derivatives`, which turns a remaining `Dx(u(t, Γ))` into `0`.
+`expand_derivatives`, which turns a remaining `Dx(u(t, Γ))` into `0`. `assert_no_traces` also
+reports a facet normal (see [`PDEBase.normal`](@ref)) that was not replaced, for example by a
+numeric component.
 
 ## Box lowering
 
@@ -41,6 +43,11 @@ bcs = [u(0, x, y) ~ 0, u(t, 0, y) ~ sin(t), NormalDerivative(Γ)(u(t, Γ)) ~ 0]
 @named pdesys = PDESystem(eqs, bcs, [(x, y) ∈ Ω, t ∈ Interval(0.0, 1.0)], [t, x, y], [u(t, x, y)])
 get_bcs(to_box_bcs(pdesys))  # [u(0, x, y) ~ 0, u(t, 0, y) ~ sin(t), Dx(u(t, 1.0, y)) ~ 0]
 ```
+
+A component of the facet normal `PDEBase.normal(Γ)` is replaced by the numeric `-1`, `+1` or
+`0` of the face's outward normal, in the order of `indvars`, so
+`k * (n[1] * Dx(u(t, Γ)) + n[2] * Dy(u(t, Γ))) + α * u(t, Γ) ~ β` on the left face of a
+rectangle becomes `-k * Dx(u(t, 0.0, y)) + α * u(t, 0.0, y) ~ β`.
 
 ```@docs
 to_box_bcs

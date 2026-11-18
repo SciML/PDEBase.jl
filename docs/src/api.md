@@ -55,6 +55,7 @@ PDEBase.x2i
 PDEBase.BoundaryPiece
 PDEBase.boundarypiece
 PDEBase.boundarypieces
+PDEBase.FacetNormal
 ```
 
 `NormalDerivative` is documented here only while PDEBase defines its own fallback; once
