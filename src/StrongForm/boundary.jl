@@ -176,10 +176,19 @@ symbol remains. Only trace-free subexpressions are derivative-expanded (spec §3
 slot_condition(eq::Equation, face, ctx::SlotContext, slots) =
     restrict_to_face(_slot_unrestricted(eq, face, ctx, slots), face, ctx, slots)
 
+# Every facet normal in `ex` must be that of `loc`.
+function _check_normals_at(ctx::SlotContext, ex, loc, slots, label)
+    iscall(ex) || return nothing
+    op = operation(ex)
+    op isa FacetNormal && return _slot_operator(ctx, op, ex, loc, slots, label, true)
+    foreach(a -> _check_normals_at(ctx, unwrap(a), loc, slots, label), arguments(ex))
+    return nothing
+end
+
 function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     loc = _location(ctx, face)
     # each side is checked on its own, so a misplaced normal cannot cancel in the difference
-    foreach(side -> _slot_rules!(Dict{Any, Any}(), ctx, unwrap(side), loc, slots, "$eq on $(_where(loc))", true), (eq.lhs, eq.rhs))
+    foreach(side -> _check_normals_at(ctx, unwrap(side), loc, slots, "$eq on $(_where(loc))"), (eq.lhs, eq.rhs))
     B = _slot_expression(ctx, unwrap(eq.lhs - eq.rhs), loc, slots, "$eq on $(_where(loc))")
     slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.X, [slots.T], slots.N, slots.P)))
     leftover = unique(_leftovers!(Any[], B, slotset, false))

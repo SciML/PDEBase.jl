@@ -427,6 +427,8 @@ end
     sysnd = PDESystem([heat, Dt(w5(t, y)) ~ 0], [u(0, x, y) ~ 0, u(t, x, 0.0) ~ 0], domains, [t, x, y], [u(t, x, y), w5(t, y)], [k => 1.0]; name = :sys)
     vnd = VariableMap(sysnd, NormalBoxDisc(t))
     @test symeq(slot_condition(NormalDerivative(Γl)(w5(t, Γl)) ~ 0, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0)), 0)
+    # operators that cancel between the sides without a normal are unchanged
+    @test symeq(slot_condition(Dt(u(t, Γl)) + Dx(u(t, Γl)) ~ Dt(u(t, Γl)), Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0)), StateSlots(2, 2, 0).G[1])
     # a normal of another piece cannot cancel between the sides
     @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one
