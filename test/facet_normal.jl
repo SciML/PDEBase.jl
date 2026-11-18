@@ -359,6 +359,7 @@ end
     @test occursin("contains the facet normal but no derivative of a trace", lowering(Differential(k)(u(t, Γl)) + nl[1] * u(t, Γl) ~ 0))
     @test occursin("derivative of an expression containing the facet normal", lowering(Differential(nl[1])(Dx(u(t, Γl))) ~ 0))
     @test occursin("derivative of an expression containing the facet normal", lowering(Differential(nl[1])(u(t, 0.0, y)) ~ 0))
+    @test_throws ArgumentError assert_no_traces(Differential(nl[1])(u(t, 0.0, y)))
     @test occursin("contains the facet normal but no derivative of a trace", lowering(x * Dx(u(t, Γl)) + nl[1] * u(t, Γl) ~ 1))
     # the endpoint can remove the derivative: x = 0 on the left face
     sysx = PDESystem([heat], [u(0, x, y) ~ 0, x * Dx(u(t, Γl)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)

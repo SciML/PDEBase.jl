@@ -530,6 +530,10 @@ function _find_trace(ex)
     iscall(ex) || return nothing
     operation(ex) isa Union{NormalDerivative, FacetNormal} && return ex
     any(_ispiece, arguments(ex)) && return ex
+    if operation(ex) isa Differential
+        found = _find_trace(operation(ex).x)
+        found === nothing || return found
+    end
     for arg in arguments(ex)
         found = _find_trace(arg)
         found === nothing || return found
