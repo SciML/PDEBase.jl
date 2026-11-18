@@ -270,7 +270,8 @@ end
 # Representative unit normals: the axes and their negatives, the normalised sign vectors, and two generic directions.
 function _sample_normals(dim)
     axes = [[i == j ? s : 0 for j in 1:dim] for i in 1:dim for s in (1, -1)]
-    signs = [collect(Float64, c) ./ sqrt(dim) for c in Iterators.product(ntuple(_ -> (1, -1), dim)...)]
+    # the sign vectors grow as 2^dim, so only in the dimensions that occur in practice
+    signs = dim <= 6 ? [collect(Float64, c) ./ sqrt(dim) for c in Iterators.product(ntuple(_ -> (1, -1), dim)...)] : Vector{Float64}[]
     generic = [normalize_direction([1.0, 2.0, 3.0, 4.0][mod1(i, 4)] for i in 1:dim), normalize_direction([-3.0, 1.0, -2.0, 5.0][mod1(i, 4)] for i in 1:dim)]
     return vcat(axes, vec(signs), generic)
 end
@@ -420,7 +421,8 @@ function match_flux(Φ, B, slots)
         return nothing
     nograd = Dict(gi => 0 for gi in g)
     # the gradient-free data and the returned flux must be defined at the sample normals as well
-    _defined_on_sample_normals([substitute(Φ, nograd), substitute(B, nograd)], slots.N) || return nothing
+    data = [substitute(Φ, nograd), substitute(B, nograd)]
+    any(a -> _depends(a, slots.N), data) && !_defined_on_sample_normals(data, slots.N) && return nothing
     return Symbolics.simplify(substitute(Φ, nograd) - substitute(B, nograd) / λ)
 end
 

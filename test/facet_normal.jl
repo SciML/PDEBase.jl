@@ -193,6 +193,8 @@ end
         @test symeq(last(route_natural(scale * (Φu - 3), [[s1u.G[1], s1u.G[2]]], s1u.N, s1u)), 3)
     end
     @test match_flux(Φu, (1 + exp(log(s1u.N[1])) - s1u.N[1]) * (Φu - 3), s1u) === nothing
+    # no sampling cost without a normal: a 30-dimensional condition with numeric data
+    @test match_flux(StateSlots(1, 30, 0).G[1], StateSlots(1, 30, 0).G[1] - 1, StateSlots(1, 30, 0)) !== nothing
     # singular gradient-free data is rejected too: log(1 + N₁) is -Inf at (-1, 0)
     @test match_flux(Φu, Φu - log(1 + s1u.N[1]), s1u) === nothing
     @test symeq(last(route_natural((Φ - 3) / (2 + N[1]^2), [[G[1], G[2]]], N, s)), 3)
