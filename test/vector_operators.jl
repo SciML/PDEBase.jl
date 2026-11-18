@@ -182,6 +182,37 @@ else
         @test !PDEBase._has_vector_operator(eq)
     end
 
+    @testset "contraction with a vector of unknown length" begin
+        @variables Zu::Vector{Real}
+        eq = expanded(dot(∇(U), Zu) ~ 0; dvs = [U])
+        @test same(eq.lhs, Dx(U) * Zu[1] + Dy(U) * Zu[2])
+    end
+
+    @testset "tensor-weighted gradient equations" begin
+        A = [1 2; 3 4]
+        g = ∇(U)
+        gx, gy = Dx(U), Dy(U)
+        reference = gx^2 + 5gx * gy + 4gy^2
+        explicit = [reference ~ 0]
+        @named refsys = PDESystem(explicit, boxbcs, box, [t, x, y], [U], [k])
+        refparsed = parsed_boundary_map(refsys, disc)
+        refanalysis = analyse(refparsed.pdesys, refparsed.v, refparsed.boundarymap)
+        for lhs in (g' * A * g, dot(g, A * g))
+            @test same(expanded(lhs ~ 0).lhs, reference)
+            @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k])
+            parsed = parsed_boundary_map(sys, disc)
+            @test length(parsed.boundarymap) == length(refparsed.boundarymap)
+            analysis = analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
+            @test (analysis.nfields, analysis.dim) == (refanalysis.nfields, refanalysis.dim)
+        end
+    end
+
+    @testset "divergence of a nonsymmetric tensor flux" begin
+        field = x^2 * y + x * y^3
+        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])([1 2; 3 4] * Symbolics.Grad([x, y])(field)); dvs = [U])
+        @test Symbolics.value(Symbolics.substitute(expand_derivatives(eq.rhs), Dict(x => 2, y => 3))) == 305
+    end
+
     @testset "divergence of a concrete tensor flux" begin
         Mc = [1.0 0.5; 0.5 2.0]
         eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mc * ∇(U)); dvs = [U])

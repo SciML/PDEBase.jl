@@ -68,14 +68,14 @@ function expand_vector_operators end
             arg = only(args)
             if SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT && length(SymbolicUtils.shape(arg)) == 1
                 components = [_expand_vector_operators(c, ivs) for c in Symbolics.scalarize(Symbolics.wrap(arg))]
-                return _unwrap_result(_eager(op)(components))
+                return _concrete(_eager(op)(components))
             end
             if op isa Union{Symbolics.Divergence, Symbolics.Curl} && !(SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT)
                 # The coordinates of the operator fix which components of a vector of unknown length are needed.
                 wrapped = Symbolics.wrap(_expand_vector_operators(arg, ivs))
-                return _unwrap_result(_eager(op)([wrapped[i] for i in eachindex(op.vars)]))
+                return _concrete(_eager(op)([wrapped[i] for i in eachindex(op.vars)]))
             end
-            return _unwrap_result(_eager(op)(Symbolics.wrap(_expand_vector_operators(arg, ivs))))
+            return _concrete(_eager(op)(Symbolics.wrap(_expand_vector_operators(arg, ivs))))
         elseif op === getindex && iscall(first(args)) && operation(first(args)) isa _VectorOperator
             components = _expand_vector_operators(first(args), ivs)
             indices = map(unwrap_const, args[2:end])
@@ -95,8 +95,13 @@ function expand_vector_operators end
             # `broadcast` carries its function (`^`, `sin`) as a constant argument, which must be unwrapped to be called.
             callable = map(newargs) do a
                 a isa SymbolicUtils.BasicSymbolic || return a
-                return _scalar_shaped(a) ? unwrap_const(a) : Symbolics.wrap(a)
+                a = unwrap_const(a)
+                return a isa SymbolicUtils.BasicSymbolic && !_scalar_shaped(a) ? Symbolics.wrap(a) : a
             end
+            # A vector of unknown length contracted with an operator result has that result's length.
+            lengths = [length(a) for a in callable if a isa AbstractVector]
+            unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
+            isempty(lengths) || (callable = map(a -> unknown_vector(a) ? [a[i] for i in 1:first(lengths)] : a, callable))
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
         end
@@ -108,6 +113,13 @@ function expand_vector_operators end
         return _unwrap_result(Symbolics.scalarize(Symbolics.wrap(rebuilt)))
     end
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
+    # A vector-valued operator result becomes a Julia array of expressions, so that products with constant
+    # matrices, adjoints and contractions (`g' * A * g`, `dot(g, A * g)`) evaluate per component.
+    function _concrete(r::Symbolics.Arr)
+        SymbolicUtils.shape(unwrap(r)) isa SymbolicUtils.ShapeVecT || return unwrap(r)
+        return Symbolics.scalarize(r)
+    end
+    _concrete(r) = _unwrap_result(r)
     _unwrap_result(r::AbstractArray) = r
     _unwrap_result(r) = unwrap(r)
 
@@ -143,7 +155,8 @@ function expand_vector_operators end
     end
     _expand_condition(eq::Pair, ivs) = _expand_side(first(eq), ivs) => _expand_side(last(eq), ivs)
 
-    # Nested groups of equations keep their nesting, the pipeline flattens them later.
+    # Nested groups of equations keep their nesting. The rewrite does not flatten them, and the later complex
+    # splitting does not handle nested groups.
     function _expand_conditions(conditions, ivs)
         expanded = Any[]
         for condition in conditions
