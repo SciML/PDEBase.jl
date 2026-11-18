@@ -244,13 +244,16 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
     if _has_facet_normal(lhs) || _has_facet_normal(rhs)
-        for side in lowered
-            _check_finite_constants(side, bc)
-            for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
-                face = boxface(v, piece)
-                face === nothing || _check_finite_constants(Symbolics.substitute(side, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])), bc)
-            end
+        face_rules = Dict{Any, Any}()
+        for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
+            face = boxface(v, piece)
+            face === nothing || (face_rules[face.iv] = v.intervals[face.iv][face.side === :lo ? 1 : 2])
         end
+        for term in _normal_terms!(_normal_terms!(Any[], lhs), rhs)
+            iv, sign = normal(_trace_face(v, operation(term).piece))
+            face_rules[unwrap(term)] = isequal(indvars(v)[_normal_component(term)], iv) ? sign : 0
+        end
+        _check_sides_finite((lhs, rhs), face_rules, bc)
         _check_box_normal_derivative(v, lhs, rhs, bc)
     end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)

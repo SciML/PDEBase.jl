@@ -99,3 +99,56 @@ function _check_finite_constants(ex, label)
     iscall(ex) && foreach(a -> _check_finite_constants(a, label), arguments(ex))
     return nothing
 end
+
+"The facet-normal terms in `ex`."
+function _normal_terms!(terms, ex)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return terms
+    _is_facet_normal(ex) && push!(terms, ex)
+    operation(ex) isa Differential && _normal_terms!(terms, operation(ex).x)
+    foreach(a -> _normal_terms!(terms, a), arguments(ex))
+    return terms
+end
+
+# The number `ex` takes when the symbols in `rules` get their values, or `nothing` if it also holds other
+# symbols. Evaluated bottom-up on the written tree, so no simplification can cancel a pole first.
+function _numeric_value(ex, rules)
+    ex = safe_unwrap(ex)
+    haskey(rules, ex) && return rules[ex]
+    c = unwrap_const(ex)
+    c isa Number && return c
+    iscall(ex) || return nothing
+    values = map(a -> _numeric_value(a, rules), arguments(ex))
+    any(isnothing, values) && return nothing
+    return try
+        operation(ex)(values...)
+    catch e
+        e isa Union{DomainError, DivideError, ArgumentError} || rethrow()
+        NaN
+    end
+end
+
+"""
+Throw an `ArgumentError` if a written side of the condition `label` divides by zero, or is not finite, once
+`rules` (the numeric facet normal and the face coordinate) give values to its symbols. Each side is checked on
+its own and as written, so a pole cannot cancel against the other side or against itself (`x / (x + n[2])`).
+"""
+function _check_sides_finite(sides, rules, label)
+    undefined(why) = throw(ArgumentError("the condition $label is undefined on this face: $why"))
+    function walk(ex)
+        ex = safe_unwrap(ex)
+        iscall(ex) || return nothing
+        op, args = operation(ex), arguments(ex)
+        den = op === (/) ? args[2] :
+            op === (^) && (e = unwrap_const(safe_unwrap(args[2]))) isa Real && e < 0 ? args[1] : nothing
+        if den !== nothing
+            value = _numeric_value(den, rules)
+            value isa Number && iszero(value) && undefined("it divides by $(Symbolics.wrap(den)), which is zero there")
+        end
+        value = _numeric_value(ex, rules)
+        value isa Number && !isfinite(value) && undefined("$(Symbolics.wrap(ex)) is $value there")
+        return foreach(walk, args)
+    end
+    foreach(walk, map(unwrap, sides))
+    return nothing
+end

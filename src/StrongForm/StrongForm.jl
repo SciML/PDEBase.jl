@@ -18,7 +18,7 @@ using ..PDEBase: VariableMap, LowerBoundary, UpperBoundary, InterfaceBoundary, P
     chain_flatten_array_variables, depvars, indvars, isupper, replaced_vars, BoxFace, Piece,
     Interior, BoundaryPiece, NormalDerivative, FacetNormal, classify_call, location,
     substitute_traces, assert_no_traces, _has_facet_normal, _normal_component,
-    _check_normal_not_differentiated, _check_normal_has_derivative, _check_finite_constants
+    _check_normal_not_differentiated, _check_normal_has_derivative, _check_finite_constants, _normal_terms!, _check_sides_finite, _numeric_value
 
 include("types.jl")
 include("whitelist.jl")

@@ -196,6 +196,15 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     isempty(leftover) ||
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
     if _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs)
+        if loc isa BoxFace
+            lo, hi = ctx.intervals[loc.iv]
+            values = face_normal(loc, ctx.sivs)
+            face_rules = Dict{Any, Any}(loc.iv => loc.side === :lo ? lo : hi)
+            for term in _normal_terms!(_normal_terms!(Any[], eq.lhs), eq.rhs)
+                face_rules[unwrap(term)] = values[_normal_component(term)]
+            end
+            _check_sides_finite((eq.lhs, eq.rhs), face_rules, "$eq on $(_where(loc))")
+        end
         restricted = restrict_to_face(Num(B), face, ctx, slots)
         foreach(r -> _check_finite_constants(r, "$eq on $(_where(loc))"), (B, restricted))
         residual = Symbolics.simplify(Symbolics.expand(restricted))
@@ -245,14 +254,26 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
-# Does `ex` apply a function other than the field operations and powers to an expression holding a
-# normal component? Simplification can rewrite such a call (`exp(log(N₁))` is `N₁`) and erase its domain.
-function _nonalgebraic_in_normal(ex, N)
-    ex = unwrap(ex)
-    iscall(ex) || return false
-    op, args = operation(ex), arguments(ex)
-    op in (+, -, *, /, ^) || any(a -> any(m -> _depends(a, [m]), N), args) && return true
-    return any(a -> _nonalgebraic_in_normal(a, N), args)
+# Representative unit normals: the axes and their negatives, the normalised sign vectors, and two generic directions.
+function _sample_normals(dim)
+    axes = [[i == j ? s : 0 for j in 1:dim] for i in 1:dim for s in (1, -1)]
+    signs = [collect(Float64, c) ./ sqrt(dim) for c in Iterators.product(ntuple(_ -> (1, -1), dim)...)]
+    generic = [normalize_direction([1.0, 2.0, 3.0, 4.0][mod1(i, 4)] for i in 1:dim), normalize_direction([-3.0, 1.0, -2.0, 5.0][mod1(i, 4)] for i in 1:dim)]
+    return vcat(axes, vec(signs), generic)
+end
+normalize_direction(v) = (w = collect(Float64, v); w ./ sqrt(sum(abs2, w)))
+
+# Are the expressions defined (no domain error, no non-finite constant) at every representative unit normal? A
+# sampling heuristic for the domain of the original, unsimplified coefficients, which simplification can widen
+# (`exp(log(N₁))` is `N₁`, but is undefined at N₁ = -1); the exact proof of nonvanishing stays the primary check.
+function _defined_on_sample_normals(exprs, N)
+    function finite(ex, rules)
+        ex = unwrap(ex)
+        value = _numeric_value(ex, rules)
+        value isa Number && return isfinite(value)
+        return !iscall(ex) || all(a -> finite(a, rules), arguments(ex))
+    end
+    return all(n -> all(ex -> finite(ex, Dict{Any, Any}(unwrap(N[d]) => n[d] for d in eachindex(N))), exprs), _sample_normals(length(N)))
 end
 
 # The state, gradient and coordinate slots are real, so their even powers are nonnegative.
@@ -355,7 +376,7 @@ end
 
 Match the boundary residual `B` against the conormal flux `Φ = G·N` (spec §5.3). Both must be
 affine in the gradient slots, `Φ = a_Φ·g + Φ₀` and `B = a_B·g + B₀`; if `a_B = λ a_Φ` for a scalar
-`λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. A `λ` that contains a normal slot
+`λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. The original coefficients must also be defined at a sample of unit normals (the axes, the normalised sign vectors and two generic directions): a sampling heuristic that rejects a scale such as `exp(log(N₁))`, whose simplification would widen its domain. A `λ` that contains a normal slot
 `N` is cancelled only if it is provably nonvanishing on the unit sphere, with either sign: a positive
 constant plus squares of real polynomials in the normal components (`1 + N₁²`, `1 + (N₁ + N₂)²`), or a
 sum holding a positively weighted square of every component (`N₁² + N₂²`, `N₁² + 2N₂²`), the whole
@@ -374,8 +395,8 @@ function match_flux(Φ, B, slots)
     (i === nothing || all(_iszero, aB)) && return nothing
     # a division by something that can vanish on a facet is undefined there; simplification must not hide it
     _divides_by_normal(B, slots.N, _real_slots(slots)) && return nothing
+    any(a -> _depends(a, slots.N), aB) && !_defined_on_sample_normals(vcat(aB, aΦ), slots.N) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
-    _depends(λ, slots.N) && any(a -> _nonalgebraic_in_normal(a, slots.N), aB) && return nothing
     # A scale containing a normal component can vanish on a whole facet, where the condition is
     # then not the conormal condition it matched symbolically; it is cancelled only if it is
     # provably nonzero for every real normal (definite in sign).
