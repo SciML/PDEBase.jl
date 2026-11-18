@@ -310,7 +310,7 @@ end
 
 # A lower bound of `λ` over every real unit normal `N`, or `nothing` if none is proven. Numbers, sums, and
 # products and powers of terms with a nonnegative bound are bounded structurally; an even power of a real
-# polynomial in the normal components is at least 0; and a sum `c + Σ wᵢ Nᵢ²` with signed weights (zero for a missing component) is at least `c + minᵢ wᵢ` on the unit
+# polynomial in the normal components is at least 0, as is `abs` of one; `exp` of a real is positive and `exp(log(a))` is `a` for a positive `a`, so the proof does not depend on the simplifier; and a sum `c + Σ wᵢ Nᵢ²` with signed weights (zero for a missing component) is at least `c + minᵢ wᵢ` on the unit
 # sphere, as `Σ Nᵢ² = 1`.
 function _normal_lower_bound(λ, N, R = ())
     isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
@@ -321,6 +321,7 @@ function _normal_lower_bound(λ, N, R = ())
         c isa Real && return true
         iscall(t) || return false
         op = operation(t)
+        op === abs && return realpoly(arguments(t)[1])
         return op === (+) || op === (*) ? all(realpoly, arguments(t)) :
             op === (^) && unwrap_const(unwrap(arguments(t)[2])) isa Integer && realpoly(arguments(t)[1])
     end
@@ -363,6 +364,16 @@ function _normal_lower_bound(λ, N, R = ())
             sb = bound(base)
             sb !== nothing && sb >= 0 && return sb^e
             return iseven(e) && realpoly(base) ? 0 : nothing
+        elseif op === abs
+            return realpoly(args[1]) ? 0 : nothing
+        elseif op === exp
+            # exp of a real is positive, by a margin no bound here needs; exp(log(a)) is a for a positive a
+            inner = unwrap(args[1])
+            if iscall(inner) && operation(inner) === log
+                b = bound(arguments(inner)[1])
+                b !== nothing && b > 0 && return b
+            end
+            return realpoly(inner) ? Rational{BigInt}(1, big(10)^100) : nothing
         end
         return nothing
     end

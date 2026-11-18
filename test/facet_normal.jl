@@ -188,6 +188,13 @@ end
     @test match_flux(Φu, Φu - 1 / (1 - s1u.N[1]^2 - s1u.U[1]^2), s1u) === nothing
     @test match_flux(Φu, (1 + exp(log(s1u.N[1]))^2) * Φu, s1u) === nothing
     # domains hold on the unit sphere for abs and exp(log(positive)); exp(log(N₁)) fails at (-1, 0) even where it simplifies away
+    # the proof recognises these forms itself, whatever the simplifier does to them
+    nslots = s1u.N
+    @test PDEBase.StrongForm._positive_in_normal(1 + abs(nslots[1])^2, nslots)
+    @test PDEBase.StrongForm._positive_in_normal(exp(nslots[1] + s1u.U[1]), nslots, [s1u.U[1]])
+    @test PDEBase.StrongForm._positive_in_normal(exp(log(2 + nslots[1]^2)), nslots)
+    @test !PDEBase.StrongForm._positive_in_normal(exp(log(nslots[1])), nslots)
+    @test !PDEBase.StrongForm._positive_in_normal(abs(nslots[1]), nslots)
     for scale in ((1 + abs(s1u.N[1])^2), exp(log(2 + s1u.N[1]^2)))
         @test symeq(match_flux(Φu, scale * (Φu - 3), s1u), 3)
         @test symeq(last(route_natural(scale * (Φu - 3), [[s1u.G[1], s1u.G[2]]], s1u.N, s1u)), 3)
