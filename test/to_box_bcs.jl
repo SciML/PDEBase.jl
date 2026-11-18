@@ -408,6 +408,7 @@ end
     names = getproperty.(library, :name)
     @test count(!=(:trans_sin), names) == 427
     @test (:trans_sin in names) == (pkgversion(PDESystemLibrary) >= v"0.1.11")
+    @test allunique(names)
     ntraces = nnormal = 0
     for sys in library
         t_ = library_time(sys)
