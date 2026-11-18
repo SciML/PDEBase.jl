@@ -245,6 +245,16 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
+# Does `ex` apply a function other than the field operations and powers to an expression holding a
+# normal component? Simplification can rewrite such a call (`exp(log(N₁))` is `N₁`) and erase its domain.
+function _nonalgebraic_in_normal(ex, N)
+    ex = unwrap(ex)
+    iscall(ex) || return false
+    op, args = operation(ex), arguments(ex)
+    op in (+, -, *, /, ^) || any(a -> any(m -> _depends(a, [m]), N), args) && return true
+    return any(a -> _nonalgebraic_in_normal(a, N), args)
+end
+
 # The state, gradient and coordinate slots are real, so their even powers are nonnegative.
 _real_slots(slots) = Any[slots.U; slots.G; slots.X; slots.T]
 
@@ -365,6 +375,7 @@ function match_flux(Φ, B, slots)
     # a division by something that can vanish on a facet is undefined there; simplification must not hide it
     _divides_by_normal(B, slots.N, _real_slots(slots)) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
+    _depends(λ, slots.N) && any(a -> _nonalgebraic_in_normal(a, slots.N), aB) && return nothing
     # A scale containing a normal component can vanish on a whole facet, where the condition is
     # then not the conormal condition it matched symbolically; it is cancelled only if it is
     # provably nonzero for every real normal (definite in sign).
