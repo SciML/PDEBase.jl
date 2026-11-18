@@ -106,6 +106,20 @@ else
         @test analysis.nfields == 3
     end
 
+    @testset "array equation with mismatched sides is an error" begin
+        @variables B[1:3]
+        @named sys = PDESystem([Equation(∇(U), B)], boxbcs, box, [t, x, y], [U], [k])
+        @test_throws ArgumentError expand_vector_operators(sys)
+    end
+
+    @testset "the description of the system is kept" begin
+        @named sys = PDESystem(
+            [Dt(U) ~ Symbolics.Laplacian([x, y])(U)], boxbcs, box, [t, x, y], [U], [k];
+            description = "Heat equation"
+        )
+        @test expand_vector_operators(sys).description == "Heat equation"
+    end
+
     @testset "nested equation groups keep their shape" begin
         V, W = v(t, x, y), w(t, x, y)
         g = ∇(U)

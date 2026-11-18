@@ -97,6 +97,14 @@ function expand_vector_operators end
     function _expand_condition(eq::Equation, ivs)
         lhs, rhs = _expand_side(eq.lhs, ivs), _expand_side(eq.rhs, ivs)
         (lhs isa AbstractArray || rhs isa AbstractArray) || return lhs ~ rhs
+        if lhs isa AbstractArray && rhs isa AbstractArray && size(lhs) != size(rhs)
+            throw(
+                ArgumentError(
+                    "the sides of the equation $(eq) have different sizes $(size(lhs)) and $(size(rhs)) " *
+                        "once the vector operators are expanded"
+                )
+            )
+        end
         n = length(lhs isa AbstractArray ? lhs : rhs)
         components(side) = side isa AbstractArray ? vec(side) : fill(side, n)
         return Equation[l ~ r for (l, r) in zip(components(lhs), components(rhs))]
@@ -129,7 +137,8 @@ function expand_vector_operators end
             systems = get_systems(pdesys), connector_type = get_connector_type(pdesys),
             metadata = get_metadata(pdesys), analytic = getfield(pdesys, :analytic),
             analytic_func = getfield(pdesys, :analytic_func),
-            gui_metadata = get_gui_metadata(pdesys), name = getfield(pdesys, :name)
+            gui_metadata = get_gui_metadata(pdesys), description = getfield(pdesys, :description),
+            name = getfield(pdesys, :name)
         )
     end
 else
