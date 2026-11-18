@@ -479,6 +479,7 @@ function boundary_conditions(
         Bvolume = _slot_unrestricted(eq, key, ctx, slots)
         B = restrict_to_face(Bvolume, key, ctx, slots)
         label = "$eq on $(_where(loc))"
+        _check_normal_has_derivative(eq, ex -> _field(ctx, ex) !== nothing, label)
         faceflux = [restrict_to_face.(G, (key,), (ctx,), (slots,)) for G in flux]
         condition = if _depends(Bvolume, slots.G) && _iszero(B)
             e = _route_vanishing(Bvolume, flux, faceflux, n, slots, label)

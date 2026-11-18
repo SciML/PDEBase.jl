@@ -69,12 +69,28 @@ function _check_normal_not_differentiated(ex)
     return nothing
 end
 
-"Does `ex` hold a `Differential` or `NormalDerivative` of an expression that holds a trace?"
-function _has_trace_derivative(ex)
+"Does `ex` hold a `Differential` or `NormalDerivative` of an expression with a call for which `isfield(call)` holds?"
+function _has_field_derivative(ex, isfield)
     ex = safe_unwrap(ex)
     iscall(ex) || return false
-    operation(ex) isa Union{Differential, NormalDerivative} && _find_trace(only(arguments(ex))) !== nothing && return true
-    return any(_has_trace_derivative, arguments(ex))
+    if operation(ex) isa Union{Differential, NormalDerivative}
+        _has_field_call(only(arguments(ex)), isfield) && return true
+    end
+    return any(a -> _has_field_derivative(a, isfield), arguments(ex))
+end
+
+function _has_field_call(ex, isfield)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return false
+    return isfield(ex) || any(a -> _has_field_call(a, isfield), arguments(ex))
+end
+
+"Throw if the condition `eq` holds a facet normal but no derivative of a field call."
+function _check_normal_has_derivative(eq, isfield, label)
+    sides = (eq.lhs, eq.rhs)
+    any(_has_facet_normal, sides) && !any(side -> _has_field_derivative(side, isfield), sides) &&
+        _normal_without_derivative_error(label)
+    return nothing
 end
 
 "The error for a facet normal in a gradient-free (essential) condition `label`."

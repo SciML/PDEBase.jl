@@ -337,4 +337,15 @@ end
     end
     @test occursin("derivative of an expression containing the facet normal", lowering(Dx(nl[1]) + Dx(u(t, Γl)) ~ 1))
     @test occursin("contains the facet normal but no derivative of a trace", lowering(nl[1] * u(t, Γl) ~ 1))
+    @test occursin("derivative of an expression containing the facet normal", lowering(NormalDerivative(Γl)(nl[1] * u(t, Γl)) ~ 0))
+    # a derivative spelled in endpoint form still counts as the derivative of the Robin condition
+    robin = nl[1] * Dx(u(t, 0.0, y)) + u(t, Γl) ~ 0
+    sysrobin = PDESystem([heat], [u(0, x, y) ~ 0, robin, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)
+    got = to_box_bcs(sysrobin; time = t).bcs[2]
+    @test symeq(got.lhs - got.rhs, -Dx(u(t, 0.0, y)) + u(t, 0.0, y))
+    # analyse rejects the essential condition with the normal on a box face as well
+    sysess = PDESystem([heat], [u(0, x, y) ~ 0, nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)
+    vess = VariableMap(sysess, NormalBoxDisc(t))
+    bmapess = boundarymap(sysess.bcs, vess, NormalBoxDisc(t))
+    @test occursin("contains the facet normal but no derivative of a trace", errmsg(() -> analyse(sysess, vess, bmapess)))
 end
