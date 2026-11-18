@@ -73,7 +73,7 @@ else
     A named piece of the boundary of the domain `parent`. `geometry` is the piece as an
     analytic sub-domain, or `nothing` when the piece is known only by name, as for a facet
     set of a mesh. A piece is used in place of the spatial arguments of a dependent
-    variable to write a trace, `u(t, Γ)`, and as the argument of a [`NormalDerivative`](@ref).
+    variable to write a trace, `u(t, Γ)`, and as the argument of a `NormalDerivative`.
     It prints as `Γ_<name>`, and `parent(Γ)` returns the parent domain.
 
     Pieces compare and hash structurally, by parent, name and geometry. `isless` orders

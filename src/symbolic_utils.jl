@@ -116,7 +116,7 @@ end
 
 Returns a set of all differential orders present in the equation with respect to variable `x`.
 
-A [`NormalDerivative`](@ref) is order 1 in the normal direction of its piece: when `x` is
+A `NormalDerivative` is order 1 in the normal direction of its piece: when `x` is
 that [`BoundaryPiece`](@ref), and, given the variable map `v`, when the piece is the face
 of the box on which `x` is fixed (see [`boxface`](@ref PDEBase.boxface)).
 

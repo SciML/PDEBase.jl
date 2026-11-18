@@ -55,7 +55,6 @@ PDEBase.x2i
 PDEBase.BoundaryPiece
 PDEBase.boundarypiece
 PDEBase.boundarypieces
-PDEBase.NormalDerivative
 ```
 
 ## Abstract Types
