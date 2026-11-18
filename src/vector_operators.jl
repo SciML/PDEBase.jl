@@ -19,6 +19,13 @@ derivatives `expand_derivatives` would replace by zero. Every variable of an ope
 be an independent variable of `pdesys`, otherwise an `ArgumentError` is thrown. A system
 that uses none of the operators is returned as is, and so is every system when the installed
 Symbolics lacks them.
+
+The operand of a `Divergence` or `Curl` needs a declared length, since lowering it takes the components
+named by the coordinates and must not drop further ones, so an unsized vector, or a composite flux that
+contains one (for example a sized matrix times an unsized vector, whose two-element result Symbolics infers
+but cannot write out), throws an `ArgumentError`. Other operations on operator results that contain an
+unsized vector, such as `sum(g + p)` or `dot(g, p)`, are kept as calls on the lowered components and are
+evaluated once the vector is bound.
 """
 function expand_vector_operators end
 
@@ -106,6 +113,16 @@ function expand_vector_operators end
         end
         any(_has_vector_operator, args) || return ex
         newargs = map(a -> _expand_vector_operators(a, ivs), args)
+        # An operand of unknown extent anywhere beneath defers every enclosing operation: it stays a call on the
+        # lowered components, so nothing above it is scalarized or evaluated before the extent is known and
+        # Julia's own length rules apply once the vector is bound.
+        if any(_has_unsized, newargs)
+            if _is_linalg_dot(op)
+                lengths = [length(a) for a in newargs if a isa Vector]
+                allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
+            end
+            return maketerm(typeof(ex), op, map(unwrap, newargs), metadata(ex))
+        end
         # An operator result is a Julia array of expressions, and applying `op` to it (`2g`, `dot(g, g)`,
         # `sum(g)`, `(2g)[1]`) evaluates per component, which a rebuilt symbolic array term would not.
         if any(a -> a isa AbstractArray, newargs)
@@ -117,14 +134,10 @@ function expand_vector_operators end
                 known = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT
                 return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
             end
-            # Vectors of unknown length are never resolved to the length of an operator result, since that
-            # would change the value of any function whose operands have independent lengths. The call stays
-            # symbolic around the lowered components, so its own length rules apply once the vector is bound.
             if _is_linalg_dot(op)
-                lengths = [length(a) for a in callable if a isa AbstractVector && !_unknown_vector(a)]
+                lengths = [length(a) for a in callable if a isa AbstractVector]
                 allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
             end
-            any(_unknown_vector, callable) && return maketerm(typeof(ex), op, map(unwrap, callable), metadata(ex))
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
         end
@@ -135,7 +148,15 @@ function expand_vector_operators end
         (isempty(arrays) || any(a -> !(SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT), arrays)) && return rebuilt
         return _unwrap_result(Symbolics.scalarize(Symbolics.wrap(rebuilt)))
     end
-    _unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
+    # Whether an unsized symbolic array occurs in `a` or anywhere beneath it.
+    _has_unsized(a::AbstractArray) = any(_has_unsized, a)
+    _has_unsized(a::Num) = _has_unsized(unwrap(a))
+    _has_unsized(a::Symbolics.Arr) = _has_unsized(unwrap(a))
+    function _has_unsized(a::SymbolicUtils.BasicSymbolic)
+        SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT || return true
+        return iscall(a) && any(_has_unsized, arguments(a))
+    end
+    _has_unsized(a) = false
     # LinearAlgebra's `dot` by identity, so a user's own function called `dot` is an ordinary function.
     _is_linalg_dot(op) = op === LinearAlgebra.dot
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))

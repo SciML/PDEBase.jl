@@ -174,11 +174,12 @@ else
         @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mu * ∇(U)); dvs = [U])
         @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(∇(U) + Vu); dvs = [U])
         @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(∇(U) + Vu); dvs = [U])
-        # A declared length is checked by the operator, so a matching one lowers and an oversized one is an error.
+        # A declared length is checked by the operator, so a matching one lowers.
         @test same(expanded(Dt(U) ~ Symbolics.Divergence([x, y])(F2); dvs = [U]).rhs, Dx(F2[1]) + Dy(F2[2]))
         @test same(expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(F2); dvs = [U]).rhs, Dx(F2[2]) - Dy(F2[1]))
-        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(F3); dvs = [U])
-        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(F3); dvs = [U])
+        # Constructor controls: Symbolics itself rejects the oversized operator calls before PDEBase runs.
+        @test_throws ArgumentError Symbolics.Divergence([x, y])(F3)
+        @test_throws ArgumentError Symbolics.Curl{false}([x, y])(F3)
     end
 
     @testset "indexing a flux of unknown shape" begin
@@ -307,6 +308,22 @@ else
         for eq in (only(get_eqs(expand_vector_operators(sys))), only(get_eqs(parsed_boundary_map(sys, disc).pdesys)))
             @test evaluate(eq.lhs, bindings([7, 13])) == 36
             @test_throws DimensionMismatch evaluate(eq.lhs, bindings([7, 13, 5]))
+        end
+    end
+
+    @testset "an unsized vector defers every enclosing operation" begin
+        @parameters pd::Vector{Real}
+        g = ∇(U)
+        bindings(p) = Dict(Symbolics.unwrap(Dx(U)) => 19, Symbolics.unwrap(Dy(U)) => -3, Symbolics.unwrap(pd) => p)
+        cases = [
+            (sum(2 * (g + pd)), 72), (dot(g, g + pd), 464), (sum(abs2.(2 * (g + pd))), 4 * (26^2 + 10^2)),
+        ]
+        for (lhs, value) in cases
+            @named sys = PDESystem([lhs ~ 0], boxbcs, box, [t, x, y], [U], [k, pd])
+            for eq in (only(get_eqs(expand_vector_operators(sys))), only(get_eqs(parsed_boundary_map(sys, disc).pdesys)))
+                @test evaluate(eq.lhs, bindings([7, 13])) == value
+                @test_throws DimensionMismatch evaluate(eq.lhs, bindings([7, 13, 5]))
+            end
         end
     end
 
