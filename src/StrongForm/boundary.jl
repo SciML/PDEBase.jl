@@ -164,7 +164,7 @@ _has_trace(ctx::SlotContext, ex) =
 
 The residual `eq.lhs - eq.rhs` of a boundary condition on `face`, a `PDEBase.BoxFace` or a
 `BoundaryPiece`, in slot form: each trace `u_f` becomes `U[f]`, `Dx_d(u_f)` becomes
-`G[(f-1)*dim+d]` and `NormalDerivative(Γ)(u_f)` becomes `Σ_d N[d] G[(f-1)*dim+d]`. On a box face
+`G[(f-1)*dim+d]` and `NormalDerivative(Γ)(u_f)` becomes `Σ_d N[d] G[(f-1)*dim+d]` over the spatial coordinates `d` that `u_f` is declared with (a derivative in an omitted coordinate is zero, as for a Cartesian derivative). On a box face
 the normal is the face's `±e_iv` and the face coordinate becomes its endpoint value; on a piece
 the normal stays the symbolic slots `N`. A component of `PDEBase.normal(Γ)` becomes `N[d]` (or the
 numeric normal on a box face), and a Cartesian derivative of a trace on a piece is an error unless
@@ -181,7 +181,7 @@ function _check_normals_at(ctx::SlotContext, ex, loc, slots, label)
     iscall(ex) || return nothing
     op = operation(ex)
     op isa FacetNormal && return _slot_operator(ctx, op, ex, loc, slots, label, true)
-    op isa Differential && _check_normal_not_differentiated(ex)
+    op isa Union{Differential, NormalDerivative} && _check_normal_not_differentiated(ex)
     foreach(a -> _check_normals_at(ctx, unwrap(a), loc, slots, label), arguments(ex))
     return nothing
 end
@@ -245,8 +245,8 @@ end
 
 # A lower bound of `λ` over every real unit normal `N`, or `nothing` if none is proven. Numbers, sums, and
 # products and powers of terms with a nonnegative bound are bounded structurally; an even power of a real
-# polynomial in the normal components is at least 0; and a sum holding positively weighted squares of every
-# component is at least the smallest total weight of a component on the unit sphere.
+# polynomial in the normal components is at least 0; and a sum `c + Σ wᵢ Nᵢ²` with signed weights (zero for a missing component) is at least `c + minᵢ wᵢ` on the unit
+# sphere, as `Σ Nᵢ² = 1`.
 function _normal_lower_bound(λ, N)
     isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
     function realpoly(t)
@@ -269,7 +269,7 @@ function _normal_lower_bound(λ, N)
         w, rest = arguments(a)
         c = unwrap_const(unwrap(w))
         sq = square(rest)
-        return c isa Real && c > 0 && sq !== nothing ? (c, sq) : nothing
+        return c isa Real && sq !== nothing ? (c, sq) : nothing
     end
     function bound(t)
         t = unwrap(t)
@@ -281,11 +281,10 @@ function _normal_lower_bound(λ, N)
         if op === (+)
             squares = filter(!isnothing, weighted_square.(args))
             weights = [sum(w for (w, sq) in squares if isequal(sq, unwrap(m)); init = 0) for m in N]
-            complete = all(>(0), weights)
-            rest = complete ? [a for a in args if weighted_square(a) === nothing] : collect(args)
+            rest = [a for a in args if weighted_square(a) === nothing]
             bounds = bound.(rest)
             any(isnothing, bounds) && return nothing
-            return sum(bounds; init = 0) + (complete ? minimum(weights) : 0)
+            return sum(bounds; init = 0) + minimum(weights)
         elseif op === (*)
             bounds = bound.(args)
             (any(isnothing, bounds) || any(<(0), bounds)) && return nothing

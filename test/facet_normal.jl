@@ -170,6 +170,9 @@ end
     @test symeq(match_flux(Φ, (N[1]^2 + 2 * N[2]^2) * (Φ - 3), s), 3)
     @test symeq(match_flux(Φ, (N[1]^2 + 2 * N[2]^2 - 1 // 2) * (Φ - 3), s), 3)
     @test match_flux(Φ, (N[1]^2 + 2 * N[2]^2 - 1) * (Φ - 3), s) === nothing
+    @test symeq(match_flux(Φ, (3 // 2 - N[1]^2) * (Φ - 3), s), 3)
+    @test symeq(last(route_natural((3 // 2 - N[1]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
+    @test match_flux(Φ, (1 - N[1]^2) * (Φ - 3), s) === nothing
     @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
     @test symeq(match_flux(Φ, (N[1]^2 + N[2]^2) * (Φ - 3), s), 3)
@@ -430,6 +433,8 @@ end
     # operators that cancel between the sides without a normal are unchanged
     @test symeq(slot_condition(Dt(u(t, Γl)) + Dx(u(t, Γl)) ~ Dt(u(t, Γl)), Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0)), StateSlots(2, 2, 0).G[1])
     @test occursin("derivative of an expression containing the facet normal", errmsg(() -> slot_condition(Dx(nl[1]) + nl[1] * Dx(u(t, Γl)) ~ Dx(nl[1]), Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
+    cancelled_nd = NormalDerivative(Γl)(nl[1] * u(t, Γl))
+    @test occursin("derivative of an expression containing the facet normal", errmsg(() -> slot_condition(cancelled_nd + Dx(u(t, Γl)) ~ cancelled_nd, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a normal of another piece cannot cancel between the sides
     @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one
