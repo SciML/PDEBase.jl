@@ -177,6 +177,7 @@ end
     Φ2 = N[2] * G[1]
     @test match_flux(Φ2, (-(2^62) - (2^62 + 1) * N[1]^2 + 2^62 * N[2]^2) * Φ2, s) === nothing
     @test match_flux(Φ, ((N[1]^4 - 1) / (N[1]^2 - 1)) * Φ, s) === nothing
+    @test symeq(match_flux(Φ, Φ - 1 / (2 + N[1]^2), s), 1 / (2 + N[1]^2))
     @test symeq(last(route_natural((N[1]^2 + 2 * N[2]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
     # the unit normal has length one
     @test symeq(match_flux(Φ, (N[1]^2 + N[2]^2) * (Φ - 3), s), 3)

@@ -243,15 +243,17 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
-# Does `ex` divide by an expression that holds a normal component?
+# Does `ex` divide by an expression with a normal component that is not provably nonvanishing on the
+# unit sphere?
 function _divides_by_normal(ex, N)
     ex = unwrap(ex)
     iscall(ex) || return false
     op, args = operation(ex), arguments(ex)
-    op === (/) && any(m -> _depends(args[2], [m]), N) && return true
+    risky(den) = any(m -> _depends(den, [m]), N) && !(_positive_in_normal(den, N) || _positive_in_normal(-unwrap(den), N))
+    op === (/) && risky(args[2]) && return true
     if op === (^)
         e = unwrap_const(unwrap(args[2]))
-        e isa Real && e < 0 && any(m -> _depends(args[1], [m]), N) && return true
+        e isa Real && e < 0 && risky(args[1]) && return true
     end
     return any(a -> _divides_by_normal(a, N), args)
 end
