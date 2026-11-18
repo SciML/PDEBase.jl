@@ -166,12 +166,15 @@ function _box_rules!(rules, v, ex; declared = false)
     return rules
 end
 
-# The spatial derivatives of declared fields left in `ex`, outermost first.
+# Does `ex` hold a call of a dependent variable of `v`?
+_holds_field(v, ex) = (ex = safe_unwrap(ex); iscall(ex) && (haskey(v.args, operation(ex)) || any(a -> _holds_field(v, a), arguments(ex))))
+
+# The spatial derivatives of dependent variables left in `ex`, outermost first; a derivative of data is none.
 function _spatial_derivatives!(nodes, ex, v)
     ex = safe_unwrap(ex)
     iscall(ex) || return nodes
     op = operation(ex)
-    if op isa Differential && any(x -> isequal(op.x, x), indvars(v))
+    if op isa Differential && any(x -> isequal(op.x, x), indvars(v)) && _holds_field(v, only(arguments(ex)))
         any(n -> isequal(n, ex), nodes) || push!(nodes, ex)
         return nodes
     end
@@ -189,7 +192,7 @@ function _check_box_normal_derivative(v, lhs, rhs, bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs; declared = true), v, rhs; declared = true)
     residual = Symbolics.expand_derivatives(Num(substitute_traces(lhs, rules)) - Num(substitute_traces(rhs, rules)))
     nodes = _spatial_derivatives!(Any[], residual, v)
-    slots = [Symbolics.variable(Symbol(:_dg, j)) for j in eachindex(nodes)]
+    slots = [Symbolics.variable(Symbol("##derivative#", j)) for j in eachindex(nodes)]
     residual = Symbolics.simplify(Symbolics.expand(Symbolics.substitute(residual, Dict(unwrap(n) => unwrap(g) for (n, g) in zip(nodes, slots)))))
     holds_derivative(r) = (vars = Set(unwrap.(Symbolics.get_variables(r))); any(g -> unwrap(g) in vars, slots))
     written = holds_derivative(residual)

@@ -401,6 +401,10 @@ end
     @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysk; time = t)))
     sysc = PDESystem([heat, Dt(w4(t, y)) ~ 0], [u(0, x, y) ~ 0, Dx(Dy(x * w4(t, y))) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w4(t, y)], [k => 1.0]; name = :sys)
     @test to_box_bcs(sysc; time = t) isa PDESystem
+    # a derivative of data is no derivative of the solution, and a placeholder name is no collision
+    @parameters a(..) _dg1
+    @test occursin("no derivative of a trace", lowering(Dx(a(x)) + nl[1] * u(t, Γl) ~ 1))
+    @test occursin("no derivative of a trace", lowering(x * Dx(u(t, Γl)) + nl[1] * _dg1 * u(t, Γl) ~ 1))
     # Dx of a time-only field is zero and does not count
     @variables w(..)
     sysw = PDESystem([heat, Dt(w(t)) ~ 0], [u(0, x, y) ~ 0, Dx(w(t)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w(t)], [k => 1.0]; name = :sys)
