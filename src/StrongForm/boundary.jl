@@ -180,6 +180,10 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     leftover = unique(_leftovers!(Any[], B, slotset, false))
     isempty(leftover) ||
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
+    residual = Symbolics.simplify(Symbolics.expand(Num(B)))
+    _check_normal_has_derivative(
+        _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs), _depends(residual, slots.G), "$eq on $(_where(loc))"
+    )
     return Num(B)
 end
 
@@ -479,7 +483,6 @@ function boundary_conditions(
         Bvolume = _slot_unrestricted(eq, key, ctx, slots)
         B = restrict_to_face(Bvolume, key, ctx, slots)
         label = "$eq on $(_where(loc))"
-        _check_normal_has_derivative(eq, ex -> _field(ctx, ex) !== nothing, ctx.t, label)
         faceflux = [restrict_to_face.(G, (key,), (ctx,), (slots,)) for G in flux]
         condition = if _depends(Bvolume, slots.G) && _iszero(B)
             e = _route_vanishing(Bvolume, flux, faceflux, n, slots, label)
@@ -490,7 +493,6 @@ function boundary_conditions(
             e, Φ = _route_on_face(B, flux, faceflux, _where(loc), n, slots, label)
             NaturalBC{K}(key, e, Φ)
         else
-            _depends(B, slots.N) && _normal_without_derivative_error(label)
             f, g = essential_condition(B, slots; field, label)
             EssentialBC{K}(key, f, g)
         end

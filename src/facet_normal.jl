@@ -86,11 +86,9 @@ function _has_field_call(ex, isfield)
     return isfield(ex) || any(a -> _has_field_call(a, isfield), arguments(ex))
 end
 
-"Throw if the condition `eq` holds a facet normal but no derivative of a field call."
-function _check_normal_has_derivative(eq, isfield, time, label)
-    sides = (eq.lhs, eq.rhs)
-    any(_has_facet_normal, sides) && !any(side -> _has_field_derivative(side, isfield, time), sides) &&
-        _normal_without_derivative_error(label)
+"Throw if a condition that held a facet normal has no derivative left in its residual, `has_derivative` being false."
+function _check_normal_has_derivative(had_normal, has_derivative, label)
+    had_normal && !has_derivative && _normal_without_derivative_error(label)
     return nothing
 end
 

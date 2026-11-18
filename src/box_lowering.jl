@@ -165,9 +165,12 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     _has_trace(bc) || return bc
     classify_condition(v, bc)
     lhs, rhs = _get_lhs_rhs(bc)
-    _check_normal_has_derivative(Equation(lhs, rhs), ex -> haskey(v.args, operation(ex)), v.time, bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
+    if _has_facet_normal(lhs) || _has_facet_normal(rhs)
+        residual = Symbolics.simplify(Symbolics.expand(Num(lowered[1]) - Num(lowered[2])))
+        _check_normal_has_derivative(true, _has_field_derivative(residual, ex -> haskey(v.args, operation(ex)), v.time), bc)
+    end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end
 _lower_bc(v, bcs::AbstractVector) = map(bc -> _lower_bc(v, bc), bcs)
