@@ -162,6 +162,7 @@ end
     # a scale that is provably positive for every real normal is cancelled
     @test symeq(match_flux(Φ, (1 + N[1]^2) * (Φ - 3), s), 3)
     @test symeq(last(route_natural((1 + N[1]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
+    @test symeq(match_flux(Φ, -(1 + N[1]^2) * (Φ - 3), s), 3)
     @test match_flux(Φ, (N[1]^2) * (Φ - 3), s) === nothing
     @test match_flux(Φ, (1 - N[1]^2) * (Φ - 3), s) === nothing
     @test match_flux(Φ, (1 + N[1]) * (Φ - 3), s) === nothing

@@ -272,8 +272,8 @@ function match_flux(Φ, B, slots)
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
     # A scale containing a normal component can vanish on a whole facet, where the condition is
     # then not the conormal condition it matched symbolically; it is cancelled only if it is
-    # provably positive for every real normal.
-    (_iszero(λ) || _depends(λ, slots.N) && !_positive_in_normal(λ, slots.N)) && return nothing
+    # provably nonzero for every real normal (definite in sign).
+    (_iszero(λ) || _depends(λ, slots.N) && !(_positive_in_normal(λ, slots.N) || _positive_in_normal(-λ, slots.N))) && return nothing
     # Expanded and fraction-simplified so polynomial identities such as (1 + U)^2 = 1 + 2U + U^2
     # are proven; no coefficient-by-coefficient products, which can underflow to zero.
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||
