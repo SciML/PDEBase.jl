@@ -3,7 +3,7 @@ using PDEBase: expand_vector_operators, parsed_boundary_map
 using PDEBase.StrongForm
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs, get_eqs
 using Symbolics
-using LinearAlgebra: dot
+const dot = Symbolics.LinearAlgebra.dot
 using SymbolicUtils: operation
 using SciMLBase
 using Test
