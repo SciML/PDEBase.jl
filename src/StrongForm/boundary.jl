@@ -107,6 +107,8 @@ function _slot_operator(ctx::SlotContext, op::Differential, ex, loc, slots, labe
             error("time derivative of a trace is not supported in a boundary condition: $(wrap(ex))")
         error("derivative in $(op.x), which is not an independent variable of the system, in a boundary condition: $(wrap(ex))")
     end
+    # a derivative in a coordinate the field does not have is zero, not a gradient
+    any(a -> isequal(a, op.x), ctx.args[ctx.ops[f]]) || return unwrap(Num(0))
     loc isa Piece && !licensed && error(
         "$(wrap(ex)) is a Cartesian derivative of a trace on $(loc.piece), which equals the normal derivative only on a planar piece perpendicular to $(op.x); write the normal derivative NormalDerivative($(loc.piece))(…), or include PDEBase.normal($(loc.piece)) in the condition to build the contraction yourself"
     )

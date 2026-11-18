@@ -169,14 +169,21 @@ end
 # Does `ex` hold a call of a dependent variable of `v`?
 _holds_field(v, ex) = (ex = safe_unwrap(ex); iscall(ex) && (haskey(v.args, operation(ex)) || any(a -> _holds_field(v, a), arguments(ex))))
 
-# The spatial derivatives of dependent variables left in `ex`, outermost first; a derivative of data is none.
+# The derivative chains of dependent variables left in `ex` that have a spatial derivative, outermost
+# first; a derivative of data is none.
 function _spatial_derivatives!(nodes, ex, v)
     ex = safe_unwrap(ex)
     iscall(ex) || return nodes
-    op = operation(ex)
-    if op isa Differential && any(x -> isequal(op.x, x), indvars(v)) && _holds_field(v, only(arguments(ex)))
-        any(n -> isequal(n, ex), nodes) || push!(nodes, ex)
-        return nodes
+    if operation(ex) isa Differential
+        chain, inner = Any[], ex
+        while iscall(inner) && operation(inner) isa Differential
+            push!(chain, operation(inner).x)
+            inner = safe_unwrap(only(arguments(inner)))
+        end
+        if any(x -> any(y -> isequal(x, y), indvars(v)), chain) && _holds_field(v, inner)
+            any(n -> isequal(n, ex), nodes) || push!(nodes, ex)
+            return nodes
+        end
     end
     foreach(a -> _spatial_derivatives!(nodes, a, v), arguments(ex))
     return nodes
@@ -192,8 +199,16 @@ function _check_box_normal_derivative(v, lhs, rhs, bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs; declared = true), v, rhs; declared = true)
     residual = Symbolics.expand_derivatives(Num(substitute_traces(lhs, rules)) - Num(substitute_traces(rhs, rules)))
     nodes = _spatial_derivatives!(Any[], residual, v)
-    slots = [Symbolics.variable(Symbol("##derivative#", j)) for j in eachindex(nodes)]
-    residual = Symbolics.simplify(Symbolics.expand(Symbolics.substitute(residual, Dict(unwrap(n) => unwrap(g) for (n, g) in zip(nodes, slots)))))
+    taken = Symbolics.get_variables(residual)
+    function placeholder(j)
+        name = "##derivative#$j"
+        while any(var -> isequal(var, unwrap(Symbolics.variable(Symbol(name)))), taken)
+            name *= "'"
+        end
+        return Symbolics.variable(Symbol(name))
+    end
+    slots = [placeholder(j) for j in eachindex(nodes)]
+    residual = Symbolics.simplify(Symbolics.expand(substitute_traces(residual, Dict(unwrap(n) => unwrap(g) for (n, g) in zip(nodes, slots)))))
     holds_derivative(r) = (vars = Set(unwrap.(Symbolics.get_variables(r))); any(g -> unwrap(g) in vars, slots))
     written = holds_derivative(residual)
     for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))

@@ -405,10 +405,16 @@ end
     @parameters a(..) _dg1
     @test occursin("no derivative of a trace", lowering(Dx(a(x)) + nl[1] * u(t, Γl) ~ 1))
     @test occursin("no derivative of a trace", lowering(x * Dx(u(t, Γl)) + nl[1] * _dg1 * u(t, Γl) ~ 1))
+    @test occursin("no derivative of a trace", lowering(x * Dx(u(t, Γl)) + nl[1] * Symbolics.variable(Symbol("##derivative#1")) * u(t, Γl) ~ 1))
+    # a spatial derivative inside a time derivative counts, in either order
+    @test to_box_bcs(PDESystem([heat], [u(0, x, y) ~ 0, nl[1] * Dt(Dx(u(t, Γl))) ~ 0, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys); time = t) isa PDESystem
     # Dx of a time-only field is zero and does not count
     @variables w(..)
     sysw = PDESystem([heat, Dt(w(t)) ~ 0], [u(0, x, y) ~ 0, Dx(w(t)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w(t)], [k => 1.0]; name = :sys)
     @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysw; time = t)))
+    vw = VariableMap(sysw, NormalBoxDisc(t))
+    sw = StateSlots(2, 2, 0)
+    @test occursin("no derivative of a trace", errmsg(() -> slot_condition(nl[1] * Dx(w(t)) + u(t, Γl) ~ 0, Γl, SlotContext(sysw, vw), sw)))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one
     @test occursin("contains the facet normal but no derivative of a trace", lowering(Differential(k)(u(t, Γl)) + nl[1] * u(t, Γl) ~ 0))
     @test occursin("derivative of an expression containing the facet normal", lowering(Differential(nl[1])(Dx(u(t, Γl))) ~ 0))
