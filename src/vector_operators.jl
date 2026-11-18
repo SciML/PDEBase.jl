@@ -102,10 +102,11 @@ function expand_vector_operators end
             end
             # Only a contraction needs equal lengths, so only there does a vector of unknown length take the
             # length of the operator result. Other functions keep their independent operands as they are.
-            if op === Symbolics.LinearAlgebra.dot || op === *
+            is_dot = op isa Function && nameof(op) === :dot
+            if is_dot || op === *
                 unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
                 lengths = [length(a) for a in callable if a isa AbstractVector && !unknown_vector(a)]
-                if op === Symbolics.LinearAlgebra.dot && !allequal(lengths)
+                if is_dot && !allequal(lengths)
                     throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
                 end
                 isempty(lengths) || (callable = map(a -> unknown_vector(a) ? [a[i] for i in 1:first(lengths)] : a, callable))
