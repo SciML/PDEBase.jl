@@ -70,6 +70,11 @@ function expand_vector_operators end
                 components = [_expand_vector_operators(c, ivs) for c in Symbolics.scalarize(Symbolics.wrap(arg))]
                 return _unwrap_result(_eager(op)(components))
             end
+            if op isa Union{Symbolics.Divergence, Symbolics.Curl} && !(SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT)
+                # The coordinates of the operator fix which components of a vector of unknown length are needed.
+                wrapped = Symbolics.wrap(arg)
+                return _unwrap_result(_eager(op)([wrapped[i] for i in eachindex(op.vars)]))
+            end
             return _unwrap_result(_eager(op)(Symbolics.wrap(_expand_vector_operators(arg, ivs))))
         elseif op === getindex && iscall(first(args)) && operation(first(args)) isa _VectorOperator
             components = _expand_vector_operators(first(args), ivs)
@@ -83,7 +88,14 @@ function expand_vector_operators end
             return unwrap(components[indices...])
         end
         any(_has_vector_operator, args) || return ex
-        return maketerm(typeof(ex), op, map(a -> _expand_vector_operators(a, ivs), args), metadata(ex))
+        newargs = map(a -> _expand_vector_operators(a, ivs), args)
+        # An operator result is a Julia array of expressions, and applying `op` to it (`2g`, `dot(g, g)`,
+        # `sum(g)`, `(2g)[1]`) evaluates per component, which a rebuilt symbolic array term would not.
+        any(a -> a isa AbstractArray, newargs) && return _unwrap_result(op(newargs...))
+        rebuilt = maketerm(typeof(ex), op, newargs, metadata(ex))
+        # An eager operator can also return a symbolic array, whose operations are only evaluated by `scalarize`.
+        any(a -> a isa SymbolicUtils.BasicSymbolic && !isempty(SymbolicUtils.shape(a)), newargs) || return rebuilt
+        return _unwrap_result(Symbolics.scalarize(Symbolics.wrap(rebuilt)))
     end
     _unwrap_result(r::AbstractArray) = r
     _unwrap_result(r) = unwrap(r)

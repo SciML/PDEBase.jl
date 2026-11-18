@@ -3,6 +3,7 @@ using PDEBase: expand_vector_operators, parsed_boundary_map
 using PDEBase.StrongForm
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs, get_eqs
 using Symbolics
+using LinearAlgebra: dot
 using SymbolicUtils: operation
 using SciMLBase
 using Test
@@ -131,6 +132,27 @@ else
         @test PDEBase._has_vector_operator(pair)
         lowered = PDEBase._expand_condition(pair, unwrap.([t, x, y]))
         @test !PDEBase._has_vector_operator(lowered)
+    end
+
+    @testset "array operations on operator results" begin
+        g = ∇(U)
+        eq = expanded(2 * g[1] + dot(g, g) ~ 0)
+        @test same(eq.lhs, 2 * Dx(U) + Dx(U)^2 + Dy(U)^2)
+        eq = expanded((2 * g)[1] ~ 0)
+        @test same(eq.lhs, 2 * Dx(U))
+        @test !occursin("array_literal", string(eq))
+        eq = expanded(sum(g) ~ 0)
+        @test same(eq.lhs, Dx(U) + Dy(U))
+
+        @named sys = PDESystem([(2 * g)[1] + dot(g, g) ~ 0], boxbcs, box, [t, x, y], [U], [k])
+        parsed = parsed_boundary_map(sys, disc)
+        @test analyse(parsed.pdesys, parsed.v, parsed.boundarymap).nfields == 1
+    end
+
+    @testset "divergence of a vector of unknown length" begin
+        @variables Vu::Vector{Real}
+        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Vu); dvs = [U])
+        @test same(eq.rhs, Dx(Vu[1]) + Dy(Vu[2]))
     end
 
     @testset "vector of unknown length" begin
