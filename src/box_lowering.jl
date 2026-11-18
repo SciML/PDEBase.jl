@@ -165,7 +165,7 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     _has_trace(bc) || return bc
     classify_condition(v, bc)
     lhs, rhs = _get_lhs_rhs(bc)
-    _check_normal_has_derivative(Equation(lhs, rhs), ex -> haskey(v.args, operation(ex)), bc)
+    _check_normal_has_derivative(Equation(lhs, rhs), ex -> haskey(v.args, operation(ex)), v.time, bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)

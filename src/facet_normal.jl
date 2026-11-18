@@ -69,14 +69,15 @@ function _check_normal_not_differentiated(ex)
     return nothing
 end
 
-"Does `ex` hold a `Differential` or `NormalDerivative` of an expression with a call for which `isfield(call)` holds?"
-function _has_field_derivative(ex, isfield)
+"Does `ex` hold a spatial `Differential` (not in `time`) or a `NormalDerivative` of an expression with a call for which `isfield(call)` holds?"
+function _has_field_derivative(ex, isfield, time)
     ex = safe_unwrap(ex)
     iscall(ex) || return false
-    if operation(ex) isa Union{Differential, NormalDerivative}
+    op = operation(ex)
+    if op isa NormalDerivative || op isa Differential && !isequal(op.x, time)
         _has_field_call(only(arguments(ex)), isfield) && return true
     end
-    return any(a -> _has_field_derivative(a, isfield), arguments(ex))
+    return any(a -> _has_field_derivative(a, isfield, time), arguments(ex))
 end
 
 function _has_field_call(ex, isfield)
@@ -86,9 +87,9 @@ function _has_field_call(ex, isfield)
 end
 
 "Throw if the condition `eq` holds a facet normal but no derivative of a field call."
-function _check_normal_has_derivative(eq, isfield, label)
+function _check_normal_has_derivative(eq, isfield, time, label)
     sides = (eq.lhs, eq.rhs)
-    any(_has_facet_normal, sides) && !any(side -> _has_field_derivative(side, isfield), sides) &&
+    any(_has_facet_normal, sides) && !any(side -> _has_field_derivative(side, isfield, time), sides) &&
         _normal_without_derivative_error(label)
     return nothing
 end

@@ -338,6 +338,7 @@ end
     @test occursin("derivative of an expression containing the facet normal", lowering(Dx(nl[1]) + Dx(u(t, Γl)) ~ 1))
     @test occursin("contains the facet normal but no derivative of a trace", lowering(nl[1] * u(t, Γl) ~ 1))
     @test occursin("derivative of an expression containing the facet normal", lowering(NormalDerivative(Γl)(nl[1] * u(t, Γl)) ~ 0))
+    @test occursin("contains the facet normal but no derivative of a trace", lowering(nl[1] * Dt(u(t, Γl)) ~ 1))
     # a derivative spelled in endpoint form still counts as the derivative of the Robin condition
     robin = nl[1] * Dx(u(t, 0.0, y)) + u(t, Γl) ~ 0
     sysrobin = PDESystem([heat], [u(0, x, y) ~ 0, robin, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)
