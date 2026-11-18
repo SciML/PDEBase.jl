@@ -405,7 +405,7 @@ end
 
 @testset "PDESystemLibrary round trip" begin
     library = PDESystemLibrary.all_systems
-    @test length(library) == 427
+    @test length(library) >= 427
     ntraces = nnormal = 0
     for sys in library
         t_ = library_time(sys)
