@@ -243,6 +243,19 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
+# Does `ex` divide by an expression that holds a normal component?
+function _divides_by_normal(ex, N)
+    ex = unwrap(ex)
+    iscall(ex) || return false
+    op, args = operation(ex), arguments(ex)
+    op === (/) && any(m -> _depends(args[2], [m]), N) && return true
+    if op === (^)
+        e = unwrap_const(unwrap(args[2]))
+        e isa Real && e < 0 && any(m -> _depends(args[1], [m]), N) && return true
+    end
+    return any(a -> _divides_by_normal(a, N), args)
+end
+
 # A lower bound of `λ` over every real unit normal `N`, or `nothing` if none is proven. Numbers, sums, and
 # products and powers of terms with a nonnegative bound are bounded structurally; an even power of a real
 # polynomial in the normal components is at least 0; and a sum `c + Σ wᵢ Nᵢ²` with signed weights (zero for a missing component) is at least `c + minᵢ wᵢ` on the unit
@@ -274,7 +287,8 @@ function _normal_lower_bound(λ, N)
     function bound(t)
         t = unwrap(t)
         c = unwrap_const(t)
-        c isa Real && return c
+        # exact arithmetic: machine integers could wrap around into a false positive bound
+        c isa Real && return c isa Integer ? BigInt(c) : c isa Rational ? Rational{BigInt}(c) : c
         iscall(t) || return nothing
         op = operation(t)
         args = arguments(t)
@@ -325,6 +339,8 @@ function match_flux(Φ, B, slots)
     any(a -> _depends(a, g), vcat(aΦ, aB)) && return nothing
     i = findfirst(!_iszero, aΦ)
     (i === nothing || all(_iszero, aB)) && return nothing
+    # a division by something that can vanish on a facet is undefined there; simplification must not hide it
+    _divides_by_normal(B, slots.N) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
     # A scale containing a normal component can vanish on a whole facet, where the condition is
     # then not the conormal condition it matched symbolically; it is cancelled only if it is
