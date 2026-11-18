@@ -79,7 +79,7 @@ function expand_vector_operators end
         elseif op === getindex && iscall(first(args)) && operation(first(args)) isa _VectorOperator
             components = _expand_vector_operators(first(args), ivs)
             indices = map(unwrap_const, args[2:end])
-            all(i -> i isa Integer, indices) || throw(
+            all(i -> i isa Union{Integer, Colon}, indices) || throw(
                 ArgumentError(
                     "indexing the result of the vector operator $(nameof(typeof(operation(first(args))))) " *
                         "with the symbolic index $(join(indices, ", ")) is not supported, use integer indices"
@@ -125,9 +125,10 @@ function expand_vector_operators end
     _unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
     # LinearAlgebra's `dot` by identity, so a user's own function called `dot` is an ordinary function.
     function _is_linalg_dot(op)
-        id = Base.PkgId(Base.UUID("37e2e46d-f89d-539d-b4ee-838fcccc9c8e"), "LinearAlgebra")
-        linalg = get(Base.loaded_modules, id, nothing)
-        return linalg !== nothing && op === getfield(linalg, :dot)
+        op isa Function && nameof(op) === :dot || return false
+        linalg = parentmodule(op)
+        path = pathof(linalg)
+        return nameof(linalg) === :LinearAlgebra && path isa String && occursin("stdlib", path)
     end
     _scalar_shaped(a) = SymbolicUtils.shape(a) isa SymbolicUtils.ShapeVecT && isempty(SymbolicUtils.shape(a))
     # A vector-valued operator result becomes a Julia array of expressions, so that products with constant

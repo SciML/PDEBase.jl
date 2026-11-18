@@ -304,6 +304,10 @@ else
         @test isequal(eqs[2], plain)
     end
 
+    @testset "concrete slices of an operator result" begin
+        @test same(expanded(sum(∇(U)[:]) ~ 0).lhs, Dx(U) + Dy(U))
+    end
+
     @testset "symbolic index into an operator result is a clear error" begin
         @variables i::Int
         @named sys = PDESystem([∇(U)[i] ~ v(t, x, y)], boxbcs, box, [t, x, y], [U, v(t, x, y)], [k])
