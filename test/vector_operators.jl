@@ -186,6 +186,8 @@ else
         @variables Zu::Vector{Real}
         eq = expanded(dot(∇(U), Zu) ~ 0; dvs = [U])
         @test same(eq.lhs, Dx(U) * Zu[1] + Dy(U) * Zu[2])
+        eq = expanded(dot(Zu, ∇(U)) ~ 0; dvs = [U])
+        @test same(eq.lhs, Dx(U) * Zu[1] + Dy(U) * Zu[2])
     end
 
     @testset "tensor-weighted gradient equations" begin

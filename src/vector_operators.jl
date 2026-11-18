@@ -101,8 +101,8 @@ function expand_vector_operators end
                 return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
             end
             # A vector of unknown length contracted with an operator result has that result's length.
-            lengths = [length(a) for a in callable if a isa AbstractVector]
             unknown_vector(a) = a isa Symbolics.Arr && SymbolicUtils.shape(unwrap(a)) == SymbolicUtils.Unknown(1)
+            lengths = [length(a) for a in callable if a isa AbstractVector && !unknown_vector(a)]
             isempty(lengths) || (callable = map(a -> unknown_vector(a) ? [a[i] for i in 1:first(lengths)] : a, callable))
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
