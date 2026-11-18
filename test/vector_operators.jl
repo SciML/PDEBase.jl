@@ -4,7 +4,6 @@ using PDEBase.StrongForm
 using ModelingToolkit: @named, @parameters, PDESystem, get_bcs, get_eqs
 using Symbolics
 using LinearAlgebra: dot
-using SymbolicUtils: operation
 using SciMLBase
 using Test
 import DomainSets
@@ -166,20 +165,18 @@ else
         @test same(expanded(sum(g .^ 2) ~ 0; dvs = [U, Ac]).lhs, gx^2 + gy^2)
     end
 
-    @testset "divergence of a vector of unknown length" begin
-        @variables Vu::Vector{Real}
-        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Vu); dvs = [U])
-        @test same(eq.rhs, Dx(Vu[1]) + Dy(Vu[2]))
-    end
-
-    @testset "operators nested in a vector of unknown length" begin
-        @variables M::Matrix{Real}
-        eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(M * ∇(U)); dvs = [U])
-        @test !PDEBase._has_vector_operator(eq)
-        # Both flux components, in order, against the same product built by hand.
-        Mflux = M * [Dx(U), Dy(U)]
-        @test isequal(eq.rhs, Symbolics.unwrap(Dx(Mflux[1]) + Dy(Mflux[2])))
-        @test !isequal(eq.rhs, Symbolics.unwrap(Dx(Mflux[2]) + Dy(Mflux[1])))
+    @testset "divergence and curl need a declared length" begin
+        @variables Vu::Vector{Real} Mu::Matrix{Real}
+        @parameters F2[1:2] F3[1:3]
+        # An unsized operand would drop the components beyond the coordinates once it is bound.
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Vu); dvs = [U])
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(Vu); dvs = [U])
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mu * ∇(U)); dvs = [U])
+        # A declared length is checked by the operator, so a matching one lowers and an oversized one is an error.
+        @test same(expanded(Dt(U) ~ Symbolics.Divergence([x, y])(F2); dvs = [U]).rhs, Dx(F2[1]) + Dy(F2[2]))
+        @test same(expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(F2); dvs = [U]).rhs, Dx(F2[2]) - Dy(F2[1]))
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Divergence([x, y])(F3); dvs = [U])
+        @test_throws ArgumentError expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(F3); dvs = [U])
     end
 
     @testset "indexing a flux of unknown shape" begin
@@ -218,9 +215,12 @@ else
             joinpath(pkg, "src", "LinearAlgebra.jl"),
             "module LinearAlgebra\ndot(a::AbstractVector, b::AbstractVector) = sum(a) + sum(b)\nend\n"
         )
-        push!(LOAD_PATH, pkg)
+        saved_load_path = copy(LOAD_PATH)
+        pushfirst!(LOAD_PATH, pkg)
         try
-            fake = Base.require(Base.PkgId(uuid, "LinearAlgebra"))
+            loader = Module(:LookAlikeLoader)
+            Core.eval(loader, :(import LinearAlgebra))
+            fake = Base.invokelatest(getproperty, loader, :LinearAlgebra)
             @test fake.dot !== dot && occursin("stdlib", pathof(fake))
             Core.eval(@__MODULE__, :(@register_symbolic $fake.dot(a::AbstractVector, b::AbstractVector)))
             @parameters zq[1:3]
@@ -232,7 +232,7 @@ else
             )
             @test evaluate(eq.lhs, bindings) == 41
         finally
-            filter!(!=(pkg), LOAD_PATH)
+            copy!(LOAD_PATH, saved_load_path)
         end
     end
 
@@ -295,6 +295,19 @@ else
         @test (at(flux1.rhs), at(flux2.rhs), at(divergence.rhs)) == (252, 524, 588)
     end
 
+    @testset "elementwise arithmetic with an unknown-length vector stays symbolic" begin
+        @parameters pv::Vector{Real}
+        gradient = [19, -3]
+        bindings(p) = Dict(
+            Symbolics.unwrap(Dx(U)) => gradient[1], Symbolics.unwrap(Dy(U)) => gradient[2], Symbolics.unwrap(pv) => p
+        )
+        @named sys = PDESystem([sum(∇(U) + pv) ~ 0], boxbcs, box, [t, x, y], [U], [k, pv])
+        for eq in (only(get_eqs(expand_vector_operators(sys))), only(get_eqs(parsed_boundary_map(sys, disc).pdesys)))
+            @test evaluate(eq.lhs, bindings([7, 13])) == 36
+            @test_throws DimensionMismatch evaluate(eq.lhs, bindings([7, 13, 5]))
+        end
+    end
+
     @testset "independent-length operands keep their size" begin
         @parameters zv[1:3] zu::Vector{Real}
         for weights in (zv, zu)
@@ -309,22 +322,11 @@ else
         end
     end
 
-    @testset "contractions need equal lengths" begin
-        @variables Z3[1:3]
-        @test_throws ArgumentError expanded(dot(∇(U), Z3) ~ 0; dvs = [U])
-    end
-
     @testset "divergence of a concrete tensor flux" begin
         Mc = [1.0 0.5; 0.5 2.0]
         eq = expanded(Dt(U) ~ Symbolics.Divergence([x, y])(Mc * ∇(U)); dvs = [U])
         flux = [1.0 * Dx(U) + 0.5 * Dy(U), 0.5 * Dx(U) + 2.0 * Dy(U)]
         @test same(expand_derivatives(eq.rhs), expand_derivatives(Dx(flux[1]) + Dy(flux[2])))
-    end
-
-    @testset "vector of unknown length" begin
-        @variables Av2::Vector{Real}
-        eq = expanded(Dt(U) ~ Symbolics.Curl{false}([x, y])(Av2); dvs = [U])
-        @test same(eq.rhs, Dx(Av2[2]) - Dy(Av2[1]))
     end
 
     @testset "nested equation groups keep their shape" begin

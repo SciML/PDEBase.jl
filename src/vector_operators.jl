@@ -71,9 +71,14 @@ function expand_vector_operators end
                 return _concrete(_eager(op)(components))
             end
             if op isa Union{Symbolics.Divergence, Symbolics.Curl} && !(SymbolicUtils.shape(arg) isa SymbolicUtils.ShapeVecT)
-                # The coordinates of the operator fix which components of a vector of unknown length are needed.
-                wrapped = Symbolics.wrap(_expand_vector_operators(arg, ivs))
-                return _concrete(_eager(op)([wrapped[i] for i in eachindex(op.vars)]))
+                # Taking the components named by the coordinates would drop any further component of the bound
+                # vector without the dimension error the operator raises for a sized one.
+                throw(
+                    ArgumentError(
+                        "the operand of the vector operator $(nameof(typeof(op))) has no declared length, " *
+                            "declare the length of the vector contracted with the operator"
+                    )
+                )
             end
             return _concrete(_eager(op)(Symbolics.wrap(_expand_vector_operators(arg, ivs))))
         elseif op === getindex && iscall(first(args)) && operation(first(args)) isa _VectorOperator
@@ -101,16 +106,13 @@ function expand_vector_operators end
                 return known ? Symbolics.scalarize(Symbolics.wrap(a)) : Symbolics.wrap(a)
             end
             # Vectors of unknown length are never resolved to the length of an operator result, since that
-            # would change the value of any function whose operands have independent lengths.
+            # would change the value of any function whose operands have independent lengths. The call stays
+            # symbolic around the lowered components, so its own length rules apply once the vector is bound.
             if _is_linalg_dot(op)
                 lengths = [length(a) for a in callable if a isa AbstractVector && !_unknown_vector(a)]
                 allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
-                if any(_unknown_vector, callable)
-                    # The contraction stays a call, so `dot` checks the real length once the vector is bound.
-                    literals = map(unwrap, callable)
-                    return maketerm(typeof(ex), op, literals, metadata(ex))
-                end
             end
+            any(_unknown_vector, callable) && return maketerm(typeof(ex), op, map(unwrap, callable), metadata(ex))
             result = op(callable...)
             return _unwrap_result(result isa Symbolics.Arr ? Symbolics.scalarize(result) : result)
         end
