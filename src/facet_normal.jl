@@ -70,15 +70,22 @@ function _check_normal_not_differentiated(ex)
     return nothing
 end
 
-"Does `ex` hold a `Differential` in one of the spatial variables `sivs`, or a `NormalDerivative` of an expression with a call for which `isfield(call)` holds?"
-function _has_field_derivative(ex, isfield, sivs)
+"""
+Does `ex` hold a `NormalDerivative` of a call of a dependent variable of `v`, or a `Differential` in a
+spatial variable of `v` of a call of a variable declared with that variable among its arguments?
+`Dx(w(t))` for a time-only `w` is zero and does not count.
+"""
+function _has_field_derivative(ex, v)
     ex = safe_unwrap(ex)
     iscall(ex) || return false
     op = operation(ex)
-    if op isa NormalDerivative || op isa Differential && any(x -> isequal(op.x, x), sivs)
-        _has_field_call(only(arguments(ex)), isfield) && return true
+    declared(x, call) = haskey(v.args, operation(call)) && any(a -> isequal(a, x), v.args[operation(call)])
+    if op isa NormalDerivative
+        _has_field_call(only(arguments(ex)), call -> haskey(v.args, operation(call))) && return true
+    elseif op isa Differential && any(x -> isequal(op.x, x), indvars(v))
+        _has_field_call(only(arguments(ex)), call -> declared(op.x, call)) && return true
     end
-    return any(a -> _has_field_derivative(a, isfield, sivs), arguments(ex))
+    return any(a -> _has_field_derivative(a, v), arguments(ex))
 end
 
 function _has_field_call(ex, isfield)
@@ -87,9 +94,12 @@ function _has_field_call(ex, isfield)
     return isfield(ex) || any(a -> _has_field_call(a, isfield), arguments(ex))
 end
 
-"Throw if a condition that held a facet normal has no derivative left in its residual, `has_derivative` being false."
-function _check_normal_has_derivative(had_normal, has_derivative, label)
-    had_normal && !has_derivative && _normal_without_derivative_error(label)
+"""
+Throw if a condition that held a facet normal has no derivative left in its residual, unless the
+residual is identically zero there (a zero natural condition, as `x * n[1] * Dx(u) ~ 0` at `x = 0`).
+"""
+function _check_normal_has_derivative(had_normal, has_derivative, residual_zero, label)
+    had_normal && !has_derivative && !residual_zero && _normal_without_derivative_error(label)
     return nothing
 end
 

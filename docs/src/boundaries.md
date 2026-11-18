@@ -127,7 +127,9 @@ for a vector-valued field `E`, an absorbing (radiation) boundary term with an im
 
 ```julia
 n = PDEBase.normal(Γ)
-# the components of -(n × curl E), the conormal of the curl-curl operator
+# the components of curl E × n = -(n × curl E): the signed trace the residual below uses. Written as the
+# divergence of its antisymmetric gradient tensor, curl curl E has outward flux +(n × curl E), so
+# this residual carries the opposite sign.
 curl_trace(i) = sum(n[c] * (D[c](E[i](t, Γ)) - D[i](E[c](t, Γ))) for c in 1:3)  # D = (Dx, Dy, Dz)
 bc(i) = curl_trace(i) + γ * (n[i] * sum(n[d] * E[d](t, Γ) for d in 1:3) - E[i](t, Γ)) ~ g
 ```

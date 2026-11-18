@@ -174,7 +174,7 @@ function _lower_bc(v, bc::Union{Equation, Pair})
             face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
         end
         residual = Symbolics.simplify(Symbolics.expand(residual))
-        _check_normal_has_derivative(true, _has_field_derivative(residual, ex -> haskey(v.args, operation(ex)), indvars(v)), bc)
+        _check_normal_has_derivative(true, _has_field_derivative(residual, v), isequal(residual, 0), bc)
     end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end

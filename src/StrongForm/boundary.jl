@@ -182,7 +182,7 @@ function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
         error("unresolved symbols $(Num.(leftover)) in boundary condition $eq on $(_where(loc)); declare them as parameters or register the derivative")
     if _has_facet_normal(eq.lhs) || _has_facet_normal(eq.rhs)
         residual = Symbolics.simplify(Symbolics.expand(restrict_to_face(Num(B), face, ctx, slots)))
-        _check_normal_has_derivative(true, _depends(residual, slots.G), "$eq on $(_where(loc))")
+        _check_normal_has_derivative(true, _depends(residual, slots.G), _iszero(residual), "$eq on $(_where(loc))")
     end
     return Num(B)
 end
@@ -228,13 +228,38 @@ function _numerically_proportional(aB, aΦ; rtol = 1.0e-8, nsamples = 8, maxatte
     return accepted > 0
 end
 
+# Is `λ`, expanded, a sum of terms that are nonnegative for every real normal (a nonnegative number
+# times even powers of normal components) with at least one positive constant term? Then `λ ≥ c > 0`.
+function _positive_in_normal(λ, N)
+    terms = let ex = unwrap(Symbolics.expand(λ))
+        iscall(ex) && operation(ex) === (+) ? collect(arguments(ex)) : [ex]
+    end
+    isnormal(t) = any(m -> isequal(t, unwrap(m)), N)
+    function nonneg(t)
+        t = unwrap(t)
+        c = unwrap_const(t)
+        c isa Real && return c >= 0
+        iscall(t) || return false
+        op = operation(t)
+        op === (*) && return all(nonneg, arguments(t))
+        if op === (^)
+            base, power = arguments(t)
+            e = unwrap_const(unwrap(power))
+            return isnormal(unwrap(base)) && e isa Integer && e > 0 && iseven(e)
+        end
+        return false
+    end
+    constant(t) = (c = unwrap_const(unwrap(t)); c isa Real && c > 0)
+    return all(nonneg, terms) && any(constant, terms)
+end
+
 """
     match_flux(Φ, B, slots) -> Union{Num, Nothing}
 
 Match the boundary residual `B` against the conormal flux `Φ = G·N` (spec §5.3). Both must be
 affine in the gradient slots, `Φ = a_Φ·g + Φ₀` and `B = a_B·g + B₀`; if `a_B = λ a_Φ` for a scalar
 `λ` the matched flux `Φ₀ - B₀/λ` is returned, otherwise `nothing`. A `λ` that contains a normal slot
-`N` is never cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match. Proportionality must be proven
+`N` is cancelled only if it is provably positive (a positive constant plus even powers of normal components); otherwise it is not cancelled, so `n[1] * NormalDerivative(Γ)(u) ~ 0` is not a match. Proportionality must be proven
 by `simplify`; a numeric agreement is never accepted (open question O3).
 """
 function match_flux(Φ, B, slots)
@@ -246,8 +271,9 @@ function match_flux(Φ, B, slots)
     (i === nothing || all(_iszero, aB)) && return nothing
     λ = Symbolics.simplify(Symbolics.simplify_fractions(aB[i] / aΦ[i]))
     # A scale containing a normal component can vanish on a whole facet, where the condition is
-    # then not the conormal condition it matched symbolically; it is not cancelled.
-    (_iszero(λ) || _depends(λ, slots.N)) && return nothing
+    # then not the conormal condition it matched symbolically; it is cancelled only if it is
+    # provably positive for every real normal.
+    (_iszero(λ) || _depends(λ, slots.N) && !_positive_in_normal(λ, slots.N)) && return nothing
     # Expanded and fraction-simplified so polynomial identities such as (1 + U)^2 = 1 + 2U + U^2
     # are proven; no coefficient-by-coefficient products, which can underflow to zero.
     all(j -> _iszero(Symbolics.simplify_fractions(Symbolics.expand(aB[j] - λ * aΦ[j]))), eachindex(g)) ||

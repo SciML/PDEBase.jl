@@ -415,6 +415,7 @@ function _normal_pieces!(pieces, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return pieces
     _is_facet_normal(ex) && push!(pieces, operation(ex).piece)
+    operation(ex) isa Differential && _normal_pieces!(pieces, operation(ex).x)
     foreach(a -> _normal_pieces!(pieces, a), arguments(ex))
     return pieces
 end

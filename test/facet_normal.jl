@@ -1,7 +1,7 @@
 using PDEBase, ModelingToolkit, Symbolics, SciMLBase, SymbolicUtils, Test
 using DomainSets: Interval, Rectangle, (..)
 using PDEBase: BoxFace, FacetNormal, PieceBoundary, boxface, normal
-using PDEBase.StrongForm: analyse, StateSlots, SlotContext, slot_condition, check_whitelist, NaturalBC, match_flux
+using PDEBase.StrongForm: analyse, StateSlots, SlotContext, slot_condition, check_whitelist, NaturalBC, match_flux, route_natural
 
 cross(a, b) = [a[2] * b[3] - a[3] * b[2], a[3] * b[1] - a[1] * b[3], a[1] * b[2] - a[2] * b[1]]
 
@@ -159,6 +159,12 @@ end
     Φ = G[1] * N[1] + G[2] * N[2]
     @test match_flux(Φ, Φ, s) !== nothing
     @test match_flux(Φ, N[1] * Φ, s) === nothing
+    # a scale that is provably positive for every real normal is cancelled
+    @test symeq(match_flux(Φ, (1 + N[1]^2) * (Φ - 3), s), 3)
+    @test symeq(last(route_natural((1 + N[1]^2) * (Φ - 3), [[G[1], G[2]]], N, s)), 3)
+    @test match_flux(Φ, (N[1]^2) * (Φ - 3), s) === nothing
+    @test match_flux(Φ, (1 - N[1]^2) * (Φ - 3), s) === nothing
+    @test match_flux(Φ, (1 + N[1]) * (Φ - 3), s) === nothing
     # scalar heat on a mesh: n₁ ∂ₙu ~ 0 vanishes on a facet with n = (0, 1), so it is not the natural condition
     heat3 = Dt(u(t, x, y, z)) ~ sum(Dxyz[c](Dxyz[c](u(t, x, y, z))) for c in 1:3)
     ic = u(0, x, y, z) ~ 0
@@ -355,6 +361,22 @@ end
         "contains the facet normal but no derivative of a trace",
         errmsg(() -> slot_condition(nl[1] * u(t, Γl) ~ 1, Γl, SlotContext(sysbc, vbc), StateSlots(1, 2, 0)))
     )
+    # the zero natural condition at a degenerate face is accepted, a nonzero gradient-free residual is not
+    degenerate = x * nl[1] * Dx(u(t, Γl)) ~ 0
+    sysdeg = PDESystem([Dt(u(t, x, y)) ~ Dx(x * Dx(u(t, x, y))) + Dy(Dy(u(t, x, y)))], [u(0, x, y) ~ 0, degenerate, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y)], [k => 1.0]; name = :sys)
+    @test isequal(Symbolics.simplify(to_box_bcs(sysdeg; time = t).bcs[2].lhs), Symbolics.simplify(-x * Dx(u(t, 0.0, y))))
+    vdeg = VariableMap(sysdeg, NormalBoxDisc(t))
+    andeg = analyse(sysdeg, vdeg, boundarymap(sysdeg.bcs, vdeg, NormalBoxDisc(t)))
+    @test only(andeg.natural).eq == 1 && symeq(only(andeg.natural).Φ, 0)
+    @test occursin("no derivative of a trace", lowering(x * nl[1] * u(t, Γl) ~ 1))
+    # the classifier reads the differentiation variable's normal too
+    Γr = boundarypiece(rect, :right)
+    @test occursin("calls on 2 locations", errmsg(() -> classify_condition(vdeg, Differential(nl[1])(u(t, Γl)) ~ u(t, Γr))))
+    @test occursin("uses the normal of", errmsg(() -> classify_condition(vdeg, Differential(normal(Γr)[1])(u(t, Γl)) ~ 0)))
+    # Dx of a time-only field is zero and does not count
+    @variables w(..)
+    sysw = PDESystem([heat, Dt(w(t)) ~ 0], [u(0, x, y) ~ 0, Dx(w(t)) + nl[1] * u(t, Γl) ~ 1, u(t, x, 0.0) ~ 0, u(t, x, 2.0) ~ 0, u(t, 1.0, y) ~ 0], domains, [t, x, y], [u(t, x, y), w(t)], [k => 1.0]; name = :sys)
+    @test occursin("no derivative of a trace", errmsg(() -> to_box_bcs(sysw; time = t)))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one
     @test occursin("contains the facet normal but no derivative of a trace", lowering(Differential(k)(u(t, Γl)) + nl[1] * u(t, Γl) ~ 0))
     @test occursin("derivative of an expression containing the facet normal", lowering(Differential(nl[1])(Dx(u(t, Γl))) ~ 0))
