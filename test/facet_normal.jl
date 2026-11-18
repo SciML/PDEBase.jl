@@ -422,6 +422,13 @@ end
     vw = VariableMap(sysw, NormalBoxDisc(t))
     sw = StateSlots(2, 2, 0)
     @test occursin("no derivative of a trace", errmsg(() -> slot_condition(nl[1] * Dx(w(t)) + u(t, Γl) ~ 0, Γl, SlotContext(sysw, vw), sw)))
+    # the normal derivative of w(t, y) has no x part
+    @variables w5(..)
+    sysnd = PDESystem([heat, Dt(w5(t, y)) ~ 0], [u(0, x, y) ~ 0, u(t, x, 0.0) ~ 0], domains, [t, x, y], [u(t, x, y), w5(t, y)], [k => 1.0]; name = :sys)
+    vnd = VariableMap(sysnd, NormalBoxDisc(t))
+    @test symeq(slot_condition(NormalDerivative(Γl)(w5(t, Γl)) ~ 0, Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0)), 0)
+    # a normal of another piece cannot cancel between the sides
+    @test occursin("is the normal of", errmsg(() -> slot_condition(NormalDerivative(Γl)(u(t, Γl)) + normal(boundarypiece(rect, :right))[1] ~ normal(boundarypiece(rect, :right))[1], Γl, SlotContext(sysnd, vnd), StateSlots(2, 2, 0))))
     # a derivative in a parameter is no spatial derivative, and the normal cannot be the variable of one
     @test occursin("contains the facet normal but no derivative of a trace", lowering(Differential(k)(u(t, Γl)) + nl[1] * u(t, Γl) ~ 0))
     @test occursin("derivative of an expression containing the facet normal", lowering(Differential(nl[1])(Dx(u(t, Γl))) ~ 0))

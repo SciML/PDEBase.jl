@@ -134,7 +134,8 @@ function _slot_operator(ctx::SlotContext, op::NormalDerivative, ex, loc, slots, 
     _check_on_location(ctx, inner, f, loc, label)
     dim = length(ctx.sivs)
     n = _normal(loc, ctx, slots)
-    return unwrap(sum(n[d] * slots.G[(f - 1) * dim + d] for d in 1:dim))
+    # only the coordinates the field has: a derivative in another is zero, as for a Cartesian derivative
+    return unwrap(sum(n[d] * slots.G[(f - 1) * dim + d] for d in 1:dim if any(a -> isequal(a, ctx.sivs[d]), ctx.args[ctx.ops[f]]); init = 0))
 end
 
 # A component of the facet normal is `N[d]` on a piece and the numeric `±e` on a box face.
@@ -177,6 +178,8 @@ slot_condition(eq::Equation, face, ctx::SlotContext, slots) =
 
 function _slot_unrestricted(eq::Equation, face, ctx::SlotContext, slots)
     loc = _location(ctx, face)
+    # each side is checked on its own, so a misplaced normal cannot cancel in the difference
+    foreach(side -> _slot_rules!(Dict{Any, Any}(), ctx, unwrap(side), loc, slots, "$eq on $(_where(loc))", true), (eq.lhs, eq.rhs))
     B = _slot_expression(ctx, unwrap(eq.lhs - eq.rhs), loc, slots, "$eq on $(_where(loc))")
     slotset = Set(unwrap.(vcat(slots.U, slots.G, slots.X, [slots.T], slots.N, slots.P)))
     leftover = unique(_leftovers!(Any[], B, slotset, false))
