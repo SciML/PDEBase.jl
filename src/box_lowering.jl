@@ -169,7 +169,7 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
     if _has_facet_normal(lhs) || _has_facet_normal(rhs)
         residual = Symbolics.simplify(Symbolics.expand(Num(lowered[1]) - Num(lowered[2])))
-        _check_normal_has_derivative(true, _has_field_derivative(residual, ex -> haskey(v.args, operation(ex)), v.time), bc)
+        _check_normal_has_derivative(true, _has_field_derivative(residual, ex -> haskey(v.args, operation(ex)), indvars(v)), bc)
     end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end

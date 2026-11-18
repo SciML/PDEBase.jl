@@ -63,21 +63,21 @@ end
 
 "Reject a `Differential` node `ex` whose operand holds a facet normal: the normal is not a field to differentiate."
 function _check_normal_not_differentiated(ex)
-    _has_facet_normal(only(arguments(ex))) && error(
+    (_has_facet_normal(only(arguments(ex))) || operation(ex) isa Differential && _has_facet_normal(operation(ex).x)) && error(
         "derivative of an expression containing the facet normal is not supported in a boundary condition: $(Symbolics.wrap(ex))"
     )
     return nothing
 end
 
-"Does `ex` hold a spatial `Differential` (not in `time`) or a `NormalDerivative` of an expression with a call for which `isfield(call)` holds?"
-function _has_field_derivative(ex, isfield, time)
+"Does `ex` hold a `Differential` in one of the spatial variables `sivs`, or a `NormalDerivative` of an expression with a call for which `isfield(call)` holds?"
+function _has_field_derivative(ex, isfield, sivs)
     ex = safe_unwrap(ex)
     iscall(ex) || return false
     op = operation(ex)
-    if op isa NormalDerivative || op isa Differential && !isequal(op.x, time)
+    if op isa NormalDerivative || op isa Differential && any(x -> isequal(op.x, x), sivs)
         _has_field_call(only(arguments(ex)), isfield) && return true
     end
-    return any(a -> _has_field_derivative(a, isfield, time), arguments(ex))
+    return any(a -> _has_field_derivative(a, isfield, sivs), arguments(ex))
 end
 
 function _has_field_call(ex, isfield)
