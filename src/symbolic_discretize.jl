@@ -23,7 +23,7 @@ end
 """
     parsed_boundary_map(pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true)
 
-Run the analysis half of `symbolic_discretize` without discretizing: `lower_boundaries`,
+Run the analysis half of `symbolic_discretize` without discretizing: `expand_vector_operators`, `lower_boundaries`,
 complex splitting, cardinalization, `make_pdesys_compatible`, `VariableMap`,
 `interface_errors`, `parse_bcs` and `check_boundarymap`. Returns the named tuple
 `(; boundarymap, v, pdesys, complexmap)`, where `pdesys` is the lowered, compatible system the
@@ -38,6 +38,7 @@ analysis.
 function parsed_boundary_map(
         pdesys::PDESystem, discretization::AbstractEquationSystemDiscretization; checks = true
     )
+    pdesys = expand_vector_operators(pdesys)
     pdesys = lower_boundaries(pdesys, discretization)
     pdesys, complexmap = handle_complex(pdesys)
     pdesys = cardinalize_eqs(pdesys)
@@ -135,7 +136,8 @@ domain, and no boundary map is parsed.
 
 The hook sequence is
 
-1. `handle_complex`, `cardinalize_eqs` and `make_pdesys_compatible` normalize the system;
+1. `expand_vector_operators` rewrites `Grad`, `Divergence`, `Curl` and `Laplacian` into `Differential`
+   terms, then `handle_complex`, `cardinalize_eqs` and `make_pdesys_compatible` normalize the system;
 2. `VariableMap` and `interface_errors` analyze the variables;
 3. `construct_disc_state(discretization)` creates the mutable discretization state;
 4. `construct_discrete_space(v, pdesys, discretization)` creates the space the residuals
@@ -152,6 +154,7 @@ function SciMLBase.symbolic_discretize(
         pdesys::PDESystem, discretization::AbstractOptimizationSystemDiscretization;
         checks = true
     )
+    pdesys = expand_vector_operators(pdesys)
     pdesys, complexmap = handle_complex(pdesys)
     pdesys = cardinalize_eqs(pdesys)
     pdesys, replaced_vars = make_pdesys_compatible(pdesys)

@@ -1,5 +1,6 @@
 module PDEBase
 import DomainSets
+import LinearAlgebra
 using IntervalSets: var".."
 import ModelingToolkitBase
 import PrecompileTools
@@ -133,6 +134,7 @@ include("discretization_state.jl")
 include("parse_boundaries.jl")
 include("periodic_map.jl")
 include("make_pdesys_compatible.jl")
+include("vector_operators.jl")
 include("symbolic_discretize.jl")
 include("dae_support.jl")
 include("StrongForm/StrongForm.jl")
@@ -173,7 +175,7 @@ export to_box_bcs
 @public BCKind, Essential, Natural, Robin, bckind
 
 # Analysis half of `symbolic_discretize`, for tools that need the boundary map only.
-@public parsed_boundary_map
+@public parsed_boundary_map, expand_vector_operators
 
 # Versioned extension points for PDE discretization packages. These remain
 # qualified so that ordinary applications do not accidentally depend on them.
