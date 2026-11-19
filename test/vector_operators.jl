@@ -363,6 +363,32 @@ else
         @test_throws ArgumentError expanded(dot(Dt((g + pc)[1] * g), g) ~ 0; dvs = [U])
     end
 
+    @testset "a derivative of a scalar reduction with an unsized vector is deferred" begin
+        @parameters pr::Vector{Real}
+        field = t^2 * x^2 * y + t * x * y^3
+        gf = Symbolics.Grad([x, y])(field)
+        point = Dict(t => 2, x => 3, y => 4)
+        fx, fy = Dx(field), Dy(field)
+        # References bind p = [7, 13] before differentiating.
+        references = [
+            (Dt(dot(gf, pr)), Dt(7 * fx + 13 * fy)),
+            (Dt(sum(gf + pr)), Dt(fx + 7 + fy + 13)),
+            (Dt(sum(pr) * gf[1]), Dt(20 * fx)),
+        ]
+        for (lhs, reference) in references
+            expected = Symbolics.unwrap_const(Symbolics.substitute(expand_derivatives(reference), point))
+            @named sys = PDESystem([Dt(U) ~ lhs], boxbcs, box, [t, x, y], [U], [k, pr])
+            # The parsed system is cardinalized to `Dt(U) - rhs ~ 0`, so its residual has the opposite sign.
+            lowered = only(get_eqs(expand_vector_operators(sys)))
+            parsed = only(get_eqs(parsed_boundary_map(sys, disc).pdesys))
+            for (side, sign) in ((lowered.rhs, 1), (-Symbolics.substitute(parsed.lhs, Dict(Symbolics.unwrap(Dt(U)) => 0)), 1))
+                bound = Symbolics.substitute_in_deriv(Symbolics.unwrap(side), Dict(Symbolics.unwrap(pr) => [7, 13]); fold = Val(true))
+                value = Symbolics.substitute(expand_derivatives(bound), point)
+                @test Symbolics.unwrap_const(value) == sign * expected
+            end
+        end
+    end
+
     @testset "a scalar derivative of an index into a composite is rejected" begin
         @parameters pd2::Vector{Real}
         @test_throws ArgumentError expanded(Dt((∇(U) + pd2)[1]) ~ 0; dvs = [U])
@@ -375,8 +401,10 @@ else
         point = Dict(t => 2, x => 3, y => 4)
         eq = expanded(dot(Dt(pe[ie + 1] * gf), gf) ~ 0; dvs = [U])
         @test same(Symbolics.substitute(expand_derivatives(eq.lhs), point), 94160 * pe[ie + 1])
-        # The same coefficient with p[2] bound to 13 is the control value.
-        @test 13 * 94160 == 1224080
+        # Binding i = 1 and p = [7, 13] in the lowered expression gives the value for p[2] = 13.
+        lowered = Symbolics.substitute(expand_derivatives(eq.lhs), point)
+        bound = Symbolics.substitute(lowered, Dict(Symbolics.unwrap(ie) => 1, Symbolics.unwrap(pe) => [7, 13]); fold = Val(true))
+        @test Symbolics.unwrap_const(bound) == 1224080
         # An index expression that itself contains an unsized vector does not count as a scalar lookup.
         @test_throws ArgumentError expanded(dot(Dt(pe[sum(qi)] * gf), gf) ~ 0; dvs = [U])
     end

@@ -25,10 +25,11 @@ named by the coordinates and must not drop further ones, so an unsized vector, o
 contains one (for example a sized matrix times an unsized vector, whose two-element result Symbolics infers
 but cannot write out), throws an `ArgumentError`. Other operations on operator results that contain an
 unsized vector, such as `sum(g + p)` or `dot(g, p)`, are kept as calls on the lowered components and are
-evaluated once the vector is bound. The exception is a derivative: a `Differential` of an array expression
-that contains an unsized vector as a whole, including by an index into a composite such as `(g + p)[1]`
-(whether the expression differentiated is an array or that scalar lookup), throws an `ArgumentError`, because the derivative would act on the unknown elements. A bare parameter indexed
-by an integer-typed expression, as in `p[1]`, `p[i]` or `p[i + 1]` with an `Int` symbol `i`, counts as a scalar and may be differentiated.
+evaluated once the vector is bound. The exception is a derivative that would act on the unknown elements: a
+`Differential` applied to an array expression that contains an unsized vector as a whole, or to an index into
+such a composite such as `(g + p)[1]`, throws an `ArgumentError`. A derivative of a scalar reduction such as
+`dot(g, p)` or `sum(g + p)` is deferred like any other operation, and so is a bare parameter indexed by an
+integer-typed expression, as in `p[1]`, `p[i]` or `p[i + 1]` with an `Int` symbol `i`, which counts as a scalar.
 """
 function expand_vector_operators end
 
@@ -124,7 +125,7 @@ function expand_vector_operators end
                 lengths = collect(skipmissing(map(_extent, newargs)))
                 allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
             end
-            if op isa Differential
+            if op isa Differential && (!_scalar_shaped_value(only(newargs)) || _composite_lookup(only(newargs)))
                 throw(
                     ArgumentError(
                         "a derivative of an expression that contains a vector without a declared length " *
@@ -188,6 +189,18 @@ function expand_vector_operators end
         # An integer-typed index expression, which must not itself contain an unsized array.
         return i isa Integer || (i isa SymbolicUtils.BasicSymbolic && SymbolicUtils.symtype(i) <: Integer && !_has_unsized(i))
     end
+    # Whether `a` contains a lookup into a composite expression that holds an unsized array as a whole.
+    _composite_lookup(a::AbstractArray) = any(_composite_lookup, a)
+    _composite_lookup(a::Union{Num, Symbolics.Arr}) = _composite_lookup(unwrap(a))
+    function _composite_lookup(a::SymbolicUtils.BasicSymbolic)
+        iscall(a) || return false
+        if operation(a) === getindex
+            indexed = first(arguments(a))
+            iscall(indexed) && _has_unsized(indexed) && return true
+        end
+        return any(_composite_lookup, arguments(a))
+    end
+    _composite_lookup(a) = false
     _scalar_shaped_value(a) = a isa SymbolicUtils.BasicSymbolic ? _scalar_shaped(a) : !(a isa AbstractArray)
     # The length of a one-dimensional operand when it is known, `missing` otherwise.
     _extent(a::AbstractVector) = a isa Symbolics.Arr ? _extent(unwrap(a)) : length(a)
