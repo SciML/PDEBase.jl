@@ -26,9 +26,9 @@ contains one (for example a sized matrix times an unsized vector, whose two-elem
 but cannot write out), throws an `ArgumentError`. Other operations on operator results that contain an
 unsized vector, such as `sum(g + p)` or `dot(g, p)`, are kept as calls on the lowered components and are
 evaluated once the vector is bound. The exception is a derivative: a `Differential` of an array expression
-that contains an unsized vector as a whole, including by an index into a composite such as `(g + p)[1]`,
-throws an `ArgumentError`, because the derivative would act on the unknown elements. A bare parameter indexed
-by an integer, as in `p[1]` or `p[i]` with an `Int` symbol `i`, counts as a scalar and may be differentiated.
+that contains an unsized vector as a whole, including by an index into a composite such as `(g + p)[1]`
+(whether the expression differentiated is an array or that scalar lookup), throws an `ArgumentError`, because the derivative would act on the unknown elements. A bare parameter indexed
+by an integer-typed expression, as in `p[1]`, `p[i]` or `p[i + 1]` with an `Int` symbol `i`, counts as a scalar and may be differentiated.
 """
 function expand_vector_operators end
 
@@ -124,10 +124,10 @@ function expand_vector_operators end
                 lengths = collect(skipmissing(map(_extent, newargs)))
                 allequal(lengths) || throw(ArgumentError("the vectors contracted with `dot` have different lengths $(lengths)"))
             end
-            if op isa Differential && !_scalar_shaped_value(only(newargs))
+            if op isa Differential
                 throw(
                     ArgumentError(
-                        "a derivative of an array expression that contains a vector without a declared length " *
+                        "a derivative of an expression that contains a vector without a declared length " *
                             "is not supported, declare the length of the vector"
                     )
                 )
@@ -185,7 +185,8 @@ function expand_vector_operators end
     _has_unsized(a) = false
     function _integer_index(i)
         i = unwrap_const(i)
-        return i isa Integer || (i isa SymbolicUtils.BasicSymbolic && !iscall(i) && SymbolicUtils.symtype(i) <: Integer)
+        # An integer-typed index expression, which must not itself contain an unsized array.
+        return i isa Integer || (i isa SymbolicUtils.BasicSymbolic && SymbolicUtils.symtype(i) <: Integer && !_has_unsized(i))
     end
     _scalar_shaped_value(a) = a isa SymbolicUtils.BasicSymbolic ? _scalar_shaped(a) : !(a isa AbstractArray)
     # The length of a one-dimensional operand when it is known, `missing` otherwise.

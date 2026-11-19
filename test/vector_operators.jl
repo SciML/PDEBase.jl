@@ -363,6 +363,24 @@ else
         @test_throws ArgumentError expanded(dot(Dt((g + pc)[1] * g), g) ~ 0; dvs = [U])
     end
 
+    @testset "a scalar derivative of an index into a composite is rejected" begin
+        @parameters pd2::Vector{Real}
+        @test_throws ArgumentError expanded(Dt((∇(U) + pd2)[1]) ~ 0; dvs = [U])
+    end
+
+    @testset "an integer expression indexes a bare unsized parameter like a literal" begin
+        @parameters pe::Vector{Real} ie::Int qi::Vector{Int}
+        field = t^2 * x^2 * y + t * x * y^3
+        gf = Symbolics.Grad([x, y])(field)
+        point = Dict(t => 2, x => 3, y => 4)
+        eq = expanded(dot(Dt(pe[ie + 1] * gf), gf) ~ 0; dvs = [U])
+        @test same(Symbolics.substitute(expand_derivatives(eq.lhs), point), 94160 * pe[ie + 1])
+        # The same coefficient with p[2] bound to 13 is the control value.
+        @test 13 * 94160 == 1224080
+        # An index expression that itself contains an unsized vector does not count as a scalar lookup.
+        @test_throws ArgumentError expanded(dot(Dt(pe[sum(qi)] * gf), gf) ~ 0; dvs = [U])
+    end
+
     @testset "an integer symbol indexes a bare unsized parameter like a literal" begin
         @parameters pi_::Vector{Real} ii::Int
         field = t^2 * x^2 * y + t * x * y^3
