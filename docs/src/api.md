@@ -55,7 +55,14 @@ PDEBase.x2i
 PDEBase.BoundaryPiece
 PDEBase.boundarypiece
 PDEBase.boundarypieces
-PDEBase.NormalDerivative
+```
+
+`NormalDerivative` is documented here only while PDEBase defines its own fallback; once
+Symbolics provides it, the Symbolics documentation covers it.
+
+```@autodocs
+Modules = [PDEBase]
+Filter = t -> nameof(t) === :NormalDerivative
 ```
 
 ## Abstract Types
@@ -175,6 +182,7 @@ For detailed documentation of interface functions, see [Developer Extension API]
 | Function | Purpose |
 |----------|---------|
 | `parsed_boundary_map` | Parse and check the boundary map without discretizing |
+| `expand_vector_operators` | Rewrite `Grad`, `Divergence`, `Curl` and `Laplacian` into `Differential` terms |
 | `lower_boundaries` | Rewrite boundary conditions for the discretizer |
 | `interface_errors` | Check PDESystem compatibility |
 | `check_boundarymap` | Validate boundary conditions |

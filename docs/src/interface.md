@@ -115,12 +115,13 @@ PDEBase.should_transform
 PDEBase.transform_pde_system!
 ```
 
-`parsed_boundary_map` runs the analysis steps above, up to and including
+`parsed_boundary_map` first runs `expand_vector_operators`, then the analysis steps above, up to and including
 `check_boundarymap`, without discretizing, for tools that only need the parsed boundary
 map. `symbolic_discretize` calls it.
 
 ```@docs
 PDEBase.parsed_boundary_map
+PDEBase.expand_vector_operators
 ```
 
 ## Construction
