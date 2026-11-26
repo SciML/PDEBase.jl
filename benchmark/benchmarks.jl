@@ -60,3 +60,19 @@ SUITE["interface"]["check_boundarymap"] = @benchmarkable PDEBase.check_boundarym
 SUITE["interface"]["should_transform"] = @benchmarkable PDEBase.should_transform(
     $pdesys, PlainDiscretization(), Dict()
 )
+
+# =============================================================================
+# Fresh-process time to first call. Each sample starts a new Julia process, so the
+# precompiled workload (rather than a warm session) decides the result. Subtract
+# "load" from "first_calls" to get the cost of the first expand_vector_operators,
+# parsed_boundary_map and StrongForm.analyse calls.
+# =============================================================================
+
+const TTFX_CHILD = joinpath(@__DIR__, "ttfx_child.jl")
+ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) $TTFX_CHILD $stage`
+
+SUITE["ttfx"] = BenchmarkGroup()
+
+for stage in ("load", "first_calls")
+    SUITE["ttfx"][stage] = @benchmarkable run($(ttfx_cmd(stage))) samples = 5 evals = 1 seconds = 600
+end
