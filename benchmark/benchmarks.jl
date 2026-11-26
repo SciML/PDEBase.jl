@@ -63,9 +63,10 @@ SUITE["interface"]["should_transform"] = @benchmarkable PDEBase.should_transform
 
 # =============================================================================
 # Fresh-process time to first call. Each sample starts a new Julia process, so the
-# precompiled workload (rather than a warm session) decides the result. Subtract
-# "load" from "first_calls" to get the cost of the first expand_vector_operators,
-# parsed_boundary_map and StrongForm.analyse calls.
+# precompiled workload (rather than a warm session) decides the result. "load" stops
+# after loading the packages and building the system; subtract it from "first_calls" to
+# get the cost of the first expand_vector_operators, parsed_boundary_map and
+# StrongForm.analyse calls.
 # =============================================================================
 
 const TTFX_CHILD = joinpath(@__DIR__, "ttfx_child.jl")
