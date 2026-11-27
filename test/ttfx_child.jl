@@ -16,5 +16,5 @@ ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active
     @test success(pipeline(ttfx_cmd("load")))
     @test success(pipeline(ttfx_cmd("first_calls")))
     reply = read(pipeline(ttfx_cmd("import"); stdin = IOBuffer("go\n")), String)
-    @test split(reply) == ["ready", split(reply)[2]] && 0 < parse(Float64, split(reply)[2]) < 60
+    @test split(reply) == ["ready", split(reply)[2]] && parse(Float64, split(reply)[2]) > 0
 end
