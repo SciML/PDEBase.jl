@@ -1,5 +1,5 @@
 # Fresh-process workloads, run as a subprocess by benchmark/benchmarks.jl. `load` stops after
-# building the system. `first_calls` also runs the main entry points once and prints an
+# building the system. `first_calls` also runs parsed_boundary_map and analyse once and prints an
 # `analysis nfields=N dim=D` record from the analysis result and the isolated times of the first
 # parsed_boundary_map and analyse calls. `import` loads the direct
 # dependencies of PDEBase, prints `ready`, waits for a `go` line on stdin and prints the package name
@@ -61,7 +61,6 @@ pdesys = PDESystem(
 )
 
 if STAGE == "first_calls"
-    PDEBase.expand_vector_operators(pdesys)
     parsed_seconds = @elapsed parsed = PDEBase.parsed_boundary_map(pdesys, TTFXDiscretization(t))
     analyse_seconds = @elapsed analysis = PDEBase.StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
     println("analysis nfields=", analysis.nfields, " dim=", analysis.dim)

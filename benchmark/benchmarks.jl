@@ -100,10 +100,10 @@ SUITE["interface"]["should_transform"] = @benchmarkable PDEBase.should_transform
 # =============================================================================
 # Fresh-process costs. Each sample starts a new Julia process, so the precompiled workload
 # (rather than a warm session) decides the result. "load" stops after loading the packages
-# and building the system, and "first_calls" also runs the first expand_vector_operators,
-# parsed_boundary_map and StrongForm.analyse calls. Both stages report whole-process wall
-# time. To measure the three first calls in isolation, time them inside the child after
-# package loading and model construction.
+# and building the system, and "first_calls" also runs the first parsed_boundary_map and StrongForm.analyse calls. Both
+# stages report whole-process wall time. To measure the two first calls in isolation, time them
+# inside the child after package loading and model construction, as the first_calls stage
+# prints.
 #
 # "import_deps_loaded" times `using PDEBase` in a fresh process whose direct dependencies are
 # already loaded, which is the cost every session that has the dependencies loaded pays for
