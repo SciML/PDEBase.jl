@@ -6,11 +6,11 @@ ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active
 
 @testset "benchmark/ttfx_child.jl stages" begin
     mktemp() do path, io
-        invalid = run(pipeline(ignorestatus(ttfx_cmd("frist_calls")); stderr = io))
+        invalid = run(pipeline(ignorestatus(ttfx_cmd("no_such_stage")); stderr = io))
         close(io)
         @test !success(invalid)
         diagnostic = read(path, String)
-        @test occursin("unknown stage \"frist_calls\"", diagnostic)
+        @test occursin("unknown stage \"no_such_stage\"", diagnostic)
         @test occursin("load, first_calls, import", diagnostic)
     end
     @test success(pipeline(ttfx_cmd("load")))
