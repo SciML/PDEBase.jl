@@ -123,7 +123,9 @@ end
 
 SUITE["ttfx"]["import_deps_loaded"] = @benchmarkable begin
     println(child, "go")
-    parse(Float64, readline(child))
+    name, seconds = split(readline(child))
+    name == "PDEBase" || error("the import stage of ttfx_child.jl reported $name")
+    parse(Float64, seconds)
 end setup = (
     child = open($(ttfx_cmd("import")), "r+"); readline(child) == "ready" || error("the import stage of ttfx_child.jl did not report ready")
 ) teardown = (wait(child); success(child) || error("the import stage of ttfx_child.jl failed")) samples = 5 evals = 1 seconds = 600

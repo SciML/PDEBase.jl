@@ -1,7 +1,8 @@
 using PDEBase
 using PDEBase: PieceBoundary, Essential, Natural, Robin
 using ModelingToolkit
-using Symbolics: unwrap
+import Symbolics
+using Symbolics: Num, unwrap
 using SciMLBase
 using Test
 import DomainSets
@@ -159,4 +160,26 @@ end
     @test isequal(v.spatial_axes, [y, x])
     @test isequal(depvars(v), [unwrap(u(t, x, y))])
     @test spatial_domain(v) isa MeshDomain
+end
+
+# A discretization that lets the boundary map through, unlike DummyMeshDiscretization.
+struct FluxMeshDiscretization <: PDEBase.AbstractMeshDiscretization
+    time::Any
+end
+PDEBase.get_time(disc::FluxMeshDiscretization) = disc.time
+
+@testset "a nonzero normal derivative gives the outward boundary flux -5k" begin
+    @named pdesys = PDESystem(
+        [heat], [u(t, Γ_in) ~ 0, Dn_wall(u(t, Γ_wall)) ~ 5, u(0, x, y) ~ 0], domains,
+        [t, x, y], [u(t, x, y)], [k, α]
+    )
+    parsed = PDEBase.parsed_boundary_map(pdesys, FluxMeshDiscretization(t))
+    an = PDEBase.StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
+    slots = an.slots
+    same(a, b) = isequal(Symbolics.expand(Num(a) - Num(b)), Num(0))
+    @test same(an.mass[1], slots.Ud[1])
+    @test all(same.(an.flux[1], [-slots.P[1] * slots.G[1], -slots.P[1] * slots.G[2]]))
+    @test same(an.strong[1], slots.Ud[1] - slots.P[1] * (slots.H[1] + slots.H[4]))
+    # The flux -k ∇u⋅n of the diffusion term, with ∇u⋅n = 5 prescribed on the wall.
+    @test same(only(an.natural).Φ, -5 * slots.P[1])
 end

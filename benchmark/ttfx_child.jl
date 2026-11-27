@@ -1,8 +1,9 @@
 # Fresh-process workloads, run as a subprocess by benchmark/benchmarks.jl. `load` stops after
 # building the system. `first_calls` also runs the main entry points once and prints an
-# `analysis nfields=N dim=D` record from the analysis result. `import` loads the direct
-# dependencies of PDEBase, prints `ready`, waits for a `go` line on stdin and prints the seconds
-# that `using PDEBase` took; any other input exits unsuccessfully without a duration.
+# `analysis nfields=N dim=D` record from the analysis result and the isolated times of the first
+# parsed_boundary_map and analyse calls. `import` loads the direct
+# dependencies of PDEBase, prints `ready`, waits for a `go` line on stdin and prints the package name
+# and the seconds that `using PDEBase` took; any other input exits unsuccessfully without a duration.
 const STAGES = ("load", "first_calls", "import")
 const STAGE = only(ARGS)
 STAGE in STAGES ||
@@ -35,7 +36,7 @@ if STAGE == "import"
         exit(1)
     end
     seconds = @elapsed Core.eval(Main, :(using PDEBase))
-    println(seconds)
+    println(nameof(Base.invokelatest(getfield, Main, :PDEBase)), " ", seconds)
     flush(stdout)
     exit()
 end
@@ -61,7 +62,9 @@ pdesys = PDESystem(
 
 if STAGE == "first_calls"
     PDEBase.expand_vector_operators(pdesys)
-    parsed = PDEBase.parsed_boundary_map(pdesys, TTFXDiscretization(t))
-    analysis = PDEBase.StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
+    parsed_seconds = @elapsed parsed = PDEBase.parsed_boundary_map(pdesys, TTFXDiscretization(t))
+    analyse_seconds = @elapsed analysis = PDEBase.StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
     println("analysis nfields=", analysis.nfields, " dim=", analysis.dim)
+    # The first calls timed in isolation, after package loading and model construction.
+    println("first_calls parsed_boundary_map=", parsed_seconds, " analyse=", analyse_seconds)
 end

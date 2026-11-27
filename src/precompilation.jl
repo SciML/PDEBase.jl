@@ -53,23 +53,12 @@ using PrecompileTools
     end
 end
 
-# Private stand-ins for a discretizer package's types, so the entry points below run on
-# the concrete discretization subtypes that downstream packages define.
+# Private stand-in for a discretizer package's type, so the entry points below run on the
+# concrete discretization subtypes that downstream packages define.
 struct _WarmupBoxDiscretization <: AbstractBoxDiscretization
     time::Any
 end
 get_time(disc::_WarmupBoxDiscretization) = disc.time
-
-struct _WarmupMesh end
-meshdim(::_WarmupMesh) = 2
-facetset_names(::_WarmupMesh) = (:inlet, :wall)
-cellset_names(::_WarmupMesh) = (:all,)
-contains_point(::_WarmupMesh, p) = all(c -> 0 <= c <= 1, p)
-
-struct _WarmupMeshDiscretization <: AbstractMeshDiscretization
-    time::Any
-end
-get_time(disc::_WarmupMeshDiscretization) = disc.time
 
 @setup_workload begin
     @variables t x y
@@ -87,27 +76,6 @@ get_time(disc::_WarmupMeshDiscretization) = disc.time
 
     @compile_workload begin
         parsed = parsed_boundary_map(heat2d, box_disc)
-        StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
-    end
-end
-
-@setup_workload begin
-    @variables t x y k
-    @variables u(..)
-    Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
-    Ω = MeshDomain(_WarmupMesh())
-    Γin, Γwall = boundarypiece(Ω, :inlet), boundarypiece(Ω, :wall)
-    Dn = NormalDerivative(Γwall)
-    U = u(t, x, y)
-    bcs = [u(t, Γin) ~ sin(t), Dn(u(t, Γwall)) ~ 0, u(0, x, y) ~ 0]
-    meshsys = PDESystem(
-        [Dt(U) ~ k * (Dx(Dx(U)) + Dy(Dy(U)))], bcs,
-        [(x, y) ∈ Ω, t ∈ DomainSets.Interval(0.0, 1.0)], [t, x, y], [U], [k], name = :warmup_mesh
-    )
-    mesh_disc = _WarmupMeshDiscretization(t)
-
-    @compile_workload begin
-        parsed = parsed_boundary_map(meshsys, mesh_disc)
         StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
     end
 end

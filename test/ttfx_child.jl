@@ -4,12 +4,13 @@ using Test
 const TTFX_CHILD = joinpath(pkgdir(PDEBase), "benchmark", "ttfx_child.jl")
 ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) $TTFX_CHILD $stage`
 
-# Runs the import stage through a duplex pipe: reads `ready`, sends `trigger` (or closes stdin
+# Runs the import stage through a duplex pipe: reads `ready`, sends `trigger` (a closed stdin
 # when it is `nothing`) and returns the readiness line, the reply and the exit status.
 function import_stage(trigger)
-    child = open(pipeline(ttfx_cmd("import"); stderr = devnull), "r+")
+    cmd = pipeline(ttfx_cmd("import"); stderr = devnull)
+    child = trigger === nothing ? open(cmd, "r") : open(cmd, "r+")
     ready = readline(child)
-    trigger === nothing ? close(child.in) : println(child, trigger)
+    trigger === nothing || println(child, trigger)
     reply = readline(child)
     wait(child)
     return ready, reply, success(child)
@@ -32,7 +33,9 @@ end
     ready, reply, succeeded = import_stage("go")
     @test ready == "ready"
     @test succeeded
-    @test isfinite(parse(Float64, reply)) && parse(Float64, reply) > 0
+    name, seconds = split(reply)
+    @test name == "PDEBase"
+    @test isfinite(parse(Float64, seconds)) && parse(Float64, seconds) > 0
     for trigger in (nothing, "not_go")
         ready, reply, succeeded = import_stage(trigger)
         @test ready == "ready"
