@@ -1,5 +1,5 @@
 using PDEBase, ModelingToolkit, Symbolics, Test
-using DomainSets: Interval
+using DomainSets: Interval, Rectangle, (..)
 using PDEBase: BoxFace
 using PDEBase.StrongForm: analyse, Weighted, StateSlots, SlotContext, EssentialBC, NaturalBC, PeriodicBC,
     match_flux, slot_condition, route_natural, essential_condition, periodic_condition,
@@ -462,4 +462,25 @@ end
     @test_throws "field 1 is paired with equations 1 and 2" pair_equations(
         [Ud[1], Ud[2]], s; pairing = Dict(2 => 1)
     )
+end
+
+@testset "facet normal on a box face is the numeric normal" begin
+    @parameters t x y k
+    @variables u(..)
+    Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
+    rect = Rectangle(0.0 .. 1.0, 0.0 .. 2.0)
+    Γr, Γt = boundarypiece(rect, :right), boundarypiece(rect, :top)
+    heat = Dt(u(t, x, y)) ~ Dx(k * Dx(u(t, x, y))) + Dy(k * Dy(u(t, x, y)))
+    @named sys = PDESystem(
+        [heat], [u(0, x, y) ~ 0], [(x, y) ∈ rect, t ∈ Interval(0.0, 1.0)], [t, x, y], [u(t, x, y)], [k]
+    )
+    v = VariableMap(sys, TimeDisc(t))
+    ctx, s = SlotContext(sys, v), StateSlots(1, 2, 1)
+    for (Γ, expected) in ((Γr, s.G[1]), (Γt, s.G[2]))
+        n = PDEBase.normal(Γ)
+        B = slot_condition(n[1] * Dx(u(t, Γ)) + n[2] * Dy(u(t, Γ)) + u(t, Γ) ~ 0, Γ, ctx, s)
+        @test symeq(B, expected + s.U[1])
+    end
+    # a Cartesian derivative of a trace on a box face is accepted with or without the normal
+    @test symeq(slot_condition(Dx(u(t, Γr)) ~ 0, Γr, ctx, s), s.G[1])
 end

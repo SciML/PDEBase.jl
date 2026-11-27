@@ -25,7 +25,7 @@ function _check_box_domains(pdesys)
     return nothing
 end
 
-_has_trace(bc::Union{Equation, Pair}) = any(side -> _find_trace(side) !== nothing, _get_lhs_rhs(bc))
+_has_trace(bc::Union{Equation, Pair}) = any(side -> _find_trace(side) !== nothing || _has_facet_normal(side), _get_lhs_rhs(bc))
 _has_trace(bcs::AbstractVector) = any(_has_trace, bcs)
 _has_trace(_) = false
 
@@ -66,7 +66,7 @@ end
 function _pieces!(pieces, ex)
     ex = safe_unwrap(ex)
     iscall(ex) || return pieces
-    operation(ex) isa NormalDerivative && push!(pieces, operation(ex).piece)
+    operation(ex) isa Union{NormalDerivative, FacetNormal} && push!(pieces, operation(ex).piece)
     for a in arguments(ex)
         _ispiece(a) ? push!(pieces, unwrap_const(safe_unwrap(a))) : _pieces!(pieces, a)
     end
@@ -137,23 +137,104 @@ function _endpoint_call(v, call, face)
     return u_op(args...)
 end
 
-function _box_rules!(rules, v, ex)
+# With `declared`, every call of a dependent variable becomes the call with its declared variables,
+# for the derivative check only; the lowered output never uses it.
+function _box_rules!(rules, v, ex; declared = false)
     ex = safe_unwrap(ex)
     iscall(ex) || return rules
     op = operation(ex)
-    if op isa NormalDerivative
+    op isa Union{Differential, NormalDerivative} && _check_normal_not_differentiated(ex)
+    if op isa FacetNormal
+        iv, sign = normal(_trace_face(v, op.piece))
+        rules[ex] = isequal(indvars(v)[_normal_component(ex)], iv) ? sign : 0
+        return rules
+    elseif op isa NormalDerivative
         iv, sign = normal(_trace_face(v, op.piece))
         operand = safe_unwrap(only(arguments(ex)))
-        derivative = Differential(iv)(substitute_traces(operand, _box_rules!(Dict{Any, Any}(), v, operand)))
+        derivative = Differential(iv)(substitute_traces(operand, _box_rules!(Dict{Any, Any}(), v, operand; declared)))
         rules[ex] = sign < 0 ? -derivative : derivative
+        return rules
+    elseif declared && haskey(v.args, op)
+        rules[ex] = op(v.args[op]...)
         return rules
     elseif haskey(v.args, op) && any(_ispiece, arguments(ex))
         piece = unwrap_const(safe_unwrap(only(filter(_ispiece, arguments(ex)))))
         rules[ex] = _endpoint_call(v, ex, _trace_face(v, piece))
         return rules
     end
-    foreach(a -> _box_rules!(rules, v, a), arguments(ex))
+    foreach(a -> _box_rules!(rules, v, a; declared), arguments(ex))
     return rules
+end
+
+# Does `ex` hold a call of a dependent variable of `v`?
+_holds_field(v, ex) = (ex = safe_unwrap(ex); iscall(ex) && (haskey(v.args, operation(ex)) || any(a -> _holds_field(v, a), arguments(ex))))
+
+# The derivative chains of dependent variables left in `ex` that have a spatial derivative, outermost
+# first; a derivative of data is none.
+function _spatial_derivatives!(nodes, ex, v)
+    ex = safe_unwrap(ex)
+    iscall(ex) || return nodes
+    if operation(ex) isa Differential
+        chain, inner = Any[], ex
+        while iscall(inner) && operation(inner) isa Differential
+            push!(chain, operation(inner).x)
+            inner = safe_unwrap(only(arguments(inner)))
+        end
+        if any(x -> any(y -> isequal(x, y), indvars(v)), chain) && _holds_field(v, inner)
+            any(n -> isequal(n, ex), nodes) || push!(nodes, ex)
+            return nodes
+        end
+    end
+    foreach(a -> _spatial_derivatives!(nodes, a, v), arguments(ex))
+    return nodes
+end
+
+# The derivative chain `ex` with its variables in the order of the system's variables, as Symbolics does
+# not identify the mixed partials `Dx(Dy(f))` and `Dy(Dx(f))`.
+function _canonical_derivative(v, ex)
+    vars, inner = Any[], safe_unwrap(ex)
+    while iscall(inner) && operation(inner) isa Differential
+        append!(vars, fill(operation(inner).x, operation(inner).order))
+        inner = safe_unwrap(only(arguments(inner)))
+    end
+    order = vcat(Any[v.time], indvars(v))
+    position(x) = something(findfirst(y -> isequal(x, y), order), length(order) + 1)
+    sort!(vars; by = position)
+    return foldr((x, e) -> Differential(x)(e), vars; init = inner)
+end
+
+# A condition with a facet normal must keep a derivative of a field: the normal is allowed only in a
+# natural or Robin-type condition. The fields are put in their declared variables and the derivatives
+# are really expanded (product and chain rules), for this check only, so a derivative that is zero
+# (in a parameter, or of a field lacking the variable) does not count and one that survives a
+# coefficient (`Dy(x * w)`) does. At the face the endpoint is substituted into the coefficients; a
+# residual that is then zero but held a derivative is the zero natural condition of a degenerate face.
+function _check_box_normal_derivative(v, lhs, rhs, bc)
+    rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs; declared = true), v, rhs; declared = true)
+    residual = Symbolics.expand_derivatives(Num(substitute_traces(lhs, rules)) - Num(substitute_traces(rhs, rules)))
+    nodes = _spatial_derivatives!(Any[], residual, v)
+    canonical = [_canonical_derivative(v, n) for n in nodes]
+    keys = unique(canonical)
+    taken = Symbolics.get_variables(residual)
+    function placeholder(j)
+        name = "##derivative#$j"
+        while any(var -> isequal(var, unwrap(Symbolics.variable(Symbol(name)))), taken)
+            name *= "'"
+        end
+        return Symbolics.variable(Symbol(name))
+    end
+    slots = [placeholder(j) for j in eachindex(keys)]
+    replacements = Dict(unwrap(n) => unwrap(slots[findfirst(k -> isequal(k, c), keys)]) for (n, c) in zip(nodes, canonical))
+    residual = Symbolics.simplify(Symbolics.expand(substitute_traces(residual, replacements)))
+    holds_derivative(r) = (vars = Set(unwrap.(Symbolics.get_variables(r))); any(g -> unwrap(g) in vars, slots))
+    written = holds_derivative(residual)
+    for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
+        face = boxface(v, piece)
+        face === nothing || (residual = Symbolics.substitute(residual, Dict(face.iv => v.intervals[face.iv][face.side === :lo ? 1 : 2])))
+    end
+    _check_finite_constants(residual, bc)
+    residual = Symbolics.simplify(Symbolics.expand(residual))
+    return _check_normal_has_derivative(true, holds_derivative(residual), isequal(residual, 0) && written, bc)
 end
 
 function _lower_bc(v, bc::Union{Equation, Pair})
@@ -162,6 +243,19 @@ function _lower_bc(v, bc::Union{Equation, Pair})
     lhs, rhs = _get_lhs_rhs(bc)
     rules = _box_rules!(_box_rules!(Dict{Any, Any}(), v, lhs), v, rhs)
     lowered = map(side -> assert_no_traces(substitute_traces(side, rules)), (lhs, rhs))
+    if _has_facet_normal(lhs) || _has_facet_normal(rhs)
+        face_rules = Dict{Any, Any}()
+        for piece in unique(_pieces!(_pieces!(Any[], lhs), rhs))
+            face = boxface(v, piece)
+            face === nothing || (face_rules[face.iv] = v.intervals[face.iv][face.side === :lo ? 1 : 2])
+        end
+        for term in _normal_terms!(_normal_terms!(Any[], lhs), rhs)
+            iv, sign = normal(_trace_face(v, operation(term).piece))
+            face_rules[unwrap(term)] = isequal(indvars(v)[_normal_component(term)], iv) ? sign : 0
+        end
+        _check_sides_finite((lhs, rhs), face_rules, bc)
+        _check_box_normal_derivative(v, lhs, rhs, bc)
+    end
     return bc isa Pair ? Pair(lowered...) : Equation(lowered...)
 end
 _lower_bc(v, bcs::AbstractVector) = map(bc -> _lower_bc(v, bc), bcs)
@@ -182,6 +276,10 @@ else untouched. For the face of axis `x` at its lower end `x_lo` (from
 | `k * Dn_Γ(u(t, Γ)) + α * u(t, Γ) ~ β` | `-k * Dx(u(t, x_lo, y)) + α * u(t, x_lo, y) ~ β` |
 | `u(t, Γ_lo) ~ u(t, Γ_hi)` | `u(t, x_lo, y) ~ u(t, x_hi, y)` |
 | `Dx(u(t, Γ)) ~ h` | `Dx(u(t, x_lo, y)) ~ h` |
+| `k * (n[1] * Dx(u(t, Γ)) + n[2] * Dy(u(t, Γ))) + α * u(t, Γ) ~ β`, `n = normal(Γ)` | `-k * Dx(u(t, x_lo, y)) + α * u(t, x_lo, y) ~ β` |
+
+A component of [`normal`](@ref PDEBase.normal)`(Γ)` is replaced by the numeric `-1`, `+1` or `0` of the
+face's outward normal, in the order of `indvars`.
 
 The endpoint value is the interval's own endpoint, `DomainSets.infimum` or `supremum`, so
 `0.0` on `Interval(0.0, 1.0)`; it is `isequal` to the `0` a user writes. Conditions that
