@@ -432,7 +432,7 @@ function handle_complex(pdesys)
         if typed_dvs
             rename(term) = _rename_complex_typed_components(term, redvmaps_dict, imdvmaps_dict)
             eqs = [rename(eq.lhs) ~ rename(eq.rhs) for eq in eqs_flat]
-            bcs = mapreduce(vcat, bcs_flat) do bc
+            bcs = mapreduce(vcat, bcs_flat; init = Equation[]) do bc
                 if bc isa Pair
                     dv = _dependent_variable_term(bc.first)
                     op = operation(dv)
@@ -471,7 +471,7 @@ function handle_complex(pdesys)
         end
 
         if !typed_dvs
-            bcs = mapreduce(vcat, bcs_flat) do eq
+            bcs = mapreduce(vcat, bcs_flat; init = Equation[]) do eq
                 split_complex_bc(eq, redvmaps_dict, imdvmaps_dict)
             end
         end
