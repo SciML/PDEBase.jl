@@ -137,3 +137,26 @@ end
     @test isequal(collect(indvars(v3)), [x, y])
     @test isequal(v3.spatial_axes, [y, x])
 end
+
+@testset "mesh traces on a (y, x) pairing keep the axis order and the mesh domain" begin
+    swapped = [(y, x) ∈ Ω]
+    # Steady: the only call that survives filtering the trace is the equation's own.
+    steady = 0 ~ k * (Dx(Dx(u(x, y))) + Dy(Dy(u(x, y))))
+    @named steady_pdesys = PDESystem([steady], [u(Γ_in) ~ 1], swapped, [x, y], [u(x, y)], [k])
+    v = VariableMap(steady_pdesys, DummyMeshDiscretization(nothing, Ref{Any}(nothing)))
+    @test isequal(collect(indvars(v)), [y, x])
+    @test isequal(v.spatial_axes, [y, x])
+    @test isequal(depvars(v), [unwrap(u(x, y))])
+    @test spatial_domain(v) isa MeshDomain
+
+    # Transient: a trace and an initial condition leave one interior call and a time-only call.
+    transient_domains = [(y, x) ∈ Ω, t ∈ Interval(0.0, 1.0)]
+    @named transient_pdesys = PDESystem(
+        [heat], [u(t, Γ_in) ~ sin(t), u(0, x, y) ~ 0], transient_domains, [t, x, y], [u(t, x, y)], [k]
+    )
+    v = VariableMap(transient_pdesys, DummyMeshDiscretization(t, Ref{Any}(nothing)))
+    @test isequal(collect(indvars(v)), [y, x])
+    @test isequal(v.spatial_axes, [y, x])
+    @test isequal(depvars(v), [unwrap(u(t, x, y))])
+    @test spatial_domain(v) isa MeshDomain
+end
