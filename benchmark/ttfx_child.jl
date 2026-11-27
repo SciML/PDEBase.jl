@@ -16,23 +16,15 @@ if STAGE == "import"
     pdebase_dir = get(active, "uuid", "") == string(pdebase_uuid) ? dirname(Base.active_project()) :
         Pkg.dependencies()[pdebase_uuid].source
     pdebase_project = joinpath(pdebase_dir, "Project.toml")
-    # The project of PDEBase goes first on the load path so that its direct dependencies resolve
-    # by name, and the stack is restored before the timed `using PDEBase`.
-    pushfirst!(LOAD_PATH, pdebase_project)
+    # The project of PDEBase goes last on the load path so that its direct dependencies resolve by name
+    # to the versions of the active environment, and the stack is restored before the timed `using PDEBase`.
+    push!(LOAD_PATH, pdebase_project)
     try
-        for (name, uuid) in TOML.parsefile(pdebase_project)["deps"]
+        for name in keys(TOML.parsefile(pdebase_project)["deps"])
             Core.eval(Main, :(import $(Symbol(name))))
-            # A checkout with its own manifest could resolve a different version than the active
-            # environment, which the timed import would then reuse.
-            expected = Pkg.dependencies()[Base.UUID(uuid)].version
-            loaded = pkgversion(Base.invokelatest(getfield, Main, Symbol(name)))
-            if expected !== nothing && loaded !== nothing && loaded != expected
-                println(stderr, "$name $loaded was preloaded, but the active environment resolves $expected")
-                exit(1)
-            end
         end
     finally
-        popfirst!(LOAD_PATH)
+        pop!(LOAD_PATH)
     end
     println("ready")
     flush(stdout)
