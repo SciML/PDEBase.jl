@@ -23,12 +23,27 @@ end
         @test !success(invalid)
         diagnostic = read(path, String)
         @test occursin("unknown stage \"no_such_stage\"", diagnostic)
-        @test occursin("load, first_calls, import", diagnostic)
+        @test occursin("cold_import, load, first_calls, import", diagnostic)
     end
 
-    # The heat model has one field and two spatial dimensions, and only first_calls analyses it.
-    @test !occursin("analysis", read(ttfx_cmd("load"), String))
-    @test occursin(r"^analysis nfields=1 dim=2$"m, read(ttfx_cmd("first_calls"), String))
+    # The heat model has one field and two spatial dimensions, and only first_calls analyses it
+    # and times its first calls.
+    cold = read(ttfx_cmd("cold_import"), String)
+    loaded = read(ttfx_cmd("load"), String)
+    analysed = read(ttfx_cmd("first_calls"), String)
+    @test isempty(cold)
+    for output in (cold, loaded)
+        @test !occursin("analysis", output)
+        @test !occursin("first_calls", output)
+    end
+    @test count("analysis nfields=1 dim=2\n", analysed) == 1
+    timings = collect(
+        eachmatch(r"^first_calls parsed_boundary_map=(\S+) analyse=(\S+)$"m, analysed)
+    )
+    @test length(timings) == 1
+    for seconds in only(timings).captures
+        @test isfinite(parse(Float64, seconds)) && parse(Float64, seconds) > 0
+    end
 
     ready, reply, succeeded = import_stage("go")
     @test ready == "ready"

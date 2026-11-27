@@ -98,17 +98,23 @@ SUITE["interface"]["should_transform"] = @benchmarkable PDEBase.should_transform
 )
 
 # =============================================================================
-# Fresh-process costs. Each sample starts a new Julia process, so the precompiled workload
-# (rather than a warm session) decides the result. "load" stops after loading the packages
-# and building the system, and "first_calls" also runs the first parsed_boundary_map and StrongForm.analyse calls. Both
-# stages report whole-process wall time. To measure the two first calls in isolation, time them
-# inside the child after package loading and model construction, as the first_calls stage
-# prints.
-#
-# "import_deps_loaded" times `using PDEBase` in a fresh process whose direct dependencies are
-# already loaded, which is the cost every session that has the dependencies loaded pays for
-# the precompiled workload. The child loads the dependencies and reports `ready` in the untimed
-# setup, and the sample covers only the round trip that triggers `using PDEBase`.
+# Fresh-process regression guards for the cost of loading PDEBase and of its first calls.
+# Each sample starts a new Julia process, so what is measured is the precompiled state of the
+# package rather than a warm session.
+#   "cold_import"  whole-process wall time of loading PDEBase and exiting, without building
+#                  or analysing a model.
+#   "load"         whole-process wall time of also loading ModelingToolkit and Symbolics and
+#                  building the system.
+#   "first_calls"  whole-process wall time of also running the first parsed_boundary_map and
+#                  StrongForm.analyse calls. To collect those two first calls in isolation,
+#                  timed inside the child after package loading and model construction, run
+#                  `julia --project=<environment> benchmark/ttfx_child.jl first_calls` and read
+#                  its `first_calls parsed_boundary_map=S analyse=S` line.
+#   "import_deps_loaded"  `using PDEBase` in a fresh process whose direct dependencies are
+#                  already loaded, which is the cost a session that has those dependencies
+#                  loaded pays for loading PDEBase. The child loads the dependencies and
+#                  reports `ready` in the untimed setup, and the sample covers only the round
+#                  trip that triggers `using PDEBase`.
 # =============================================================================
 
 const TTFX_CHILD = joinpath(@__DIR__, "ttfx_child.jl")
@@ -116,8 +122,8 @@ ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active
 
 SUITE["ttfx"] = BenchmarkGroup()
 
-# The first_calls child prints its analysis record, which only the tests read.
-for stage in ("load", "first_calls")
+# The children print records that only the tests and a direct invocation read.
+for stage in ("cold_import", "load", "first_calls")
     SUITE["ttfx"][stage] = @benchmarkable run(pipeline($(ttfx_cmd(stage)); stdout = devnull)) samples = 5 evals = 1 seconds = 600
 end
 

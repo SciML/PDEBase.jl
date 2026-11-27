@@ -1,13 +1,22 @@
-# Fresh-process workloads, run as a subprocess by benchmark/benchmarks.jl. `load` stops after
-# building the system. `first_calls` also runs parsed_boundary_map and analyse once and prints an
-# `analysis nfields=N dim=D` record from the analysis result and the isolated times of the first
-# parsed_boundary_map and analyse calls. `import` loads the direct
-# dependencies of PDEBase, prints `ready`, waits for a `go` line on stdin and prints the package name
-# and the seconds that `using PDEBase` took; any other input exits unsuccessfully without a duration.
-const STAGES = ("load", "first_calls", "import")
+# Fresh-process stages, run as a subprocess by benchmark/benchmarks.jl.
+#   cold_import  loads PDEBase and exits, without building or analysing a model.
+#   load         also loads ModelingToolkit and Symbolics and builds the system.
+#   first_calls  also runs parsed_boundary_map and analyse once, and prints an
+#                `analysis nfields=N dim=D` record from the analysis result and one
+#                `first_calls parsed_boundary_map=S analyse=S` record with the isolated
+#                times of those two first calls.
+#   import       loads the direct dependencies of PDEBase, prints `ready`, waits for a `go`
+#                line on stdin and prints `PDEBase S`, the package name and the seconds that
+#                `using PDEBase` took; any other input exits unsuccessfully without a duration.
+const STAGES = ("cold_import", "load", "first_calls", "import")
 const STAGE = only(ARGS)
 STAGE in STAGES ||
     throw(ArgumentError("unknown stage $(repr(STAGE)); the allowed stages are $(join(STAGES, ", "))"))
+
+if STAGE == "cold_import"
+    using PDEBase
+    exit()
+end
 
 if STAGE == "import"
     # A restricted JULIA_LOAD_PATH, as under Pkg.test, can hide the standard libraries.
