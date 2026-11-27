@@ -49,3 +49,29 @@ PDEBase.get_time(disc::XbarOrderDiscretization) = disc.time
         @test all(r -> r[2] == string.(xbar), flat)
     end
 end
+
+@testset "VariableMap x̄ follows dvs order across many fields and argument orders" begin
+    @parameters t x y z
+    @variables a(..) b(..) c(..) d(..) e(..) f(..)
+    Dt = Differential(t)
+    # Each field lists its spatial arguments in a different order; x̄ is the union in `dvs` order.
+    fields = [a(t, x, y, z), b(t, z, y), c(t, y), d(t, z, x), e(t, x), f(t, y, x, z)]
+    expected_axes = Dict(
+        1 => [x, y, z], 2 => [z, y, x], 3 => [y, z, x], 4 => [z, x, y], 5 => [x, y, z], 6 => [y, x, z],
+    )
+    domains = [t ∈ (0, 1), x ∈ (0, 1), y ∈ (0, 1), z ∈ (0, 1)]
+    for first_field in 1:6, reverse_bcs in (false, true)
+        dvs = circshift(fields, 1 - first_field)
+        eqs = [Dt(u) ~ 0 for u in dvs]
+        # Boundary calls with numeric arguments, listed ahead of or after the equations' own calls.
+        bcs = vcat(
+            [u ~ 0 for u in dvs],
+            [b(t, 0, y) ~ 0, d(t, 0, x) ~ 0, f(t, y, 0, z) ~ 0, a(t, x, y, 1) ~ 0],
+        )
+        reverse_bcs && reverse!(bcs)
+        pdesys = PDESystem(eqs, bcs, domains, [t, x, y, z], dvs; name = :pdebase_xbar_fields_test)
+        v = VariableMap(pdesys, XbarOrderDiscretization(t))
+        @test string.(indvars(v)) == string.(expected_axes[first_field])
+        @test Set(string.(depvars(v))) == Set(string.(fields))
+    end
+end
