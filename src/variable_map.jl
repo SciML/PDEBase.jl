@@ -140,13 +140,14 @@ function VariableMap(pdesys, disc; replaced_vars = Dict())
     # `alldepvars` comes out of a `Set`, whose order differs between Julia versions; the order of
     # `x̄` follows the order of `depvars`, a call with all its arguments symbolic before a boundary
     # call of the same variable, and the printed arguments last.
-    sortkeys = map(alldepvars) do u
-        (
-            something(findfirst(op -> isequal(op, operation(u)), depvar_ops), length(depvar_ops) + 1),
-            count(x -> unwrap_const(x) isa Number, arguments(u)), string(arguments(u)),
-        )
-    end
-    ivorder = alldepvars[sortperm(sortkeys)]
+    sortkey(u) = (
+        something(findfirst(op -> isequal(op, operation(u)), depvar_ops), length(depvar_ops) + 1),
+        count(x -> unwrap_const(x) isa Number, arguments(u)), string(arguments(u)),
+    )
+    # Sorting with `by` computes the key at every comparison, and two calls need no more than one
+    # comparison, so only a larger input gains from computing each key once.
+    ivorder = length(alldepvars) <= 2 ? sort(alldepvars; by = sortkey) :
+        alldepvars[sortperm(map(sortkey, alldepvars))]
     allivs = collect(filter(x -> !(unwrap_const(x) isa Number), reduce(union, map(arguments, ivorder))))
     x̄ = remove(allivs, time)
     for pairing in domain
