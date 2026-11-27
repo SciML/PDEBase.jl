@@ -9,6 +9,8 @@ STAGE in STAGES ||
     throw(ArgumentError("unknown stage $(repr(STAGE)); the allowed stages are $(join(STAGES, ", "))"))
 
 if STAGE == "import"
+    # A restricted JULIA_LOAD_PATH, as under Pkg.test, can hide the standard libraries.
+    "@stdlib" in LOAD_PATH || push!(LOAD_PATH, "@stdlib")
     import Pkg, TOML
     pdebase_uuid = Base.UUID("a7812802-0625-4b9e-961c-d332478797e5")
     active = TOML.parsefile(Base.active_project())
@@ -49,8 +51,10 @@ PDEBase.get_time(disc::TTFXDiscretization) = disc.time
 @variables u(..)
 Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
 U = u(t, x, y)
+# Lazy vector operators exist only in newer Symbolics releases.
+rhs = isdefined(Symbolics, :Laplacian) ? Symbolics.Laplacian([x, y])(U) : Dx(Dx(U)) + Dy(Dy(U))
 pdesys = PDESystem(
-    [Dt(U) ~ Dx(Dx(U)) + Dy(Dy(U))],
+    [Dt(U) ~ rhs],
     [u(0, x, y) ~ 0, u(t, 0, y) ~ 0, u(t, 1, y) ~ 0, u(t, x, 0) ~ 0, u(t, x, 1) ~ 0],
     [t ∈ (0, 1), x ∈ (0, 1), y ∈ (0, 1)], [t, x, y], [U]; name = :heat_2d
 )
