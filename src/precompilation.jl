@@ -72,52 +72,57 @@ end
 get_time(disc::_WarmupMeshDiscretization) = disc.time
 
 @setup_workload begin
+    @variables t x y
+    @variables u(..)
+    Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
+    unit_interval = DomainSets.Interval(0.0, 1.0)
+    box_disc = _WarmupBoxDiscretization(t)
+
+    U1 = u(t, x)
+    heat1d = PDESystem(
+        [Dt(U1) ~ Dx(Dx(U1))], [u(0, x) ~ 0, u(t, 0) ~ 0, u(t, 1) ~ 0],
+        [iv ∈ unit_interval for iv in (t, x)], [t, x], [U1], [], name = :warmup_heat1d
+    )
+
+    U2 = u(t, x, y)
+    bcs2d = [u(0, x, y) ~ 0, u(t, 0, y) ~ 0, u(t, 1, y) ~ 0, u(t, x, 0) ~ 0, u(t, x, 1) ~ 0]
+    domain2d = [iv ∈ unit_interval for iv in (t, x, y)]
+    rhs_candidates = Any[Dx(Dx(U2)) + Dy(Dy(U2))]
+    # Lazy vector operators exist only in newer Symbolics releases.
+    isdefined(Symbolics, :Laplacian) && push!(rhs_candidates, Symbolics.Laplacian([x, y])(U2))
+    heat2d_systems = [
+        PDESystem([Dt(U2) ~ rhs], bcs2d, domain2d, [t, x, y], [U2], [], name = :warmup_heat2d)
+            for rhs in rhs_candidates
+    ]
+
     @compile_workload begin
-        @variables t x y
-        @variables u(..)
-        Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
-        unit_interval = DomainSets.Interval(0.0, 1.0)
-
-        U1 = u(t, x)
-        heat1d = PDESystem(
-            [Dt(U1) ~ Dx(Dx(U1))], [u(0, x) ~ 0, u(t, 0) ~ 0, u(t, 1) ~ 0],
-            [iv ∈ unit_interval for iv in (t, x)], [t, x], [U1], [], name = :warmup_heat1d
-        )
-        parsed1d = parsed_boundary_map(heat1d, _WarmupBoxDiscretization(t))
+        parsed1d = parsed_boundary_map(heat1d, box_disc)
         StrongForm.analyse(parsed1d.pdesys, parsed1d.v, parsed1d.boundarymap)
-
-        U2 = u(t, x, y)
-        bcs2d = [u(0, x, y) ~ 0, u(t, 0, y) ~ 0, u(t, 1, y) ~ 0, u(t, x, 0) ~ 0, u(t, x, 1) ~ 0]
-        domain2d = [iv ∈ unit_interval for iv in (t, x, y)]
-        rhs_candidates = Any[Dx(Dx(U2)) + Dy(Dy(U2))]
-        # Lazy vector operators exist only in newer Symbolics releases.
-        isdefined(Symbolics, :Laplacian) && push!(rhs_candidates, Symbolics.Laplacian([x, y])(U2))
-        for rhs in rhs_candidates
-            heat2d = PDESystem(
-                [Dt(U2) ~ rhs], bcs2d, domain2d, [t, x, y], [U2], [], name = :warmup_heat2d
-            )
+        for heat2d in heat2d_systems
             expand_vector_operators(heat2d)
-            parsed = parsed_boundary_map(heat2d, _WarmupBoxDiscretization(t))
+            parsed = parsed_boundary_map(heat2d, box_disc)
             StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
         end
     end
 end
 
 @setup_workload begin
+    @variables t x y k
+    @variables u(..)
+    Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
+    Ω = MeshDomain(_WarmupMesh())
+    Γin, Γwall = boundarypiece(Ω, :inlet), boundarypiece(Ω, :wall)
+    Dn = NormalDerivative(Γwall)
+    U = u(t, x, y)
+    bcs = [u(t, Γin) ~ sin(t), Dn(u(t, Γwall)) ~ 0, u(0, x, y) ~ 0]
+    meshsys = PDESystem(
+        [Dt(U) ~ k * (Dx(Dx(U)) + Dy(Dy(U)))], bcs,
+        [(x, y) ∈ Ω, t ∈ DomainSets.Interval(0.0, 1.0)], [t, x, y], [U], [k], name = :warmup_mesh
+    )
+    mesh_disc = _WarmupMeshDiscretization(t)
+
     @compile_workload begin
-        @variables t x y k
-        @variables u(..)
-        Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
-        Ω = MeshDomain(_WarmupMesh())
-        Γin, Γwall = boundarypiece(Ω, :inlet), boundarypiece(Ω, :wall)
-        Dn = NormalDerivative(Γwall)
-        U = u(t, x, y)
-        bcs = [u(t, Γin) ~ sin(t), Dn(u(t, Γwall)) ~ 0, u(0, x, y) ~ 0]
-        meshsys = PDESystem(
-            [Dt(U) ~ k * (Dx(Dx(U)) + Dy(Dy(U)))], bcs,
-            [(x, y) ∈ Ω, t ∈ DomainSets.Interval(0.0, 1.0)], [t, x, y], [U], [k], name = :warmup_mesh
-        )
-        parsed = parsed_boundary_map(meshsys, _WarmupMeshDiscretization(t))
+        parsed = parsed_boundary_map(meshsys, mesh_disc)
         StrongForm.analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
     end
 end

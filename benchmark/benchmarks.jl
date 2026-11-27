@@ -62,11 +62,17 @@ SUITE["interface"]["should_transform"] = @benchmarkable PDEBase.should_transform
 )
 
 # =============================================================================
-# Fresh-process time to first call. Each sample starts a new Julia process, so the
-# precompiled workload (rather than a warm session) decides the result. "load" stops
-# after loading the packages and building the system; subtract it from "first_calls" to
-# get the cost of the first expand_vector_operators, parsed_boundary_map and
-# StrongForm.analyse calls.
+# Fresh-process costs. Each sample starts a new Julia process, so the precompiled workload
+# (rather than a warm session) decides the result. "load" stops after loading the packages
+# and building the system, and "first_calls" also runs the first expand_vector_operators,
+# parsed_boundary_map and StrongForm.analyse calls. Both stages report whole-process wall
+# time. To measure the three first calls in isolation, time them inside the child after
+# package loading and model construction.
+#
+# "import_deps_loaded" times `using PDEBase` in a fresh process whose direct dependencies are
+# already loaded, which is the cost every session that has the dependencies loaded pays for
+# the precompiled workload. The child loads the dependencies and reports `ready` in the untimed
+# setup, and the sample covers only the round trip that triggers `using PDEBase`.
 # =============================================================================
 
 const TTFX_CHILD = joinpath(@__DIR__, "ttfx_child.jl")
@@ -77,3 +83,8 @@ SUITE["ttfx"] = BenchmarkGroup()
 for stage in ("load", "first_calls")
     SUITE["ttfx"][stage] = @benchmarkable run($(ttfx_cmd(stage))) samples = 5 evals = 1 seconds = 600
 end
+
+SUITE["ttfx"]["import_deps_loaded"] = @benchmarkable begin
+    println(child, "go")
+    readline(child)
+end setup = (child = open($(ttfx_cmd("import")), "r+"); readline(child)) teardown = wait(child) samples = 5 evals = 1 seconds = 600
