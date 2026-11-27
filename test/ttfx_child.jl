@@ -2,7 +2,12 @@ using PDEBase
 using Test
 
 const TTFX_CHILD = joinpath(pkgdir(PDEBase), "benchmark", "ttfx_child.jl")
-ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) $TTFX_CHILD $stage`
+# Pkg.test narrows JULIA_LOAD_PATH to the test project, which hides the standard libraries the
+# import stage needs, so the child gets the default load path.
+ttfx_cmd(stage) = addenv(
+    `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) $TTFX_CHILD $stage`,
+    "JULIA_LOAD_PATH" => nothing
+)
 
 # Runs the import stage through a duplex pipe: reads `ready`, sends `trigger` (or closes stdin
 # when it is `nothing`) and returns the readiness line, the reply and the exit status.
