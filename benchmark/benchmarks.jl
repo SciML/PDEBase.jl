@@ -116,11 +116,14 @@ ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active
 
 SUITE["ttfx"] = BenchmarkGroup()
 
+# The first_calls child prints its analysis record, which only the tests read.
 for stage in ("load", "first_calls")
-    SUITE["ttfx"][stage] = @benchmarkable run($(ttfx_cmd(stage))) samples = 5 evals = 1 seconds = 600
+    SUITE["ttfx"][stage] = @benchmarkable run(pipeline($(ttfx_cmd(stage)); stdout = devnull)) samples = 5 evals = 1 seconds = 600
 end
 
 SUITE["ttfx"]["import_deps_loaded"] = @benchmarkable begin
     println(child, "go")
     parse(Float64, readline(child))
-end setup = (child = open($(ttfx_cmd("import")), "r+"); readline(child)) teardown = (wait(child); success(child) || error("the import stage of ttfx_child.jl failed")) samples = 5 evals = 1 seconds = 600
+end setup = (
+    child = open($(ttfx_cmd("import")), "r+"); readline(child) == "ready" || error("the import stage of ttfx_child.jl did not report ready")
+) teardown = (wait(child); success(child) || error("the import stage of ttfx_child.jl failed")) samples = 5 evals = 1 seconds = 600
