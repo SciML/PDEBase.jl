@@ -3,6 +3,27 @@ using ModelingToolkit
 using Symbolics
 using Test
 
+@testset "Complex systems without boundary conditions" begin
+    @parameters t x
+    @variables u(..) z(..)::Complex
+    Dt = Differential(t)
+    for (label, dv, eqs) in (
+            ("untyped", u(t, x), [im * Dt(u(t, x)) ~ u(t, x)]),
+            ("typed", z(t, x), [Dt(real(z(t, x))) ~ 1, Dt(imag(z(t, x))) ~ 2]),
+        )
+        @testset "$label" begin
+            system = PDESystem(
+                eqs, Equation[], [t ∈ (0, 1), x ∈ (0, 1)], [t, x], [dv];
+                name = :empty_complex_bcs
+            )
+            split, _ = PDEBase.handle_complex(system)
+            @test PDEBase.get_bcs(split) == Equation[]
+            @test length(ModelingToolkit.equations(split)) == 2
+            @test length(PDEBase.get_dvs(split)) == 2
+        end
+    end
+end
+
 @testset "Complex PDE equations retain real-imaginary coupling" begin
     @parameters t x
     @variables ψ(..) χ(..) Reψ(..) Imψ(..) Reχ(..) Imχ(..)
