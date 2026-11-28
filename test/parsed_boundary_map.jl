@@ -1,8 +1,10 @@
 using PDEBase
 using PDEBase: parsed_boundary_map
+using PDEBase.StrongForm: analyse
 using PDEBase: PieceBoundary, LowerBoundary, Essential, Natural, Robin
 using ModelingToolkit
-using Symbolics: unwrap
+import Symbolics
+using Symbolics: Num, unwrap
 using SciMLBase
 using Test
 import DomainSets
@@ -97,4 +99,25 @@ end
     @test_throws DiscretizationReached SciMLBase.symbolic_discretize(pdesys, disc)
     @test CAPTURED[] !== nothing
     @test same_map(boundarymap, CAPTURED[])
+end
+
+@testset "parsed_boundary_map and analyse on the explicit and the lazy heat equation" begin
+    U = u(t, x, y)
+    domains = [t ∈ Interval(0.0, 1.0), x ∈ Interval(0.0, 1.0), y ∈ Interval(0.0, 1.0)]
+    bcs = [u(0, x, y) ~ 0, u(t, 0, y) ~ 0, u(t, 1, y) ~ 0, u(t, x, 0) ~ 0, u(t, x, 1) ~ 0]
+    laplacians = Any[Dx(Dx(U)) + Dy(Dy(U))]
+    # Lazy vector operators exist only in newer Symbolics releases.
+    isdefined(Symbolics, :Laplacian) && push!(laplacians, Symbolics.Laplacian([x, y])(U))
+    same(a, b) = isequal(Symbolics.expand(Num(a) - Num(b)), Num(0))
+    for laplacian in laplacians
+        @named pdesys = PDESystem([Dt(U) ~ k * laplacian], bcs, domains, [t, x, y], [U], [k])
+        parsed = parsed_boundary_map(pdesys, AccessorBoxDiscretization(t))
+        an = analyse(parsed.pdesys, parsed.v, parsed.boundarymap)
+        slots = an.slots
+        @test (an.nfields, an.dim) == (1, 2)
+        @test same(an.mass[1], slots.Ud[1])
+        @test all(same.(an.flux[1], [-slots.P[1] * slots.G[1], -slots.P[1] * slots.G[2]]))
+        @test same(an.remainder[1], 0)
+        @test same(an.strong[1], slots.Ud[1] - slots.P[1] * (slots.H[1] + slots.H[4]))
+    end
 end

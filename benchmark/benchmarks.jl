@@ -96,3 +96,42 @@ SUITE["interface"]["check_boundarymap"] = @benchmarkable PDEBase.check_boundarym
 SUITE["interface"]["should_transform"] = @benchmarkable PDEBase.should_transform(
     $pdesys, PlainDiscretization(), Dict()
 )
+
+# =============================================================================
+# Fresh-process regression guards for the cost of loading PDEBase and of its first calls.
+# Each sample starts a new Julia process, so what is measured is the precompiled state of the
+# package rather than a warm session.
+#   "cold_import"  whole-process wall time of loading PDEBase and exiting, without building
+#                  or analysing a model.
+#   "load"         whole-process wall time of also loading ModelingToolkit and Symbolics and
+#                  building the system.
+#   "first_calls"  whole-process wall time of also running the first parsed_boundary_map and
+#                  StrongForm.analyse calls. To collect those two first calls in isolation,
+#                  timed inside the child after package loading and model construction, run
+#                  `julia --project=<environment> benchmark/ttfx_child.jl first_calls` and read
+#                  its `first_calls parsed_boundary_map=S analyse=S` line.
+#   "import_deps_loaded"  `using PDEBase` in a fresh process whose direct dependencies are
+#                  already loaded, which is the cost a session that has those dependencies
+#                  loaded pays for loading PDEBase. The child loads the dependencies and
+#                  reports `ready` in the untimed setup, and the sample covers only the round
+#                  trip that triggers `using PDEBase`.
+# =============================================================================
+
+const TTFX_CHILD = joinpath(@__DIR__, "ttfx_child.jl")
+ttfx_cmd(stage) = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) $TTFX_CHILD $stage`
+
+SUITE["ttfx"] = BenchmarkGroup()
+
+# The children print records that only the tests and a direct invocation read.
+for stage in ("cold_import", "load", "first_calls")
+    SUITE["ttfx"][stage] = @benchmarkable run(pipeline($(ttfx_cmd(stage)); stdout = devnull)) samples = 5 evals = 1 seconds = 600
+end
+
+SUITE["ttfx"]["import_deps_loaded"] = @benchmarkable begin
+    println(child, "go")
+    name, seconds = split(readline(child))
+    name == "PDEBase" || error("the import stage of ttfx_child.jl reported $name")
+    parse(Float64, seconds)
+end setup = (
+    child = open($(ttfx_cmd("import")), "r+"); readline(child) == "ready" || error("the import stage of ttfx_child.jl did not report ready")
+) teardown = (wait(child); success(child) || error("the import stage of ttfx_child.jl failed")) samples = 5 evals = 1 seconds = 600
